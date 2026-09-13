@@ -295,6 +295,15 @@ The registry reads rows again every `auth.refresh` (five seconds). A decision
 never waits on the database: requests read a snapshot, and when a reload
 fails, the snapshot in force stays in force.
 
+The configuration and the rows are two sources of one policy, and a binding in
+either is in force. The configuration's are read once, when `cr serve` starts:
+they never become rows, `cr binding ls` does not show them, and removing one
+from the file takes effect when every replica has restarted without it. A row
+takes effect, or stops, within `auth.refresh`. A binding written in both places
+is in force until it is gone from both, and a token `/token` already issued
+keeps the access it was issued with until it expires, `auth.token.ttl` at the
+latest.
+
 ## CI without secrets: OpenID Connect
 
 ```yaml
@@ -344,6 +353,26 @@ same claims for `exchange.ttl`. It is a password and never an access token,
 and it cannot be exchanged again. `oidc-release.yml` and `oidc-sibling.yml` in
 this repository run exactly this on every push to main, with GitHub's own
 tokens: the release pushes, and the sibling is refused.
+
+**What to pin.** A binding is only as narrow as its `when`:
+
+- **The ref, not only the file.** `workflow_ref` is the workflow file at the
+  ref it ran from. With `release.yml@*`, anybody who can push a branch can edit
+  `release.yml` on that branch and push images with it; pin `@refs/heads/main`
+  or `@refs/tags/v*`, and protect those refs.
+- **The caller, or the reusable workflow.** When a workflow calls a reusable
+  one, `workflow_ref` names the caller and `job_workflow_ref` names the
+  reusable workflow. To trust a shared build workflow wherever it is called
+  from, bind `job_workflow_ref`.
+- **Identifiers as well as names.** A repository or an owner can be renamed and
+  the old name taken by somebody else; `repository_id` and
+  `repository_owner_id` cannot, so a `when` naming them stays with the
+  repository it was written for.
+- **One binding per mapping.** `repo` and `when` are matched separately, and
+  nothing carries a claim's value into `repo`: `repo: acme/*` with
+  `repository: acme/*` lets the workflows of every `acme` repository push to
+  every `acme/*` repository here. A workflow that should reach only its own
+  repository needs a binding that names both.
 
 ## roster
 
