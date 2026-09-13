@@ -94,7 +94,7 @@ func RouteOf(r *http.Request) string {
 	switch p {
 	case "/v2", "/v2/":
 		return "/v2/"
-	case "/v2/_catalog", "/v1/_ping", "/v1/search", "/token", "/.well-known/jwks.json", "/admin/gc":
+	case "/v2/_catalog", "/v1/_ping", "/v1/search", "/token", "/token/exchange", "/.well-known/jwks.json", "/admin/gc":
 		return p
 	}
 	if strings.HasPrefix(p, "/admin/gc/") {

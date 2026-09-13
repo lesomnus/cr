@@ -84,6 +84,9 @@ func Registry(ctx context.Context, c *cmd.Config, s *cmd.Server) error {
 	s.Routes["/admin/"] = instrument(reg.Admin())
 	if guard != nil {
 		s.Routes["/token"] = instrument(http.HandlerFunc(guard.ServeToken))
+		if guard.Exchange > 0 {
+			s.Routes["/token/exchange"] = instrument(http.HandlerFunc(guard.ServeExchange))
+		}
 		s.Routes["/.well-known/jwks.json"] = instrument(http.HandlerFunc(guard.ServeJWKS))
 	}
 	s.Routes["/healthz"] = httpx.Live()

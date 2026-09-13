@@ -71,6 +71,7 @@ func Cmd(c *cmd.Config) *xli.Command {
 			NewCmdServe(c),
 			NewCmdGc(c),
 			NewCmdIndex(c),
+			NewCmdExport(c),
 		}, t.Commands()...),
 
 		Handler: xli.Chain(pdcmd.Load(cmd.Loader, c), xli.RequireSubcommand()),

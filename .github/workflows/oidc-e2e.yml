@@ -1,0 +1,113 @@
+# The OIDC authenticator against GitHub's real ID tokens: cr runs on the runner
+# with GitHub as a provider and one binding, which lets a push through only
+# from `oidc-release.yml`. That workflow and `oidc-sibling.yml` both call this
+# one, and the ID token each gets names its own workflow as `workflow_ref`, so
+# the release pushes and the sibling is refused -- with the ID token itself,
+# and with the token `POST /token/exchange` trades it for.
+name: oidc-e2e
+
+on:
+  workflow_call:
+    inputs:
+      expect:
+        description: allowed or denied
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go build -o cr ./cmd/cr
+
+      - name: Serve cr with GitHub as an OIDC provider
+        run: |
+          cat > cr.yaml <<EOF
+          db:
+            driver: sqlite3
+            dsn: "file:cr.db?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(10000)"
+            migrate: true
+          server:
+            addr: "127.0.0.1:0"
+            http:
+              addr: "127.0.0.1:5000"
+          watch:
+            broker: memory
+          registry:
+            storage:
+              driver: os
+              os:
+                root: ./data
+          auth:
+            oidc:
+              - issuer: https://token.actions.githubusercontent.com
+                audience: cr
+            exchange:
+              ttl: 1h
+            bindings:
+              - group: authenticated
+                repo: "ci/*"
+                actions: [pull, push, tag]
+                when:
+                  repository: ${{ github.repository }}
+                  workflow_ref: "${{ github.repository }}/.github/workflows/oidc-release.yml@*"
+          EOF
+          ./cr --config cr.yaml serve > cr.log 2>&1 &
+          for _ in $(seq 1 100); do
+            curl -fsS http://127.0.0.1:5000/healthz >/dev/null 2>&1 && break
+            sleep 0.2
+          done
+          curl -fsS http://127.0.0.1:5000/healthz
+
+      - name: An ID token for cr
+        id: token
+        run: |
+          token="$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=cr" | jq -r .value)"
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+
+      - name: An image to push
+        run: |
+          mkdir -p img
+          echo "${{ github.run_id }}" > img/run
+          printf 'FROM scratch\nCOPY run /run\n' > img/Dockerfile
+          docker build -t "localhost:5000/ci/app:${{ github.run_id }}" img
+
+      - name: Push, with the ID token and with the exchanged one
+        env:
+          ID_TOKEN: ${{ steps.token.outputs.token }}
+          EXPECT: ${{ inputs.expect }}
+          IMAGE: localhost:5000/ci/app:${{ github.run_id }}
+        run: |
+          set +e
+          echo "$ID_TOKEN" | docker login localhost:5000 -u oidc --password-stdin
+          docker push "$IMAGE"
+          direct=$?
+
+          login="$(curl -sS -X POST -H "Authorization: Bearer $ID_TOKEN" http://127.0.0.1:5000/token/exchange | jq -r .access_token)"
+          echo "::add-mask::$login"
+          docker logout localhost:5000
+          echo "$login" | docker login localhost:5000 -u oidc --password-stdin
+          docker tag "$IMAGE" localhost:5000/ci/app:exchanged
+          docker push localhost:5000/ci/app:exchanged
+          exchanged=$?
+          set -e
+
+          echo "push with the ID token exited $direct, with the exchanged token $exchanged; expected: $EXPECT"
+          if [ "$EXPECT" = allowed ]; then
+            test "$direct" -eq 0 && test "$exchanged" -eq 0
+          else
+            test "$direct" -ne 0 && test "$exchanged" -ne 0
+          fi
+
+      - if: always()
+        run: tail -n 40 cr.log

@@ -39,6 +39,13 @@ type Claims struct {
 	// decisions a token's access cannot carry: protected tags, and which
 	// repositories a list shows.
 	Groups []string `json:"groups,omitempty"`
+
+	// Aliases are the subject's other names, for the same decisions.
+	Aliases []string `json:"aliases,omitempty"`
+
+	// Use is `login` for a token that stands in for a credential, which is
+	// given as a password and is never an access token; see IssueLogin.
+	Use string `json:"use,omitempty"`
 }
 
 // Issuer signs the tokens `/token` hands out and verifies the ones `/v2/` is
@@ -111,6 +118,7 @@ func (i *Issuer) Issue(s Subject, access []Access, refused ...Access) (string, C
 		Access:  access,
 		Refused: refused,
 		Groups:  s.Groups,
+		Aliases: s.Aliases,
 	}
 	if c.Access == nil {
 		c.Access = []Access{}
@@ -139,6 +147,9 @@ func (i *Issuer) Verify(token string) (*Claims, error) {
 	var c Claims
 	if err := t.Claims(keys[0].Key, &c); err != nil {
 		return nil, err
+	}
+	if c.Use != "" {
+		return nil, errors.New("token: not an access token")
 	}
 	if err := c.Claims.ValidateWithLeeway(jwt.Expected{
 		Issuer:      i.name,

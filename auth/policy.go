@@ -27,7 +27,7 @@ type Binding struct {
 func (b Binding) matches(s Subject) bool {
 	switch {
 	case b.Subject != "":
-		if b.Subject != Anonymous && b.Subject != s.ID {
+		if b.Subject != Anonymous && !s.Is(b.Subject) {
 			return false
 		}
 	case b.Group != "":

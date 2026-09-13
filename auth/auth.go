@@ -73,7 +73,12 @@ const Authenticated = "authenticated"
 
 // Subject is a caller as an authenticator names them.
 type Subject struct {
-	ID     string
+	ID string
+
+	// Aliases are other names for the same subject that a binding may use:
+	// roster's `@tenant/alias` beside a holder's identifier.
+	Aliases []string
+
 	Groups []string
 
 	// Claims are what the credential said beyond the subject, for a binding's
@@ -82,6 +87,11 @@ type Subject struct {
 }
 
 func (s Subject) IsAnonymous() bool { return s.ID == "" || s.ID == Anonymous }
+
+// Is reports whether name names the subject.
+func (s Subject) Is(name string) bool {
+	return name == s.ID || slices.Contains(s.Aliases, name)
+}
 
 // In reports whether the subject is in group g.
 func (s Subject) In(g string) bool {

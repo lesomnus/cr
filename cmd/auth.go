@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/lesomnus/z"
@@ -96,4 +97,42 @@ func refOf(id auth.Identity) (*app.HolderRef, error) {
 			Tenant: app.TenantRef_builder{Alias: z.Ptr(id.Tenant)}.Build(),
 		}.Build(),
 	}.Build(), nil
+}
+
+// MirrorResolver is [Resolver] for identities another server vouched for,
+// roster above all: a tenant or a holder this deployment has not seen is put
+// up under the identifier and alias the identity names, and then looked up
+// like any other. Nobody is kept here in advance, and a holder roster erases
+// stays a row that no credential names any more.
+func MirrorResolver(s app.Server) auth.Resolver {
+	base := Resolver(s)
+	return auth.ResolverFunc(func(ctx context.Context, id auth.Identity) (*frame.Frame, error) {
+		f, err := base.Resolve(ctx, id)
+		if err == nil || !errors.Is(err, auth.ErrNoCredential) {
+			return f, err
+		}
+		if id.Id == "" || id.TenantId == "" || id.Tenant == "" || id.Alias == "" {
+			return nil, err
+		}
+		holder, herr := pdid.Parse(id.Id)
+		tenant, terr := pdid.Parse(id.TenantId)
+		if herr != nil || terr != nil {
+			return nil, err
+		}
+
+		if _, err := s.Tenant().Add(ctx, app.TenantAddRequest_builder{
+			Id:    tenant.Bytes(),
+			Alias: id.Tenant,
+		}.Build()); err != nil && status.Code(err) != codes.AlreadyExists {
+			return nil, err
+		}
+		if _, err := s.Holder().Add(ctx, app.HolderAddRequest_builder{
+			Id:     holder.Bytes(),
+			Tenant: app.TenantRef_builder{Id: tenant.Bytes()}.Build(),
+			Alias:  id.Alias,
+		}.Build()); err != nil && status.Code(err) != codes.AlreadyExists {
+			return nil, err
+		}
+		return base.Resolve(ctx, id)
+	})
 }

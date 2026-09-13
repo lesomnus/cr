@@ -1,0 +1,19 @@
+# A workflow in the same repository that the binding in `oidc-e2e.yml` does not
+# name: the same steps, a real ID token for the same repository, and a push
+# that is refused.
+name: oidc-sibling
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  e2e:
+    uses: ./.github/workflows/oidc-e2e.yml
+    with:
+      expect: denied

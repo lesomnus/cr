@@ -68,6 +68,11 @@ type Server struct {
 	// handler needs a store, and a store is a table in this database.
 	Auth auth.Handler
 
+	// Resolver is how a credential becomes a caller. Nil looks the holder up
+	// in this deployment's rows; a deployment whose callers another server
+	// vouches for mirrors them first, see [MirrorResolver].
+	Resolver auth.Resolver
+
 	// Policy is what a caller may do and which tenants they may see, and nil is
 	// the answer payday gives on its own: their own tenant and nothing more.
 	//
@@ -219,9 +224,14 @@ func (s *Server) Grpc(ctx context.Context, c Config, opts ...grpc.ServerOption) 
 		h = auth.Plain()
 	}
 
+	resolver := s.Resolver
+	if resolver == nil {
+		resolver = Resolver(s.Ungated)
+	}
+
 	chain := grpcx.Serving(ctx, grpcx.WithDeadline(c.Server.CallTimeout())).
-		WithUnary(auth.InterceptorUnary(h, Resolver(s.Ungated), auth.PublicDefault)).
-		WithStream(auth.InterceptorStream(h, Resolver(s.Ungated), auth.PublicDefault)).
+		WithUnary(auth.InterceptorUnary(h, resolver, auth.PublicDefault)).
+		WithStream(auth.InterceptorStream(h, resolver, auth.PublicDefault)).
 		WithUnary(grpcx.LimitUnary(c.Server.Limiter(), gate.ByTenant())).
 		With(gate.Interceptor(s.Policy)).
 		With(s.Watch.Interceptor()).

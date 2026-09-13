@@ -1,0 +1,17 @@
+# The workflow the binding in `oidc-e2e.yml` names, so its push goes through.
+name: oidc-release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  e2e:
+    uses: ./.github/workflows/oidc-e2e.yml
+    with:
+      expect: allowed

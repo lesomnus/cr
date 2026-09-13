@@ -73,7 +73,7 @@ func NewCmdServe(c *cmd.Config) *xli.Command {
 
 			// Not `Plain`: this listener is reachable, and `Plain`
 			// believes whoever a caller says they are.
-			h, err := Management(c.Management)
+			h, err := Management(c, s)
 			if err != nil {
 				return err
 			}

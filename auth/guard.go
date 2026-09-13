@@ -22,6 +22,10 @@ type Guard struct {
 	// Realm is where a client is sent for a token. Empty is `/token` on
 	// whatever host and scheme the request came in on.
 	Realm string
+
+	// Exchange is how long a token from `POST /token/exchange` lasts; zero
+	// serves no exchange.
+	Exchange time.Duration
 }
 
 // Caller is a request's subject and, for a bearer token, what it grants.
@@ -153,7 +157,7 @@ func (g *Guard) Caller(r *http.Request) (*Caller, error) {
 		if err != nil {
 			return nil, ErrUnauthenticated
 		}
-		return &Caller{Subject: Subject{ID: c.Subject, Groups: c.Groups}, claims: c, policy: p}, nil
+		return &Caller{Subject: Subject{ID: c.Subject, Aliases: c.Aliases, Groups: c.Groups}, claims: c, policy: p}, nil
 	case "basic":
 		user, pass, ok := r.BasicAuth()
 		if !ok {
