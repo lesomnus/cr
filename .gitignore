@@ -1,0 +1,13 @@
+.gen/
+dist/
+node_modules/
+*.db
+*.db-shm
+*.db-wal
+/data/
+/results/
+
+# The sandbox's build: the whole server compiled into the page, and the JS half
+# of the Go runtime that goes with it, which is version-coupled to whichever
+# compiler built the first.
+ts/public/

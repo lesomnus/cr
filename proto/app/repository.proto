@@ -1,0 +1,72 @@
+edition = "2023";
+
+package app;
+
+import "google/protobuf/timestamp.proto";
+import "orm.proto";
+import "payday.proto";
+
+option features.field_presence = IMPLICIT;
+option go_package = "github.com/lesomnus/cr/api";
+
+// Repository is a name under /v2/ that has had a manifest pushed to it.
+//
+// It is written by the registry on the first manifest put, never by a blob, and
+// read by `_catalog` and search. What a person edits here is the description;
+// everything else is the registry's.
+message Repository {
+  bytes id = 1 [(orm.field) = {
+    type: TYPE_UUID
+    key: true
+    default: ""
+  }];
+
+  // The repository name as the distribution spec's grammar has it:
+  // `library/ubuntu`, `acme/app`. Not an alias: an alias is folded and refuses
+  // a slash, and this name is the client's, byte for byte.
+  string name = 5 [(orm.field) = {immutable: true}];
+
+  // What `docker search` shows.
+  string desc = 6;
+
+  google.protobuf.Timestamp date_updated = 13 [(orm.field) = {version: {}}];
+
+  google.protobuf.Timestamp date_created = 15 [(orm.field) = {
+    immutable: true
+    default: ""
+  }];
+
+  // Written by the registry and read here: a row added or erased through
+  // the API would not be in flob, or would leave flob holding what nothing
+  // names.
+  option (orm.message) = {
+    rpc: {crud: true, add: {disabled: true}, erase: {disabled: true}}
+    indexes: [
+      {
+        name: "page"
+        refs: [
+          {name: "date_created", number: 15},
+          {name: "id", number: 1}
+        ]
+      },
+      {
+        name: "by_name"
+        refs: [{name: "name", number: 5}]
+        unique: true
+      }
+    ]
+  };
+  option (payday.entity) = {
+    domain: 8
+    global: {}
+    erase: {hard: {}}
+
+    list: {
+      order: [{field: {name: "date_created"}}, {field: {name: "id"}}]
+      by: [{name: "ref"}, {name: "name"}]
+      size: 20
+      max: 100
+    }
+    watch: {}
+  };
+}

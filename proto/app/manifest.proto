@@ -1,0 +1,91 @@
+edition = "2023";
+
+package app;
+
+import "google/protobuf/timestamp.proto";
+import "orm.proto";
+import "payday.proto";
+
+option features.field_presence = IMPLICIT;
+option go_package = "github.com/lesomnus/cr/api";
+
+// Manifest is one manifest a repository holds, named by its digest.
+//
+// The bytes are in flob; this row is what the registry needs to answer without
+// opening them: the media type for `Content-Type`, and the subject, artifact
+// type, size and annotations a referrers response is built from.
+message Manifest {
+  bytes id = 1 [(orm.field) = {
+    type: TYPE_UUID
+    key: true
+    default: ""
+  }];
+
+  string repo = 8 [(orm.field) = {immutable: true}];
+  string digest = 9 [(orm.field) = {immutable: true}];
+  string media_type = 10 [(orm.field) = {immutable: true}];
+
+  // The manifest's `artifactType`, or its config's media type when it has
+  // none, which is what the referrers API reports.
+  string artifact_type = 11 [(orm.field) = {immutable: true}];
+
+  // The digest in the manifest's `subject`, or empty.
+  string subject = 12 [(orm.field) = {immutable: true}];
+
+  int64 size = 16 [(orm.field) = {immutable: true}];
+  map<string, string> annotations = 17;
+
+  // Written in batches, after the fact; see `index.Pulled`.
+  google.protobuf.Timestamp date_pulled = 18 [(orm.field) = {nullable: true}];
+
+  google.protobuf.Timestamp date_updated = 13 [(orm.field) = {version: {}}];
+
+  google.protobuf.Timestamp date_created = 15 [(orm.field) = {
+    immutable: true
+    default: ""
+  }];
+
+  // Written by the registry and read here: a row added or erased through
+  // the API would not be in flob, or would leave flob holding what nothing
+  // names.
+  option (orm.message) = {
+    rpc: {crud: true, add: {disabled: true}, patch: {disabled: true}, erase: {disabled: true}}
+    indexes: [
+      {
+        name: "page"
+        refs: [
+          {name: "date_created", number: 15},
+          {name: "id", number: 1}
+        ]
+      },
+      {
+        name: "by_digest"
+        refs: [
+          {name: "repo", number: 8},
+          {name: "digest", number: 9}
+        ]
+        unique: true
+      },
+      {
+        name: "by_subject"
+        refs: [
+          {name: "repo", number: 8},
+          {name: "subject", number: 12}
+        ]
+      }
+    ]
+  };
+  option (payday.entity) = {
+    domain: 9
+    global: {}
+    erase: {hard: {}}
+
+    list: {
+      order: [{field: {name: "date_created"}}, {field: {name: "id"}}]
+      by: [{name: "ref"}, {name: "repo"}, {name: "digest"}, {name: "subject"}]
+      size: 20
+      max: 100
+    }
+    watch: {}
+  };
+}

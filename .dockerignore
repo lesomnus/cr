@@ -1,0 +1,11 @@
+.git
+.github
+.devcontainer
+ts/node_modules
+ts/dist
+ts/public
+data
+results
+*.db
+*.db-shm
+*.db-wal

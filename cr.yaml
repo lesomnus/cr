@@ -1,0 +1,42 @@
+# What this deployment is configured with.
+#
+# A file, then the environment over the top of it: `CR_DB_DSN` beats what
+# is written here. `cr config` prints what came out, and
+# `cr config env` lists every variable there is.
+
+db:
+  driver: sqlite3
+  # WAL and a busy timeout, because the registry reads while it writes.
+  dsn: "file:cr.db?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(10000)"
+  # A development default: the serving process brings the schema up to date.
+  migrate: true
+
+server:
+  addr: ":50051"
+
+  # The second listener, for whatever cannot speak gRPC -- which is every
+  # browser -- and for the registry, which is served on it at /v2/.
+  #
+  # It is the same server: a call arrives as JSON over POST, is re-encoded and
+  # handed to the handler a gRPC client would have reached, so it goes through
+  # the same interceptors and behind the same wall.
+  http:
+    addr: ":5000"
+    allow_web: true
+    # Which page may call. Nothing here is same-origin only, which is right for
+    # a built UI this server also serves and wrong for `npm run dev` -- that is
+    # 5173, and a different origin.
+    origins: ["http://localhost:5173"]
+
+watch:
+  # Named rather than defaulted, and it is the one field this app is refused for
+  # leaving out. `memory` publishes inside this process, which is right for one
+  # replica and silently wrong for two -- a client watching against one never
+  # hears about a write that landed on another, and nothing reports it.
+  broker: memory
+
+registry:
+  storage:
+    driver: os
+    os:
+      root: ./data

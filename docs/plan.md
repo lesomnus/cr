@@ -1,7 +1,8 @@
 # Implementation plan
 
-Status: draft, 2026-09-13, revised the same day after flob and payday closed
-the issues in §8. Follows [issue #1](https://github.com/lesomnus/cr/issues/1),
+Status: being implemented; [progress.md](progress.md) records what is built
+and the decisions implementation forced. Drafted 2026-09-13, revised the same
+day after flob and payday closed the issues in §8. Follows [issue #1](https://github.com/lesomnus/cr/issues/1),
 which settles the storage model. This document settles what is built on top of
 it and in what order. Facts about flob, payday, roster, go-app and the ent fork
 below were read from their sources on 2026-09-13; file references point into
@@ -26,7 +27,8 @@ makes and states in its README:
 - The one serialization is per repository, on the writes that change what
   the repository references: manifest put and delete, blob delete,
   repository delete, and that repository's sweep (§3, §7). On the request
-  path it is a transaction-scoped database lock with no I/O inside it; GC
+  path it is a transaction-scoped database lock whose only I/O is a stat of
+  the blobs a pushed manifest names and the erase a delete makes; GC
   holds it across one namespace's walk, bounded, and a write that would
   wait longer than the bound is told to retry. It exists because the
   alternative is a loss, not a leak. Nothing else is serialized, and no
@@ -197,8 +199,9 @@ type Index interface {
 	Tag() Tags
 	Pulled() Pulled
 	// Tx runs fn inside one transaction. The Index handed to fn is the one
-	// fn uses; the outer one is not touched until fn returns.
-	Tx(ctx context.Context, fn func(Index) error) error
+	// fn uses; the outer one is not touched until fn returns. A non-empty
+	// repo takes that repository's lock first.
+	Tx(ctx context.Context, repo string, fn func(Index) error) error
 }
 
 // Page is (last, n) as the spec paginates: names after Last, at most N.
@@ -311,9 +314,12 @@ N is indexed: a loss, not a leak. Deferring the erase or re-checking after
 commit only narrows that window; a lock closes it. `Tx` for
 `Manifest().Put`, `Manifest().Erase`, the blob `DELETE` path and
 `Repo().Erase` takes `pg_advisory_xact_lock(hash(repo))` on Postgres;
-SQLite is one writer anyway. This is the only lock in cr and it is not
-zot's: one repository, one transaction, no I/O inside, writes that change
-references only, never a read and never a blob upload.
+SQLite takes an in-process lock per repository and one writer at a time.
+This is the only lock in cr and it is not zot's: one repository, one
+transaction, writes that change references only, never a read and never a
+blob upload. The I/O inside it is bounded and on purpose: a manifest push
+stats the blobs it names under the lock, because a blob delete or a sweep
+erases under it, and that is what closes the race rather than narrowing it.
 
 **Rebuild.** `cr index rebuild` walks every namespace with flob's
 `Namespacer` and `Walker`, re-parses each manifest, and recreates the rows.
@@ -406,8 +412,10 @@ phase 1: `Tag: <name>` as one value per tag, replaced on every move.
 - **DELETE** by tag removes the tag (`TagPolicy.Check`, `Tag().Erase`) and
   nothing else; by digest it removes the manifest (`Manifest().Erase`) and
   erases each released blob from the repository's flob namespace. Both
-  under the repository lock. A manifest that other tags still point at is
-  refused by digest; delete the tags first, or the retention rule will.
+  under the repository lock. By digest also removes the tags pointing at it,
+  each checked against the tag rules, which is what distribution and zot do.
+  The release is a second transaction that re-checks each blob under the
+  lock before erasing it, so a push that landed in between keeps its blobs.
 - **Referrers** are a query, not a fetch: `Manifest().Referrers` builds the
   index response from rows, adds `OCI-Filters-Applied: artifactType` when
   the filter was used, and pages with `Link` when the list is long. A
@@ -421,7 +429,8 @@ phase 1: `Tag: <name>` as one value per tag, replaced on every move.
   (`sha256:5f70bf18…`, 1024 bytes), and the empty blob (`sha256:e3b0c442…`).
   cr keeps them in a table in code: `HEAD` and `GET` answer from memory after
   the usual authorization, the manifest validator counts them as present,
-  mount and `DELETE` are no-ops, and `Manifest().Put` still records them in
+  mount is a no-op and `DELETE` is `405 UNSUPPORTED`, since the next `HEAD`
+  would contradict a `202`, and `Manifest().Put` still records them in
   `holds` so `Holds`, `Marks` and rebuild need no special case. Since clients
   `HEAD` before they upload, these are rarely even pushed. Observed on the
   zot deployment in #1 as a surprisingly large share of blob requests.
@@ -653,8 +662,9 @@ roster: nothing was needed. See §5.
 ## 9. Phases
 
 Each phase ends green in CI. The conformance suite
-(`opencontainers/distribution-spec/conformance`) is in CI from phase 0 and its
-four workflows are turned on as they pass. One issue per phase carries the
+(`opencontainers/distribution-spec/conformance`) is in CI from phase 0. It was
+redesigned in 2026 and has no workflows to turn on one at a time any more; cr
+runs it with every API on, pinned by commit, in `scripts/conformance.sh`. One issue per phase carries the
 checklist; steps become issues of their own only when a phase starts and a
 step turns out to be days or parallel work. Milestones are releases: v0.1 is
 phases 0–2, v0.2 is 3–4, v0.3 is 5–7.

@@ -1,0 +1,77 @@
+edition = "2023";
+
+package app;
+
+import "google/protobuf/timestamp.proto";
+import "orm.proto";
+import "payday.proto";
+
+option features.field_presence = IMPLICIT;
+option go_package = "github.com/lesomnus/cr/api";
+
+// ManifestBlob is one thing a manifest holds: its config, a layer, or a child
+// manifest of an index.
+//
+// It is what makes deletion local. Erasing a manifest releases each blob that
+// no other manifest in the repository still holds, and the registry erases
+// those from flob.
+message ManifestBlob {
+  bytes id = 1 [(orm.field) = {
+    type: TYPE_UUID
+    key: true
+    default: ""
+  }];
+
+  string repo = 8 [(orm.field) = {immutable: true}];
+  string manifest = 9 [(orm.field) = {immutable: true}];
+  string blob = 10 [(orm.field) = {immutable: true}];
+
+  google.protobuf.Timestamp date_created = 15 [(orm.field) = {
+    immutable: true
+    default: ""
+  }];
+
+  // Written by the registry and read here: a row added or erased through
+  // the API would not be in flob, or would leave flob holding what nothing
+  // names.
+  option (orm.message) = {
+    rpc: {crud: true, add: {disabled: true}, patch: {disabled: true}, erase: {disabled: true}}
+    indexes: [
+      {
+        name: "page"
+        refs: [
+          {name: "date_created", number: 15},
+          {name: "id", number: 1}
+        ]
+      },
+      {
+        name: "by_manifest"
+        refs: [
+          {name: "repo", number: 8},
+          {name: "manifest", number: 9},
+          {name: "blob", number: 10}
+        ]
+        unique: true
+      },
+      {
+        name: "by_blob"
+        refs: [
+          {name: "repo", number: 8},
+          {name: "blob", number: 10}
+        ]
+      }
+    ]
+  };
+  option (payday.entity) = {
+    domain: 10
+    global: {}
+    erase: {hard: {}}
+
+    list: {
+      order: [{field: {name: "date_created"}}, {field: {name: "id"}}]
+      by: [{name: "ref"}, {name: "repo"}, {name: "manifest"}, {name: "blob"}]
+      size: 20
+      max: 100
+    }
+  };
+}

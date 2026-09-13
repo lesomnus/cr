@@ -1,0 +1,25 @@
+edition = "2023";
+
+package payday;
+
+// What this app adds to payday's Holder.
+//
+// An overlay may only **add**, and only in the numbers payday left free: 8..12
+// and from 16. Generation refuses one that redeclares a number payday owns,
+// because the merge would take the overlay's word and `alias` would quietly
+// become whatever it said.
+//
+// Delete this file if there is nothing to add. The same works for `tenant` and
+// `audit`, named the same way.
+message Holder {
+  // The subject an identity provider knows this holder by, for whenever this
+  // app grows past `Plain` auth.
+  //
+  // **Nullable**, and that is the part worth reading. Two holders cannot be one
+  // person to whatever issued the credential, so it wants to be unique -- but
+  // most holders have none, and a unique column that is usually the empty
+  // string admits exactly one such row. Nullable is what makes "unset" not
+  // collide with "unset": a unique index permits many NULLs and one of each
+  // value.
+  string idp_subject = 8 [(orm.field) = {unique: true, nullable: true}];
+}

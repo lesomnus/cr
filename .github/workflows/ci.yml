@@ -1,0 +1,94 @@
+# Every gate cr has, on every push to main and every pull request.
+#
+# `go` is what a desk runs: gofmt, build, vet, tests, and `pd gen --check`,
+# which is the only thing that notices a generated file that was not
+# regenerated -- it compiles perfectly and is wrong.
+#
+# `conformance` is the OCI distribution-spec suite against the built binary,
+# through `scripts/conformance.sh`, so what CI runs and what a desk runs are
+# the same command.
+name: ci
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          v="$(gofmt -l $(git ls-files '*.go'))"
+          if [ -n "$v" ]; then
+            echo "not gofmt'd:"; echo "$v"; exit 1
+          fi
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test -count=1 ./...
+      - run: go tool pd gen --check .
+
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: ./scripts/conformance.sh
+        env:
+          RESULTS_DIR: ${{ github.workspace }}/results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: conformance
+          path: results/
+
+  # The page and the server inside it: the sandbox module builds, and the
+  # page type-checks and bundles.
+  sandbox:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: npm ci --no-audit --no-fund
+        working-directory: ts
+      - run: |
+          mkdir -p ts/public
+          cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" ts/public/
+          GOOS=js GOARCH=wasm go build -tags grpcnotrace -o ts/public/app.wasm ./wasm
+      - run: npm run build
+        working-directory: ts
+
+  # The image, built and not pushed: what reaches a registry is a decision for
+  # a release, not for every commit.
+  image:
+    needs: [go, conformance]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/bake-action@v6
+        with:
+          source: .
+          files: docker-bake.hcl
+          targets: app
+          push: false
+        env:
+          BUILD_HASH: ${{ github.sha }}
+          BUILD_ID: r${{ github.run_id }}

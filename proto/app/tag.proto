@@ -1,0 +1,83 @@
+edition = "2023";
+
+package app;
+
+import "google/protobuf/timestamp.proto";
+import "orm.proto";
+import "payday.proto";
+
+option features.field_presence = IMPLICIT;
+option go_package = "github.com/lesomnus/cr/api";
+
+// Tag is a name in a repository pointing at a manifest digest.
+message Tag {
+  bytes id = 1 [(orm.field) = {
+    type: TYPE_UUID
+    key: true
+    default: ""
+  }];
+
+  // The tag, as the client wrote it: `latest`, `v1.2.3`.
+  string name = 5 [(orm.field) = {immutable: true}];
+
+  string repo = 8 [(orm.field) = {immutable: true}];
+  string digest = 9;
+
+  // When the tag was last pointed somewhere, which is what `retention` orders
+  // by. Not the version: that moves on any write, a pull included.
+  google.protobuf.Timestamp date_moved = 10 [(orm.field) = {default: ""}];
+
+  // Written in batches, after the fact; see `index.Pulled`.
+  google.protobuf.Timestamp date_pulled = 11 [(orm.field) = {nullable: true}];
+
+  google.protobuf.Timestamp date_updated = 13 [(orm.field) = {version: {}}];
+
+  google.protobuf.Timestamp date_created = 15 [(orm.field) = {
+    immutable: true
+    default: ""
+  }];
+
+  // Written by the registry and read here: a row added or erased through
+  // the API would not be in flob, or would leave flob holding what nothing
+  // names.
+  option (orm.message) = {
+    rpc: {crud: true, add: {disabled: true}, patch: {disabled: true}, erase: {disabled: true}}
+    indexes: [
+      {
+        name: "page"
+        refs: [
+          {name: "date_created", number: 15},
+          {name: "id", number: 1}
+        ]
+      },
+      {
+        name: "by_name"
+        refs: [
+          {name: "repo", number: 8},
+          {name: "name", number: 5}
+        ]
+        unique: true
+      },
+      {
+        name: "by_digest"
+        refs: [
+          {name: "repo", number: 8},
+          {name: "digest", number: 9}
+        ]
+      }
+    ]
+  };
+  option (payday.entity) = {
+    domain: 11
+    global: {}
+    erase: {hard: {}}
+
+    list: {
+      order: [{field: {name: "date_created"}}, {field: {name: "id"}}]
+      by: [{name: "ref"}, {name: "repo"}, {name: "digest"}]
+      size: 20
+      max: 100
+    }
+    watch: {}
+  };
+}
