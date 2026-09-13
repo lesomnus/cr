@@ -67,6 +67,12 @@ func (g *Registry) getManifest(w http.ResponseWriter, r *http.Request, name, arg
 		g.fail(w, r, err)
 		return
 	}
+	if p := g.proxies.of(name); p != nil {
+		if err := g.pullThrough(ctx, p, name, ref); err != nil {
+			g.fail(w, r, err)
+			return
+		}
+	}
 
 	ix := g.c.Index
 	d := ref.Digest
@@ -104,6 +110,9 @@ func (g *Registry) getManifest(w http.ResponseWriter, r *http.Request, name, arg
 	if r.Method == http.MethodHead {
 		h.Set("Content-Length", strconv.FormatInt(m.Size, 10))
 		w.WriteHeader(http.StatusOK)
+		// A pull resolves a tag with a HEAD and fetches by digest, so this
+		// is as much a pull of the tag as a GET is.
+		ix.Pulled().Touch(name, ref.Tag, d, g.c.Now())
 		return
 	}
 

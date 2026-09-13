@@ -23,6 +23,36 @@ type RegistryConfig struct {
 	LockWait time.Duration `yaml:"lock_wait"`
 
 	Gc GcConfig `yaml:"gc"`
+
+	// Proxies make the repositories under a prefix a pull-through cache of
+	// another registry.
+	Proxies []ProxyConfig `yaml:"proxies"`
+}
+
+// ProxyConfig is one pull-through cache.
+type ProxyConfig struct {
+	// Prefix is the repositories that are the cache: `docker.io` covers
+	// `docker.io/library/ubuntu`. Empty covers every repository, which makes
+	// the deployment a mirror and nothing else.
+	Prefix string `yaml:"prefix"`
+
+	// Upstream is the registry's URL: `https://registry-1.docker.io`.
+	Upstream string `yaml:"upstream"`
+
+	// Remote is the upstream repository the prefix stands for; empty maps
+	// what follows the prefix to itself.
+	Remote string `yaml:"remote"`
+
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+
+	// TagTtl is how long a tag is served from the cache before the upstream
+	// is asked again; zero is five minutes.
+	TagTtl time.Duration `yaml:"tag_ttl"`
+
+	// Retention is how long the cache keeps what nobody pulls; zero keeps
+	// it until a full collection finds it unreferenced.
+	Retention time.Duration `yaml:"retention"`
 }
 
 // StorageConfig says where blobs and manifests are kept.

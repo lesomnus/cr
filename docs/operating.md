@@ -150,6 +150,42 @@ repository's description, and bindings and tag rules, which are rows of their
 own. On S3 the tags live in object metadata, which AWS caps at 2 KB, so a
 manifest with a great many tags gives back only the ones that fit.
 
+## Pull-through caches
+
+```yaml
+registry:
+  proxies:
+    - prefix: docker.io                     # docker.io/library/ubuntu
+      upstream: https://registry-1.docker.io
+      remote: ""                            # the upstream name for the prefix; empty maps the rest as is
+      username: ""                          # when the upstream wants one
+      password: ""
+      tag_ttl: 5m
+      retention: 720h                       # what nobody pulls within this goes
+```
+
+The repositories under `prefix` are a cache of `upstream`, read on demand at
+every level. A tag's manifest is fetched when a client asks for the tag; for a
+multi-platform image that is the index alone, and the one platform's manifest
+follows when the client asks for it by digest, and only that platform's layers
+after it. A blob a client asks for streams from the upstream while it fills the
+store, and clients asking for the same blob meanwhile wait for that one fill
+rather than asking the upstream again.
+
+A tag is answered from the cache for `tag_ttl`, then checked with a `HEAD`
+upstream, which Docker Hub does not count against its pull limits, and fetched
+again only when it moved. A digest is never checked again. When the upstream
+cannot be reached, a tag already cached is served as it is.
+
+A cache takes no pushes (`405 UNSUPPORTED`); deletes are allowed and evict. Tag
+lists and referrers are what the cache holds, not what the upstream has. The
+collection keeps a cache to `retention`: tags nobody pulled within it, and then
+the manifests nothing needs any more, whether they were tagged or not.
+
+An empty `prefix` makes every repository a cache, which is what a daemon's
+`registry-mirrors` expects of a mirror: it asks for `library/ubuntu` and not
+for a prefixed name.
+
 ## Health and telemetry
 
 `/healthz` answers 200 while the process runs; `/readyz` answers 200 when the

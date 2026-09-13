@@ -89,6 +89,12 @@ configs:
         gc:
           every: 1h
           untagged: 168h
+        # docker pull localhost:5000/docker.io/library/ubuntu
+        proxies:
+          - prefix: docker.io
+            upstream: https://registry-1.docker.io
+            tag_ttl: 5m
+            retention: 720h
       auth:
         static:
           - name: admin

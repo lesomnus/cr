@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/lesomnus/flob"
 
@@ -25,6 +26,10 @@ import (
 // bucket, and the sandbox that imports `cmd` has neither.
 func Registry(ctx context.Context, c *cmd.Config, s *cmd.Server) error {
 	stores, err := Stores(c.Registry.Storage)
+	if err != nil {
+		return err
+	}
+	stores, proxies, cache, err := Proxies(c.Registry, stores)
 	if err != nil {
 		return err
 	}
@@ -53,6 +58,7 @@ func Registry(ctx context.Context, c *cmd.Config, s *cmd.Server) error {
 		FullEvery: c.Registry.Gc.FullEvery,
 		Leader:    ix,
 		Runs:      entruns.New(s.Ent),
+		Cache:     cache,
 	})
 
 	reg := registry.New(registry.Config{
@@ -64,6 +70,7 @@ func Registry(ctx context.Context, c *cmd.Config, s *cmd.Server) error {
 		Redirect:         c.Registry.Storage.Redirect.Enabled,
 		RedirectTTL:      c.Registry.Storage.Redirect.Ttl,
 		Collector:        collector,
+		Proxies:          proxies,
 	})
 
 	instrument := func(h http.Handler) http.Handler {
@@ -148,4 +155,41 @@ func backend(at string, driver string, o cmd.OsStorageConfig, s cmd.S3StorageCon
 	default:
 		return nil, fmt.Errorf("%s.driver: unknown driver %q", at, driver)
 	}
+}
+
+// Proxies makes the repositories each `registry.proxies` entry covers read
+// through to its upstream, and answers the stores to use, the registry's
+// proxies, and how long each cache keeps what nobody pulls.
+func Proxies(c cmd.RegistryConfig, base flob.Stores) (flob.Stores, []*registry.Proxy, func(string) time.Duration, error) {
+	if len(c.Proxies) == 0 {
+		return base, nil, nil, nil
+	}
+	var (
+		ps     []*registry.Proxy
+		routes []blob.CacheRoute
+		keep   = map[string]time.Duration{}
+	)
+	for i, pc := range c.Proxies {
+		up, err := blob.NewUpstream(pc.Upstream, pc.Username, pc.Password)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("registry.proxies[%d].upstream: %w", i, err)
+		}
+		if _, ok := keep[pc.Prefix]; ok {
+			return nil, nil, nil, fmt.Errorf("registry.proxies[%d].prefix: %q is already a cache", i, pc.Prefix)
+		}
+		p := &registry.Proxy{Prefix: pc.Prefix, Upstream: up, Remote: pc.Remote, TagTTL: pc.TagTtl}
+		ps = append(ps, p)
+		routes = append(routes, blob.CacheRoute{Prefix: pc.Prefix, Origin: up.Stores(p.Name)})
+		keep[pc.Prefix] = pc.Retention
+	}
+	cache := func(repo string) time.Duration {
+		best, d := -1, time.Duration(0)
+		for prefix, k := range keep {
+			if blob.Covers(prefix, repo) && len(prefix) > best {
+				best, d = len(prefix), k
+			}
+		}
+		return d
+	}
+	return blob.NewCache(base, routes...), ps, cache, nil
 }

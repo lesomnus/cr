@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -48,6 +49,11 @@ type Config struct {
 	// Collector is what `/admin/gc` drives; nil serves no such endpoint.
 	Collector Collector
 
+	// Proxies make the repositories under their prefixes pull-through caches.
+	// The stores for those repositories must read through to the same
+	// upstreams; see [blob.Cache].
+	Proxies []*Proxy
+
 	// Now is the clock; nil is time.Now.
 	Now func() time.Time
 }
@@ -55,6 +61,8 @@ type Config struct {
 // Registry answers the distribution API.
 type Registry struct {
 	c Config
+
+	proxies proxies
 }
 
 func New(c Config) *Registry {
@@ -67,7 +75,16 @@ func New(c Config) *Registry {
 	if c.RedirectTTL <= 0 {
 		c.RedirectTTL = flob.DefaultRedirectTTL
 	}
-	return &Registry{c: c}
+	g := &Registry{c: c}
+	g.proxies.list = slices.Clone(c.Proxies)
+	slices.SortStableFunc(g.proxies.list, func(a, b *Proxy) int { return len(b.Prefix) - len(a.Prefix) })
+	return g
+}
+
+// writes reports whether a request to rt with method would write to the
+// repository: an upload, or a manifest put.
+func writes(rt route, method string) bool {
+	return rt == routeUpload || (rt == routeManifest && method == http.MethodPut)
 }
 
 // RouteOf names the route r is for, without the repository or the digest in
@@ -186,6 +203,10 @@ func (g *Registry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if r = g.guard(w, r, name, want...); r == nil {
 			return
 		}
+	}
+	if p := g.proxies.of(name); p != nil && writes(rt, r.Method) {
+		g.fail(w, r, oci.ErrUnsupported("the repository is a pull-through cache of "+p.Upstream.String()))
+		return
 	}
 
 	switch rt {

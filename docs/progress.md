@@ -14,7 +14,7 @@ checklist lives in its issue; this page is the running record beside them.
 | 3 | [#5](https://github.com/lesomnus/cr/issues/5) auth and policy | done; checked with `docker login`, push and a refused tag move against a container |
 | 4 | [#6](https://github.com/lesomnus/cr/issues/6) operations | done; the compose of cr on MinIO and PostgreSQL pushed, pulled through a 307 to MinIO, and answered `docker search` |
 | 5 | [#7](https://github.com/lesomnus/cr/issues/7) mark-and-sweep, rebuild | done; on the compose, full collections every 20 seconds erased stray blobs while 14 pushes to another repository all landed, and `cr index rebuild` from MinIO alone gave back every tag and manifest |
-| 6 | [#8](https://github.com/lesomnus/cr/issues/8) pull-through | not started |
+| 6 | [#8](https://github.com/lesomnus/cr/issues/8) pull-through | done; `library/ubuntu` pulled through the compose's Docker Hub cache fetched the index, the amd64 manifest and its attestation and nothing else, and later pulls came from MinIO |
 | 7 | [#9](https://github.com/lesomnus/cr/issues/9) OIDC, roster, export, UI | not started |
 
 ## Conformance
@@ -226,4 +226,43 @@ changed to match.
     them the same way. S3 caps user metadata at 2 KB, so a manifest with very
     many tags keeps only as many labels as fit; the index is what answers, and
     a rebuild of such a manifest recovers fewer tags.
+
+### Phase 6
+
+48. **A cache is a prefix.** The upstream name is what follows the prefix, or
+    `remote` in front of it; an empty prefix makes every repository a cache,
+    which is the shape a daemon's `registry-mirrors` wants.
+49. **A cache asks upstream for every manifest type cr stores**, whatever the
+    client sent, so a tag is one manifest in the cache for every client.
+50. **Tag freshness is kept in memory.** A tag is checked again with a `HEAD`
+    after `tag_ttl`; when it last was is per process, so a restart or another
+    replica checks once more, and nothing about it is stored. A digest is
+    never checked again.
+51. **A cached tag outlives its upstream.** When the upstream cannot be
+    reached, or the fetch fails, a tag already cached is served and the
+    failure logged; one never cached is a 500.
+52. **A cache takes deletes and no pushes** (`405 UNSUPPORTED`). Tag lists and
+    referrers are what the cache holds, not the upstream's.
+53. **Only what is asked is fetched, checked on Docker Hub.** The `ubuntu`
+    index lists six platforms and six attestation manifests; a `docker pull`
+    through the cache fetched the index, the linux/amd64 manifest and the
+    attestation the daemon asked for by digest, and no other.
+54. **Found by the Docker Hub run: a fill into S3 died with its request.**
+    flob ties a cache fill to the context `Open` was given, and `net/http`
+    cancels a request's context as its handler returns, before a bucket has
+    finished writing what the client already has; no layer reached MinIO. cr
+    opens a cached blob with that context's values and not its cancellation,
+    and closing the reader still stops a fill that did not read every byte.
+    Filed as [flob#24](https://github.com/lesomnus/flob/issues/24).
+55. **Found by the tests: a tag taken for a digest.** `digest.Parse` answers
+    its input even when it is not a digest, so a fetch by tag was checked
+    against the tag as if it were one. A reference is a digest only when it
+    has a colon.
+56. **A cache's retention counts every use.** A tag's last use is the latest of
+    its pull, its move, and a pull of the manifest it points at, and a `HEAD`
+    counts as a pull, since that is how a pull resolves a tag.
+57. **The daemon mirror was exercised by name.** The Docker engine here is
+    shared with other projects, so it was not given `registry-mirrors`; the
+    pulls named the cache (`localhost:5000/docker.io/library/ubuntu`), which
+    is the same code path with a prefix.
 

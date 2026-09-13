@@ -53,6 +53,11 @@ type Config struct {
 	// Runs records every run; nil records nothing.
 	Runs Runs
 
+	// Cache answers how long a pull-through cache keeps what nobody pulls,
+	// for a repository that is one, and zero otherwise. A cache's manifests
+	// go by that rather than by Untagged, tagged or not.
+	Cache func(repo string) time.Duration
+
 	// Now is the clock; nil is time.Now.
 	Now func() time.Time
 }
@@ -233,6 +238,15 @@ func (c *Collector) Run(ctx context.Context) (Report, error) {
 			if err != nil {
 				errs = append(errs, err)
 			}
+			if keep := c.cache(name); keep > 0 {
+				t, m, err := c.evict(ctx, name, keep)
+				r.Tags += t
+				r.Manifests += m
+				if err != nil {
+					errs = append(errs, err)
+				}
+				continue
+			}
 			if c.c.Untagged > 0 {
 				n, err := c.untagged(ctx, name)
 				r.Manifests += n
@@ -325,9 +339,85 @@ func (c *Collector) retention(ctx context.Context, repo string, p *auth.Policy) 
 	return n, errors.Join(errs...)
 }
 
+func (c *Collector) cache(repo string) time.Duration {
+	if c.c.Cache == nil {
+		return 0
+	}
+	return c.c.Cache(repo)
+}
+
+func latest(ts ...time.Time) time.Time {
+	var out time.Time
+	for _, t := range ts {
+		if t.After(out) {
+			out = t
+		}
+	}
+	return out
+}
+
+// evict empties a pull-through cache of what nobody used within keep: tags
+// whose last pull, move, or pull of the manifest they point at is older, and
+// then the manifests nothing needs any more. A tag a client pulls again is
+// fetched again.
+func (c *Collector) evict(ctx context.Context, repo string, keep time.Duration) (int, int, error) {
+	cutoff := c.c.Now().Add(-keep)
+	tags, err := c.c.Index.Tag().All(ctx, repo)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	n := 0
+	var errs []error
+	for _, t := range tags {
+		used := latest(t.PulledAt, t.MovedAt)
+		if m, err := c.c.Index.Manifest().Get(ctx, repo, t.Digest); err == nil {
+			used = latest(used, m.PulledAt)
+		}
+		if used.After(cutoff) {
+			continue
+		}
+		erased := false
+		err := c.c.Index.Tx(ctx, repo, func(ix index.Index) error {
+			cur, err := ix.Tag().Get(ctx, repo, t.Name)
+			if errors.Is(err, index.ErrNotFound) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if cur.Digest != t.Digest || !cur.MovedAt.Equal(t.MovedAt) {
+				return nil
+			}
+			if err := ix.Tag().Erase(ctx, repo, t.Name); err != nil {
+				return err
+			}
+			erased = true
+			return nil
+		})
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if erased {
+			n++
+			blob.LabelTag(ctx, c.c.Stores.Use(repo), t.Digest, t.Name, false)
+		}
+	}
+
+	m, err := c.untaggedBefore(ctx, repo, cutoff)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	return n, m, errors.Join(errs...)
+}
+
 // untagged deletes the manifests past the grace period that nothing needs.
 func (c *Collector) untagged(ctx context.Context, repo string) (int, error) {
-	cutoff := c.c.Now().Add(-c.c.Untagged)
+	return c.untaggedBefore(ctx, repo, c.c.Now().Add(-c.c.Untagged))
+}
+
+func (c *Collector) untaggedBefore(ctx context.Context, repo string, cutoff time.Time) (int, error) {
 	var candidates []index.Manifest
 	last := ""
 	for {

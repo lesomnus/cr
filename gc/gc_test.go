@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -197,4 +198,35 @@ func TestStages(t *testing.T) {
 	r, err := gc.New(gc.Config{Stores: e.stores, Index: e.ix}).Run(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, r.Stages)
+}
+
+func TestCacheEviction(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+
+	// Two caches, one of them pulled recently.
+	stale, staleLayer := e.image("mirror/stale", "latest", "stale")
+	used, _ := e.image("mirror/used", "latest", "used")
+	mine, _ := e.image("acme/app", "latest", "mine")
+
+	e.clock.Add(48 * time.Hour)
+	e.ix.Pulled().Touch("mirror/used", "", used.Digest, e.clock.Now().Add(-time.Hour))
+
+	cache := func(repo string) time.Duration {
+		if strings.HasPrefix(repo, "mirror/") {
+			return 24 * time.Hour
+		}
+		return 0
+	}
+	r, err := gc.New(gc.Config{Stores: e.stores, Index: e.ix, Cache: cache, Now: e.clock.Now}).Run(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, r.Tags)
+	require.Equal(t, 1, r.Manifests)
+
+	require.False(t, e.indexed("mirror/stale", stale.Digest))
+	require.False(t, e.has("mirror/stale", staleLayer.Digest))
+	require.True(t, e.indexed("mirror/used", used.Digest), "pulled by digest within the window")
+	_, err = e.ix.Tag().Get(ctx, "mirror/used", "latest")
+	require.NoError(t, err)
+	require.True(t, e.indexed("acme/app", mine.Digest), "not a cache")
 }

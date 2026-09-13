@@ -85,6 +85,10 @@ func NewCmdGc(c *cmd.Config) *xli.Command {
 			if err != nil {
 				return err
 			}
+			stores, _, cache, err := Proxies(c.Registry, stores)
+			if err != nil {
+				return err
+			}
 			policy := auth.NewPolicyStore(0, staticPolicy(c.Auth), entpolicy.New(s.Ent))
 			if err := policy.Refresh(ctx); err != nil {
 				return err
@@ -97,6 +101,7 @@ func NewCmdGc(c *cmd.Config) *xli.Command {
 				Untagged: c.Registry.Gc.Untagged,
 				Leader:   ix,
 				Runs:     entruns.New(s.Ent),
+				Cache:    cache,
 			})
 			kind := gc.KindOnline
 			if full {
