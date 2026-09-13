@@ -318,7 +318,11 @@ since many private deployments never run the token flow.
 
 roster's `Verify` answers `ok=false` plus a continuation when the holder has a
 second factor, and a Docker password prompt cannot carry a TOTP; roster's own
-answer for LDAP applies, the person pastes an `rt_` app password. cr's `rk_`
+answer for LDAP applies, the person pastes an `rt_` app password. Since roster
+`2be81fb` that key can come from the terminal itself: `roster sign-in --name
+docker --out …` runs the device grant (RFC 8628) against the account app, and
+the approved `rt_` needs no methods at all, because cr asks about it with its
+own `rk_`. The deployment has to turn on `account.terminal`. cr's `rk_`
 needs `/roster.VouchService/Verify`, `/payday.TokenService/Introspect`,
 `/roster.HolderService/Reaches`, `/roster.SyncService/Watch`, the last to drop
 cached decisions when a holder is disabled. **No roster change is needed for
