@@ -654,18 +654,21 @@ roster: nothing was needed. See §5.
 
 Each phase ends green in CI. The conformance suite
 (`opencontainers/distribution-spec/conformance`) is in CI from phase 0 and its
-four workflows are turned on as they pass.
+four workflows are turned on as they pass. One issue per phase carries the
+checklist; steps become issues of their own only when a phase starts and a
+step turns out to be days or parallel work. Milestones are releases: v0.1 is
+phases 0–2, v0.2 is 3–4, v0.3 is 5–7.
 
-| phase | delivers | done when |
-| --- | --- | --- |
-| 0 | `pd new`, `pd sandbox init`, the `/v2/` handler mounted on `web.Mux`, config, telemetry, bake, `pd gen --check` and the conformance job in CI | `GET /v2/` answers 200 |
-| 1 | blobs (HEAD, GET with Range, monolithic, chunked on `Stager`, status, cancel, the well-known table), manifests PUT/GET/HEAD with validation, tags/list, `memindex` and `entindex` on sqlite; tag written as a flob label | conformance **pull** and **push** |
-| 2 | referrers with `OCI-Subject`, catalog, manifest and blob DELETE, mount | conformance **content discovery** and **content management** |
-| 3 | `Repository`, `Binding`, `TagRule` entities behind the operator tenant, their generated services and commands; Basic, token endpoint, JWKS, `htpasswd`, `static`; anonymous pull as a binding; tag rules enforced | `docker login`, a denied push, a refused move of an immutable tag |
-| 4 | tier-one GC with `PruneStages`, health, metrics and traces on the handler, prefix router, S3 presign redirect, postgres in CI; `/v1/search` | a compose of cr on S3; `docker search` answers |
-| 5 | per-repository mark-and-sweep and `index rebuild` on flob's `Walker`; the admin trigger and run history | a scheduled full GC on the compose while pushes to other repositories continue |
-| 6 | pull-through proxy for blobs, then manifests and tags with TTL; `Pulled` and `retention` by last pull | a Docker Hub mirror serving `library/ubuntu` |
-| 7 | `oidc` with `when` bindings and `/token/exchange`; `roster` with tenants mirrored; `cr export` to an OCI layout; the management side of registry-ui on the TS client | `docker login` with an `rt_` key, and a push from one GitHub workflow that a sibling workflow cannot make |
+| phase | issue | delivers | done when |
+| --- | --- | --- | --- |
+| 0 | [#2](https://github.com/lesomnus/cr/issues/2) | `pd new`, `pd sandbox init`, the `/v2/` handler mounted on `web.Mux`, config, telemetry, bake, `pd gen --check` and the conformance job in CI | `GET /v2/` answers 200 |
+| 1 | [#3](https://github.com/lesomnus/cr/issues/3) | blobs (HEAD, GET with Range, monolithic, chunked on `Stager`, status, cancel, the well-known table), manifests PUT/GET/HEAD with validation, tags/list, `memindex` and `entindex` on sqlite; tag written as a flob label | conformance **pull** and **push** |
+| 2 | [#4](https://github.com/lesomnus/cr/issues/4) | referrers with `OCI-Subject`, catalog, manifest and blob DELETE, mount | conformance **content discovery** and **content management** |
+| 3 | [#5](https://github.com/lesomnus/cr/issues/5) | `Repository`, `Binding`, `TagRule` entities behind the operator tenant, their generated services and commands; Basic, token endpoint, JWKS, `htpasswd`, `static`; anonymous pull as a binding; tag rules enforced | `docker login`, a denied push, a refused move of an immutable tag |
+| 4 | [#6](https://github.com/lesomnus/cr/issues/6) | tier-one GC with `PruneStages`, health, metrics and traces on the handler, prefix router, S3 presign redirect, postgres in CI; `/v1/search` | a compose of cr on S3; `docker search` answers |
+| 5 | [#7](https://github.com/lesomnus/cr/issues/7) | per-repository mark-and-sweep and `index rebuild` on flob's `Walker`; the admin trigger and run history | a scheduled full GC on the compose while pushes to other repositories continue |
+| 6 | [#8](https://github.com/lesomnus/cr/issues/8) | pull-through proxy for blobs, then manifests and tags with TTL; `Pulled` and `retention` by last pull | a Docker Hub mirror serving `library/ubuntu` |
+| 7 | [#9](https://github.com/lesomnus/cr/issues/9) | `oidc` with `when` bindings and `/token/exchange`; `roster` with tenants mirrored; `cr export` to an OCI layout; the management side of registry-ui on the TS client | `docker login` with an `rt_` key, and a push from one GitHub workflow that a sibling workflow cannot make |
 
 Phases 0–2 do not depend on payday beyond the schema: the handler is
 `net/http` against two ports either way, so the fallback, should one ever be
