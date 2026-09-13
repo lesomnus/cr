@@ -15,18 +15,22 @@ cr exists because a registry took a store-wide exclusive lock on every blob
 the others is **availability over strong consistency**, the same trade flob
 makes and states in its README:
 
-- A request path never waits on anything store-wide. Blob `HEAD`, `GET`,
-  `PUT` and every read touch flob and nothing else; they take no lock and
-  open no transaction.
+- A request path never waits on anything store-wide. Every blob request,
+  `HEAD`, `GET`, `PUT`, `PATCH`, touches flob and nothing else: no lock, no
+  transaction, no index. Reads that need names (a tag, a list, referrers)
+  read the index and lock nothing.
 - **Leaks are tolerated and swept later; losses are not.** Every online
   reclamation step is "remove a reference the index no longer has", so a
   race leaves bytes behind and never takes away bytes something still
   points to.
-- The one serialization is manifest writes within one repository, and it
-  is a transaction-scoped database lock with no I/O inside it (§3). It
-  exists because the alternative is a loss, not a leak. Nothing else is
-  serialized, and GC runs per repository under that same lock so no other
-  repository notices (§7).
+- The one serialization is per repository, on the writes that change what
+  the repository references: manifest put and delete, blob delete,
+  repository delete, and that repository's sweep (§3, §7). On the request
+  path it is a transaction-scoped database lock with no I/O inside it; GC
+  holds it across one namespace's walk, bounded, and a write that would
+  wait longer than the bound is told to retry. It exists because the
+  alternative is a loss, not a leak. Nothing else is serialized, and no
+  other repository notices.
 - Bookkeeping that would put a write on a read path, such as last-pull
   times, is batched and asynchronous, and losing a batch is acceptable.
 - A design that needs a store-wide lock, a global read-only window, or a
@@ -68,6 +72,7 @@ makes and states in its README:
 | — | GET | `/v2/_catalog[?n=&last=]` | index, filtered by what the subject may pull; not in the spec but `crane`, `skopeo` and registry-ui use it |
 | — | GET | `/v1/_ping`, `/v1/search?q=&n=` | §6 |
 | — | GET | `/token` | §5 |
+| — | POST | `/token/exchange` | §5; an external token for a cr-issued one |
 | — | GET | `/.well-known/jwks.json` | §5 |
 | — | Connect | `/cr.RepositoryService/*`, `/cr.BindingService/*`, `/cr.TagRuleService/*`, … | the management plane, generated |
 
@@ -93,12 +98,24 @@ oci/                      names, references, digests, manifest parsing, media ty
 registry/                 the /v2 and /v1 handlers, written against the ports and nothing concrete
 index/                    the Index port and its record types
 index/entindex/           the port implemented over the generated ent client
-blob/                     what wraps flob: name→id, the prefix router, the OCI-origin Store
+index/memindex/           the port in memory, for the handler's tests
+blob/                     what wraps flob: the prefix router, the OCI-origin Store, the well-known table
 auth/                     Authenticator, Authorizer, TagPolicy, the token issuer
 auth/htpasswd, auth/static, auth/oidc, auth/roster
 gc/
 ts/                       the generated client; registry-ui's management side later
 ```
+
+`oci/` does not reinvent the types: `distribution/reference` parses names
+and references against the grammar the CLI uses, `opencontainers/image-spec`
+provides the manifest, index and descriptor structs, and `go-digest` is
+already flob's. What `oci/` adds is validation cr decides on (§4) and the
+error envelope.
+
+Handler tests run against `flob.MemStores` and `memindex`, with no network
+and no database; `entindex` has its own tests on SQLite and Postgres; the
+conformance suite runs against the built binary in CI. The handler never
+imports `entindex`.
 
 **The hot path does not go through payday's runtime.** payday's auth, gate,
 wall and audit are gRPC interceptors and generated server layers; a plain
@@ -178,6 +195,7 @@ type Index interface {
 	Repo() Repos
 	Manifest() Manifests
 	Tag() Tags
+	Pulled() Pulled
 	// Tx runs fn inside one transaction. The Index handed to fn is the one
 	// fn uses; the outer one is not touched until fn returns.
 	Tx(ctx context.Context, fn func(Index) error) error
@@ -239,6 +257,14 @@ type Tags interface {
 	// Of lists the tags pointing at d, for GC and for the management page.
 	Of(ctx context.Context, repo string, d Digest) ([]string, error)
 }
+
+// Pulled is the one write a read makes, and it is not on the request: the
+// handler queues (repo, reference, time) and a goroutine flushes batches
+// with one UPDATE each. A lost batch costs a retention decision nothing
+// noticeable.
+type Pulled interface {
+	Touch(repo string, ref Reference, at time.Time)
+}
 ```
 
 Verbs: `Put` where the row is named by its content and writing it twice is
@@ -250,7 +276,7 @@ the client but not the port.
 
 Record types are plain structs: `Repo{Name, Description, Visibility,
 Tenant}`, `Manifest{Digest, MediaType, ArtifactType, Subject, Size,
-Annotations, CreatedAt}`, `RepoSummary{Name, Description}`, and
+Annotations, CreatedAt, LastPulledAt}`, `RepoSummary{Name, Description}`, and
 `Descriptor` is the image-spec one. `entindex` implements `Tx` with the
 fork's shared `dialect.Tx` and rebinds each accessor onto it, which is what
 the generated clients' `WithDriver` exists for.
@@ -259,10 +285,10 @@ Tables:
 
 ```
 repositories   (name, description, tenant, visibility)
-manifests      (repo, digest, media_type, artifact_type, subject, size, annotations, created_at)
+manifests      (repo, digest, media_type, artifact_type, subject, size, annotations, created_at, last_pulled_at)
                  index (repo, subject)               ← referrers is one range scan
 manifest_blobs (repo, manifest_digest, blob_digest)   ← what a manifest holds; what a delete releases
-tags           (repo, name, digest, updated_at)       pk (repo, name)
+tags           (repo, name, digest, updated_at, last_pulled_at)   pk (repo, name)
 bindings       (subject | group, repo_pattern, actions)          §5
 tag_rules      (repo_pattern, tag_pattern, kind, params)         §5
 ```
@@ -278,15 +304,16 @@ endpoints paginate by `(last, n)`; the fork's `sqlpage` keyset cursors fit.
 leaves an untagged manifest, which retention covers. Delete: index first, then
 `Erase`; the other order can leave a tag pointing at nothing.
 
-**Manifest writes are serialized per repository.** Without that, a delete
-of manifest M that releases layer L can commit before a concurrent put of
-manifest N that holds L, and then erase L from flob after N is indexed: a
-loss, not a leak. Deferring the erase or re-checking after commit only
-narrows that window; a lock closes it. `Tx` for `Manifest().Put` and
-`Manifest().Erase` takes `pg_advisory_xact_lock(hash(repo))` on Postgres;
+**Reference-changing writes are serialized per repository.** Without
+that, a delete of manifest M that releases layer L can commit before a
+concurrent put of manifest N that holds L, and then erase L from flob after
+N is indexed: a loss, not a leak. Deferring the erase or re-checking after
+commit only narrows that window; a lock closes it. `Tx` for
+`Manifest().Put`, `Manifest().Erase`, the blob `DELETE` path and
+`Repo().Erase` takes `pg_advisory_xact_lock(hash(repo))` on Postgres;
 SQLite is one writer anyway. This is the only lock in cr and it is not
-zot's: one repository, one transaction, no I/O inside, manifest writes
-only, never a read and never a blob.
+zot's: one repository, one transaction, no I/O inside, writes that change
+references only, never a read and never a blob upload.
 
 **Rebuild.** `cr index rebuild` walks every namespace with flob's
 `Namespacer` and `Walker`, re-parses each manifest, and recreates the rows.
@@ -348,7 +375,44 @@ phase 1: `Tag: <name>` as one value per tag, replaced on every move.
 - **Blob DELETE.** The spec allows `405 UNSUPPORTED` or a delete. cr deletes
   when `Manifest().Holds` is false and answers `DENIED` when a manifest in the
   repository still holds the blob; deleting it would make that manifest
-  unpullable, which is worse than refusing.
+  unpullable, which is worse than refusing. It runs under the repository's
+  lock (§3) for the same reason manifest writes do.
+
+### Manifests
+
+- **PUT** parses the body as what `Content-Type` says it is: an OCI image
+  manifest, an OCI index, a Docker schema2 manifest or list; schema1 is
+  `MANIFEST_INVALID`. A body over a configured size (4 MiB to start) is
+  `SIZE_INVALID`. Every descriptor the manifest names, config, layers,
+  children of an index, must exist in this repository, checked with flob
+  `Stat` or the well-known table, or the answer is `MANIFEST_BLOB_UNKNOWN`
+  with each missing digest in `detail`; a proxied repository skips this
+  (§4, pull-through). A `subject` need not exist: the spec says so, and a
+  signature can arrive before the image it signs. Then flob `Add` of the
+  bytes, and in one transaction under the repository lock:
+  `Repo().Ensure`, `Manifest().Put` with `holds`, and, when the reference
+  is a tag, `TagPolicy.Check` then `Tag().Set(from)`, where `from` is what
+  the handler resolved before the transaction. `ErrTagMoved` means a race
+  with another push: resolve again, check again, set again, once; then
+  `DENIED`. The response carries `Location`, `Docker-Content-Digest`, and
+  `OCI-Subject` when a subject was present, which is what tells clients not
+  to fall back to the referrers tag scheme.
+- **GET and HEAD** resolve a tag through `Tag().Resolve`, or take the digest
+  as given, `Stat` and `Open` flob, and answer with the stored media type
+  as `Content-Type` and the digest header. `Accept` is honoured only as far
+  as refusing: a manifest whose type the client did not list is `404
+  MANIFEST_UNKNOWN`, as the spec allows, and cr never converts between
+  formats. A `GET` by tag queues `Pulled().Touch`.
+- **DELETE** by tag removes the tag (`TagPolicy.Check`, `Tag().Erase`) and
+  nothing else; by digest it removes the manifest (`Manifest().Erase`) and
+  erases each released blob from the repository's flob namespace. Both
+  under the repository lock. A manifest that other tags still point at is
+  refused by digest; delete the tags first, or the retention rule will.
+- **Referrers** are a query, not a fetch: `Manifest().Referrers` builds the
+  index response from rows, adds `OCI-Filters-Applied: artifactType` when
+  the filter was used, and pages with `Link` when the list is long. A
+  client that pushed a `sha256-<hex>` fallback tag before cr existed still
+  works, because that is just a tag.
 - **Well-known blobs** never reach flob. A handful of digests name constant
   content and are asked for constantly: `{}` (`sha256:44136fa3…`, 2 bytes,
   the OCI 1.1 empty descriptor that every cosign signature, attestation and
@@ -377,6 +441,7 @@ phase 1: `Tag: <name>` as one value per tag, replaced on every move.
   | `ErrNotExist` from `Link` | the mount source lacks the blob | `202`, fall back to a normal upload |
   | `ErrIncompatibleStore` | the router put `from` on another pool | not an answer; `Open`+`Add` instead |
   | `ErrAlreadyExists` | a blob pushed again | success, `201` |
+  | `ErrTagMoved` (index) | the tag moved between resolve and set | retry once, then `DENIED` |
 
 - **Placement.** `blob.Router` implements `flob.Stores`, longest-prefix on the
   repository name to one of several backing `Stores`. zot's `SubPaths`; closes
@@ -389,7 +454,7 @@ are the management plane. Three interfaces:
 
 ```go
 type Authenticator interface {
-	Authenticate(ctx, username, password string) (Subject, error)   // Subject: id, groups
+	Authenticate(ctx, username, password string) (Subject, error)   // Subject: id, groups, claims
 }
 type Authorizer interface {
 	Allow(ctx, s Subject, repo string, actions []Action) ([]Action, error)
@@ -456,7 +521,7 @@ since many private deployments never run the token flow.
 | --- | --- | --- |
 | `htpasswd` | a bcrypt file, reloaded on change | username; groups from config |
 | `static` | long-lived tokens in config, for CI **without roster** | the token's name |
-| `oidc` | a JWT pasted as the password: issuer, audience, signature | `sub`, `groups`, and every claim as a `name=value` group |
+| `oidc` | a JWT pasted as the password: issuer, audience, signature | `sub`, `groups`; every other claim is available to a binding's `when` |
 | `roster` | `rt_` keys via `payday.TokenService/Introspect`; passwords via `roster.VouchService/Verify`; teams via `HolderService/Reaches` | `Holder.id`, tenant, team ids |
 
 roster's `Verify` answers `ok=false` plus a continuation when the holder has a
@@ -594,13 +659,13 @@ four workflows are turned on as they pass.
 | phase | delivers | done when |
 | --- | --- | --- |
 | 0 | `pd new`, `pd sandbox init`, the `/v2/` handler mounted on `web.Mux`, config, telemetry, bake, `pd gen --check` and the conformance job in CI | `GET /v2/` answers 200 |
-| 1 | blobs (HEAD, GET with Range, monolithic, chunked on `Stager`, status, cancel), manifests PUT/GET/HEAD with validation, tags/list, `entindex` on sqlite; tag written as a flob label | conformance **pull** and **push** |
+| 1 | blobs (HEAD, GET with Range, monolithic, chunked on `Stager`, status, cancel, the well-known table), manifests PUT/GET/HEAD with validation, tags/list, `memindex` and `entindex` on sqlite; tag written as a flob label | conformance **pull** and **push** |
 | 2 | referrers with `OCI-Subject`, catalog, manifest and blob DELETE, mount | conformance **content discovery** and **content management** |
-| 3 | tenancy decision; `Repository`, `Binding`, `TagRule` entities and their generated services and commands; Basic, token endpoint, JWKS, `htpasswd`, `static`; anonymous pull as a binding; tag rules enforced | `docker login`, a denied push, a refused move of an immutable tag |
+| 3 | `Repository`, `Binding`, `TagRule` entities behind the operator tenant, their generated services and commands; Basic, token endpoint, JWKS, `htpasswd`, `static`; anonymous pull as a binding; tag rules enforced | `docker login`, a denied push, a refused move of an immutable tag |
 | 4 | tier-one GC with `PruneStages`, health, metrics and traces on the handler, prefix router, S3 presign redirect, postgres in CI; `/v1/search` | a compose of cr on S3; `docker search` answers |
 | 5 | per-repository mark-and-sweep and `index rebuild` on flob's `Walker`; the admin trigger and run history | a scheduled full GC on the compose while pushes to other repositories continue |
-| 6 | pull-through proxy for blobs, then manifests and tags with TTL | a Docker Hub mirror serving `library/ubuntu` |
-| 7 | `oidc` and `roster` authenticators; `cr export` to an OCI layout; the management side of registry-ui on the TS client | `docker login` with an `rt_` key |
+| 6 | pull-through proxy for blobs, then manifests and tags with TTL; `Pulled` and `retention` by last pull | a Docker Hub mirror serving `library/ubuntu` |
+| 7 | `oidc` with `when` bindings and `/token/exchange`; `roster` with tenants mirrored; `cr export` to an OCI layout; the management side of registry-ui on the TS client | `docker login` with an `rt_` key, and a push from one GitHub workflow that a sibling workflow cannot make |
 
 Phases 0–2 do not depend on payday beyond the schema: the handler is
 `net/http` against two ports either way, so the fallback, should one ever be
