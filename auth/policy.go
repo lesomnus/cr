@@ -176,6 +176,9 @@ func (p *Policy) Allow(s Subject, repo string, want []Action) []Action {
 	}
 	out := []Action{}
 	for _, a := range want {
+		if !s.permits(a) {
+			continue
+		}
 		for _, b := range p.Bindings {
 			if b.grants(a) && b.matches(s) && Glob(b.Repo, repo) {
 				out = append(out, a)
@@ -195,6 +198,9 @@ func (p *Policy) AllowRegistry(s Subject, want []Action) []Action {
 	}
 	out := []Action{}
 	for _, a := range want {
+		if !s.permits(a) {
+			continue
+		}
 		for _, b := range p.Bindings {
 			if b.Repo == "*" && b.grants(a) && b.matches(s) {
 				out = append(out, a)

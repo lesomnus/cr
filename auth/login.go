@@ -22,10 +22,12 @@ const useLogin = "login"
 type loginClaims struct {
 	jwt.Claims
 
-	Use     string         `json:"use"`
-	Groups  []string       `json:"groups,omitempty"`
-	Aliases []string       `json:"aliases,omitempty"`
-	Carried map[string]any `json:"claims,omitempty"`
+	Use      string         `json:"use"`
+	Groups   []string       `json:"groups,omitempty"`
+	Aliases  []string       `json:"aliases,omitempty"`
+	Carried  map[string]any `json:"claims,omitempty"`
+	Narrowed bool           `json:"narrowed,omitempty"`
+	Only     []string       `json:"only,omitempty"`
 }
 
 // IssueLogin signs a token that stands in for s's credential: given as a
@@ -46,10 +48,12 @@ func (i *Issuer) IssueLogin(s Subject, ttl time.Duration) (string, time.Time, er
 			IssuedAt:  jwt.NewNumericDate(now),
 			ID:        base64.RawURLEncoding.EncodeToString(id),
 		},
-		Use:     useLogin,
-		Groups:  s.Groups,
-		Aliases: s.Aliases,
-		Carried: s.Claims,
+		Use:      useLogin,
+		Groups:   s.Groups,
+		Aliases:  s.Aliases,
+		Carried:  s.Claims,
+		Narrowed: s.Only != nil,
+		Only:     Strings(s.Only),
 	}
 	t, err := jwt.Signed(i.signer).Claims(c).Serialize()
 	return t, exp, err
@@ -81,7 +85,7 @@ func (i *Issuer) VerifyLogin(token string) (Subject, error) {
 	}, 30*time.Second); err != nil {
 		return Subject{}, ErrUnauthenticated
 	}
-	return Subject{ID: c.Subject, Aliases: c.Aliases, Groups: c.Groups, Claims: c.Carried}, nil
+	return Subject{ID: c.Subject, Aliases: c.Aliases, Groups: c.Groups, Claims: c.Carried, Only: only(c.Narrowed, c.Only)}, nil
 }
 
 // LoginTokens authenticates the tokens `POST /token/exchange` issued.

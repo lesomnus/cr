@@ -20,18 +20,29 @@ import (
 	"github.com/lesomnus/cr/auth"
 )
 
-// fake is roster's control plane, as much of it as cr calls.
+// fake is roster's data plane, as much of it as cr calls, answering the way
+// the real one does: an introspection names the holder and its tenant by
+// identifier alone, and a team names its site by identifier.
 type fake struct {
 	srv    *httptest.Server
 	holder []byte
 	tenant []byte
-	team   []byte
+	site   []byte
+	team   []byte // in the site
+	loose  []byte // in no site
 	calls  atomic.Int32
 	events chan []byte
 }
 
 func newFake(t *testing.T) *fake {
-	f := &fake{holder: pdid.New(2).Bytes(), tenant: pdid.New(1).Bytes(), team: pdid.New(9).Bytes(), events: make(chan []byte, 4)}
+	f := &fake{
+		holder: pdid.New(2).Bytes(),
+		tenant: pdid.New(1).Bytes(),
+		site:   pdid.New(8).Bytes(),
+		team:   pdid.New(9).Bytes(),
+		loose:  pdid.New(9).Bytes(),
+		events: make(chan []byte, 4),
+	}
 	b64 := base64.StdEncoding.EncodeToString
 	mux := http.NewServeMux()
 
@@ -51,12 +62,36 @@ func newFake(t *testing.T) *fake {
 			json.NewEncoder(w).Encode(v)
 		})
 	}
+	names := func(body map[string]any, id []byte) bool {
+		ref, _ := body["ref"].(map[string]any)
+		return ref != nil && ref["id"] == b64(id)
+	}
+	notFound := map[string]string{"code": "not_found", "message": "not found"}
 
+	grants := map[string]map[string]any{
+		"rt_good":  {"anyTenant": true, "anySet": true, "actions": []string{"/cr.Registry/*"}},
+		"rt_pull":  {"anyTenant": true, "anySet": true, "actions": []string{"/cr.Registry/Pull"}},
+		"rt_whole": {"anyTenant": true, "anySet": true, "anyAction": true},
+		"rt_other": {"anyTenant": true, "anySet": true, "actions": []string{"/roster.MeService/Get"}},
+	}
 	unary("payday.TokenService/Introspect", func(body map[string]any) (int, any) {
-		if body["token"] != "rt_good" {
+		g, ok := grants[body["token"].(string)]
+		if !ok {
 			return http.StatusNotFound, map[string]string{"code": "not_found", "message": "no such token"}
 		}
-		return http.StatusOK, map[string]any{"id": b64(f.holder), "tenantId": b64(f.tenant), "tenant": "acme", "alias": "ci"}
+		return http.StatusOK, map[string]any{"id": b64(f.holder), "tenantId": b64(f.tenant), "tenant": "", "alias": "", "grant": g}
+	})
+	unary("roster.HolderService/Get", func(body map[string]any) (int, any) {
+		if !names(body, f.holder) {
+			return http.StatusNotFound, notFound
+		}
+		return http.StatusOK, map[string]any{"id": b64(f.holder), "tenant": map[string]any{"id": b64(f.tenant), "alias": ""}, "alias": "ci"}
+	})
+	unary("roster.TenantService/Get", func(body map[string]any) (int, any) {
+		if !names(body, f.tenant) {
+			return http.StatusNotFound, notFound
+		}
+		return http.StatusOK, map[string]any{"id": b64(f.tenant), "alias": "acme"}
 	})
 	unary("roster.VouchService/Verify", func(body map[string]any) (int, any) {
 		who, _ := body["who"].(map[string]any)
@@ -72,10 +107,25 @@ func newFake(t *testing.T) *fake {
 		return http.StatusOK, map[string]any{}
 	})
 	unary("roster.TeamMembershipService/List", func(body map[string]any) (int, any) {
-		return http.StatusOK, map[string]any{"items": []any{map[string]any{"team": map[string]any{"id": b64(f.team)}}}}
+		return http.StatusOK, map[string]any{"items": []any{
+			map[string]any{"team": map[string]any{"id": b64(f.team), "site": nil, "alias": ""}},
+			map[string]any{"team": map[string]any{"id": b64(f.loose), "site": nil, "alias": ""}},
+		}, "next": ""}
 	})
 	unary("roster.TeamService/Get", func(body map[string]any) (int, any) {
-		return http.StatusOK, map[string]any{"alias": "devs"}
+		switch {
+		case names(body, f.team):
+			return http.StatusOK, map[string]any{"id": b64(f.team), "site": map[string]any{"id": b64(f.site), "alias": ""}, "alias": "devs"}
+		case names(body, f.loose):
+			return http.StatusOK, map[string]any{"id": b64(f.loose), "site": nil, "alias": "devs"}
+		}
+		return http.StatusNotFound, notFound
+	})
+	unary("roster.SiteService/Get", func(body map[string]any) (int, any) {
+		if !names(body, f.site) {
+			return http.StatusNotFound, notFound
+		}
+		return http.StatusOK, map[string]any{"id": b64(f.site), "alias": "main"}
 	})
 	mux.HandleFunc("/roster.SyncService/Watch", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Content-Type") != "application/connect+json" {
@@ -114,17 +164,34 @@ func TestAuthenticate(t *testing.T) {
 
 	holder, err := pdid.From(f.holder)
 	require.NoError(t, err)
+	loose, err := pdid.From(f.loose)
+	require.NoError(t, err)
+	// Two teams called `devs`: the one in a site is named through it, and the
+	// one in none by its identifier.
+	groups := []string{"@acme", "@acme/main/devs", loose.String()}
 
 	s, err := a.Authenticate(ctx, "whoever", "rt_good")
 	require.NoError(t, err)
 	require.Equal(t, holder.String(), s.ID)
 	require.Equal(t, []string{"@acme/ci"}, s.Aliases)
-	require.Equal(t, []string{"@acme", "@acme/devs"}, s.Groups)
+	require.Equal(t, groups, s.Groups)
+	require.Equal(t, auth.Actions, s.Only, "a key for every method of cr's is for every action")
 
 	calls := f.calls.Load()
 	_, err = a.Authenticate(ctx, "whoever", "rt_good")
 	require.NoError(t, err)
 	require.Equal(t, calls, f.calls.Load(), "what roster accepted is remembered")
+
+	// A key is for what it was made for.
+	s, err = a.Authenticate(ctx, "whoever", "rt_pull")
+	require.NoError(t, err)
+	require.Equal(t, []auth.Action{auth.ActionPull}, s.Only)
+	s, err = a.Authenticate(ctx, "whoever", "rt_whole")
+	require.NoError(t, err)
+	require.Nil(t, s.Only)
+	_, err = a.Authenticate(ctx, "whoever", "rt_other")
+	require.ErrorIs(t, err, auth.ErrUnauthenticated)
+	require.Contains(t, err.Error(), "/cr.Registry/*")
 
 	_, err = a.Authenticate(ctx, "whoever", "rt_revoked")
 	require.ErrorIs(t, err, auth.ErrUnauthenticated)
@@ -133,6 +200,8 @@ func TestAuthenticate(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, holder.String(), s.ID)
 	require.Equal(t, []string{"@acme/alice"}, s.Aliases)
+	require.Equal(t, groups, s.Groups)
+	require.Nil(t, s.Only, "a password is the whole of its holder")
 
 	_, err = a.Authenticate(ctx, "acme/alice", "looking-glass")
 	require.ErrorIs(t, err, auth.ErrUnauthenticated)
@@ -158,10 +227,14 @@ func TestTokenService(t *testing.T) {
 	c, err := NewClient(f.srv.URL, "rk_test")
 	require.NoError(t, err)
 
+	// roster answers with identifiers; the management API's mirror puts the
+	// rows up under the names.
 	res, err := c.TokenService().Introspect(ctx, pdpb.TokenIntrospectRequest_builder{Token: "rt_good"}.Build())
 	require.NoError(t, err)
-	require.Equal(t, "acme", res.GetTenant())
 	require.Equal(t, f.holder, res.GetId())
+	require.Equal(t, f.tenant, res.GetTenantId())
+	require.Equal(t, "acme", res.GetTenant())
+	require.Equal(t, "ci", res.GetAlias())
 
 	_, err = c.TokenService().Introspect(ctx, pdpb.TokenIntrospectRequest_builder{Token: "rt_nope"}.Build())
 	require.Equal(t, codes.NotFound, status.Code(err))

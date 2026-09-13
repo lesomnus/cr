@@ -295,6 +295,128 @@ The registry reads rows again every `auth.refresh` (five seconds). A decision
 never waits on the database: requests read a snapshot, and when a reload
 fails, the snapshot in force stays in force.
 
+## CI without secrets: OpenID Connect
+
+```yaml
+auth:
+  oidc:
+    - issuer: https://token.actions.githubusercontent.com
+      audience: cr.example.com
+      subject_claim: sub          # the default
+      groups_claim: ""            # a claim holding groups, when the provider has one
+      prefix: "github:"           # in front of every subject from this provider
+  exchange:
+    ttl: 1h
+  bindings:
+    - group: authenticated
+      repo: acme/app
+      actions: [pull, push, tag]
+      when:
+        repository: acme/app
+        workflow_ref: acme/app/.github/workflows/release.yml@refs/heads/main
+```
+
+A job asks its provider for an ID token for cr's audience and gives it as the
+password; cr checks it offline against the keys the provider publishes, and
+every claim of it is the subject's for a binding's `when`, whose values are
+globs. That is what lets one workflow, and no other, push a repository:
+
+```yaml
+permissions:
+  id-token: write
+steps:
+  - run: |
+      token=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+        "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=cr.example.com" | jq -r .value)
+      echo "$token" | docker login cr.example.com -u oidc --password-stdin
+```
+
+An ID token lives minutes and the Docker CLI replays the stored password on
+every push, so a long job trades it first:
+
+```sh
+login=$(curl -sS -X POST -H "Authorization: Bearer $token" https://cr.example.com/token/exchange | jq -r .access_token)
+echo "$login" | docker login cr.example.com -u oidc --password-stdin
+```
+
+What comes back is a token cr signed that stands for the same subject with the
+same claims for `exchange.ttl`. It is a password and never an access token,
+and it cannot be exchanged again. `oidc-release.yml` and `oidc-sibling.yml` in
+this repository run exactly this on every push to main, with GitHub's own
+tokens: the release pushes, and the sibling is refused.
+
+## roster
+
+```yaml
+auth:
+  roster:
+    url: https://roster.example.com   # roster's data plane over HTTP, its `server.http`
+    key: rk_...
+    remember: 1m
+management:
+  roster:
+    url: https://roster.example.com
+    key: rk_...
+```
+
+cr calls roster where roster's people and apps do, with a key made for cr as a
+service:
+
+```sh
+roster key add --service cr --allow '/payday.TokenService/Introspect,/roster.VouchService/Verify,/roster.HolderService/Get,/roster.TenantService/Get,/roster.TeamMembershipService/List,/roster.TeamService/Get,/roster.SiteService/Get,/roster.SyncService/Watch'
+```
+
+A robot is a roster holder with an `rt_` key, which is its password:
+
+```sh
+roster holder add @acme/ci
+RT=$(roster key add --tenant acme --holder ci --name docker --allow '/cr.Registry/*')
+echo "$RT" | docker login cr.example.com -u ci --password-stdin
+```
+
+A key is used for what it was made for. The registry's actions go by method
+names a key can list -- `/cr.Registry/Pull`, `Push`, `Tag`, `Delete`,
+`Catalog`, `Search` and `Admin` -- and `/cr.Registry/*` is all of them. A key
+made with `--allow /cr.Registry/Pull` pulls whatever the bindings let its
+holder pull and pushes nothing, and a key that allows none of them is refused
+at login. The bindings still decide; a key only narrows.
+
+A person signs in with `acme/alice` and their roster password, and is the whole
+of themselves. With a second factor, which a password prompt cannot carry, they
+use an `rt_` key instead, and `roster sign-in` mints one from the terminal.
+
+The subject is the holder's identifier, and `@acme/alice` is its alias. Its
+groups are `@acme` and one for each team it is in: `@acme/eu/ops` for the team
+`ops` in the site `eu`, since a team's name is unique only within its site, and
+the team's identifier for a team in no site, which roster names by identifier
+alone. What roster accepted is remembered for `remember`, and forgotten at once
+when roster's sync stream says the holder changed, so a revoked key stops
+working within `remember` at the latest.
+
+With `management.roster`, a key roster issued is a caller of the management API
+too, for the methods it allows -- `/app.BindingService/*` and the like -- and
+the tenant and holder it names are put up here the first time they are seen,
+which is how bindings come to belong to roster's tenants.
+
+## Export
+
+```sh
+cr export acme/app ./acme-app --tags v1,latest
+```
+
+writes the tags, every manifest and blob they need, and the signatures,
+attestations and SBOMs that refer to them (`--no-referrers` leaves those out)
+as an OCI image layout, which `oras`, `skopeo`, `crane` and containerd read. A
+layer a pull-through cache never fetched, or one that is not distributable, is
+listed as skipped rather than failing the export.
+
+## The management page
+
+`ts/` is the management side: repositories and their descriptions, bindings,
+tag rules, and the collection runs, with a button that starts a full one. It
+is built on the generated TypeScript client, and `npm run dev` runs it against
+a server or, with the sandbox, against the whole of cr compiled into the page.
+
 ## The management API
 
 Every entity service, over gRPC on `server.addr` and over HTTP beside the

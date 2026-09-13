@@ -73,3 +73,30 @@ func TestExchange(t *testing.T) {
 	closed.Exchange = 0
 	require.Equal(t, http.StatusNotFound, exchange(&closed, "Bearer "+p.sign(t, p.job("release.yml"))).Code)
 }
+
+// A credential narrowed to some actions stays narrowed through every token
+// that stands in for it, a narrowing to nothing included.
+func TestNarrowedTokens(t *testing.T) {
+	is := issuer(t)
+	st := NewPolicyStore(time.Hour, Static{})
+	require.NoError(t, st.Refresh(context.Background()))
+	g := &Guard{Policy: st, Issuer: is}
+
+	for _, only := range [][]Action{nil, {}, {ActionPull}} {
+		s := Subject{ID: "ci", Only: only}
+
+		login, _, err := is.IssueLogin(s, time.Hour)
+		require.NoError(t, err)
+		back, err := is.VerifyLogin(login)
+		require.NoError(t, err)
+		require.Equal(t, only, back.Only)
+
+		access, _, err := is.Issue(s, nil)
+		require.NoError(t, err)
+		req := httptest.NewRequest("GET", "/v2/", nil)
+		req.Header.Set("Authorization", "Bearer "+access)
+		c, err := g.Caller(req)
+		require.NoError(t, err)
+		require.Equal(t, only, c.Subject.Only)
+	}
+}

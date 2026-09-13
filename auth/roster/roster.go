@@ -2,9 +2,12 @@
 // checked by roster, a holder's teams as groups, and roster's word that a
 // holder changed dropping what cr remembered about them.
 //
-// It speaks Connect's JSON over HTTP to roster's control plane with cr's own
-// `rk_` key, so cr carries none of roster's generated code and needs none of
-// its versions to agree with its own.
+// It speaks Connect's JSON over HTTP to roster's data plane -- the listener
+// its people and apps call, `server.http` in roster's configuration -- with
+// the key `roster key add --service cr` made. That key is a row of roster's
+// control plane, but the control plane's own listener holds none of the
+// holders, keys and teams cr asks about. cr carries none of roster's generated
+// code and needs none of its versions to agree with its own.
 package roster
 
 import (
@@ -20,11 +23,13 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/lesomnus/otx/log"
+	"github.com/lesomnus/payday/frame"
 	"github.com/lesomnus/payday/pdid"
 	"github.com/lesomnus/payday/pdpb"
 	"google.golang.org/grpc"
@@ -36,11 +41,15 @@ import (
 	"github.com/lesomnus/cr/auth"
 )
 
-// Client calls roster's control plane.
+// Client calls roster's data plane.
 type Client struct {
 	base string
 	key  string
 	http *http.Client
+	now  func() time.Time
+
+	mu    sync.Mutex
+	names map[string]named
 }
 
 func NewClient(baseURL, key string) (*Client, error) {
@@ -52,9 +61,11 @@ func NewClient(baseURL, key string) (*Client, error) {
 		return nil, errors.New("roster: no key")
 	}
 	return &Client{
-		base: strings.TrimSuffix(baseURL, "/"),
-		key:  key,
-		http: &http.Client{},
+		base:  strings.TrimSuffix(baseURL, "/"),
+		key:   key,
+		http:  &http.Client{},
+		now:   time.Now,
+		names: map[string]named{},
 	}, nil
 }
 
@@ -196,30 +207,128 @@ func (c *Client) stream(ctx context.Context, procedure string, in any, each func
 	}
 }
 
+// NameFor is how long a name read by identifier is used without asking again,
+// so an alias changed in roster is followed within it.
+const NameFor = time.Minute
+
+// row is what cr reads of a holder, a tenant, a team or a site: its alias, and
+// the identifiers of the rows it is in.
+type row struct {
+	Alias  string `json:"alias"`
+	Tenant *ref   `json:"tenant"`
+	Site   *ref   `json:"site"`
+}
+
+type ref struct {
+	Id []byte `json:"id"`
+}
+
+type named struct {
+	row   row
+	until time.Time
+}
+
+// get reads the row with identifier id through procedure,
+// `roster.TenantService/Get` and the like. One roster does not have is
+// [ErrNotFound].
+func (c *Client) get(ctx context.Context, procedure string, id []byte) (row, error) {
+	if len(id) == 0 {
+		return row{}, fmt.Errorf("%w: %s: no identifier", ErrNotFound, procedure)
+	}
+	k := procedure + "\x00" + string(id)
+	c.mu.Lock()
+	n, ok := c.names[k]
+	c.mu.Unlock()
+	if ok && c.now().Before(n.until) {
+		return n.row, nil
+	}
+
+	var v row
+	if err := c.call(ctx, procedure, map[string]any{"ref": ref{Id: id}}, &v); err != nil {
+		return row{}, err
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.names) > 10_000 {
+		clear(c.names)
+	}
+	c.names[k] = named{row: v, until: c.now().Add(NameFor)}
+	return v, nil
+}
+
+func (c *Client) forgetNames() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	clear(c.names)
+}
+
+// introspect is `payday.TokenService/Introspect` with the names filled in.
+// roster's data plane answers with the holder's and its tenant's identifiers
+// and leaves their aliases empty, and the aliases are what a binding names a
+// holder by, and what the management API's mirror puts the rows up under.
+func (c *Client) introspect(ctx context.Context, token string) (*pdpb.TokenIntrospectResponse, error) {
+	res := &pdpb.TokenIntrospectResponse{}
+	if err := c.call(ctx, "payday.TokenService/Introspect", pdpb.TokenIntrospectRequest_builder{Token: token}.Build(), res); err != nil {
+		return nil, err
+	}
+	if res.GetAlias() != "" && res.GetTenant() != "" && len(res.GetTenantId()) > 0 {
+		return res, nil
+	}
+
+	h, err := c.get(ctx, "roster.HolderService/Get", res.GetId())
+	if err != nil {
+		return nil, fmt.Errorf("holder: %w", err)
+	}
+	tenant := res.GetTenantId()
+	if len(tenant) == 0 && h.Tenant != nil {
+		tenant = h.Tenant.Id
+	}
+	t, err := c.get(ctx, "roster.TenantService/Get", tenant)
+	if err != nil {
+		return nil, fmt.Errorf("tenant: %w", err)
+	}
+	if h.Alias == "" || t.Alias == "" {
+		return nil, fmt.Errorf("%w: a holder or a tenant with no alias", ErrNotFound)
+	}
+	res.SetAlias(h.Alias)
+	res.SetTenant(t.Alias)
+	res.SetTenantId(tenant)
+	return res, nil
+}
+
 // TokenService is payday's TokenService over this client, for
-// `auth.Remote`: how the management API reads a token roster issued.
+// `auth.Remote`: how the management API reads a token roster issued. Its
+// answers name the holder and the tenant by alias as well as by identifier.
 func (c *Client) TokenService() pdpb.TokenServiceClient { return tokenService{c} }
 
 type tokenService struct{ c *Client }
 
 func (t tokenService) Introspect(ctx context.Context, in *pdpb.TokenIntrospectRequest, _ ...grpc.CallOption) (*pdpb.TokenIntrospectResponse, error) {
-	out := &pdpb.TokenIntrospectResponse{}
-	if err := t.c.call(ctx, "payday.TokenService/Introspect", in, out); err != nil {
+	res, err := t.c.introspect(ctx, in.GetToken())
+	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return nil, status.Error(codes.NotFound, "no such token")
 		}
 		return nil, err
 	}
-	return out, nil
+	return res, nil
 }
 
 // Authenticator authenticates against roster: an `rt_` key given as the
 // password is introspected, anything else is a password for the holder the
 // username names, `acme/alice` or `@acme/alice`.
 //
-// The subject is the holder's identifier, with `@tenant/alias` as an alias;
-// its groups are `@tenant` and `@tenant/team` for each team it is in. What
-// roster accepted is remembered for a while, and forgotten sooner when
+// The subject is the holder's identifier, with `@tenant/alias` as an alias.
+// Its groups are `@tenant` and one for each team it is in: `@tenant/site/team`
+// for a team in a site, which is where roster names a team, and the team's
+// identifier for a team in none, which roster names by identifier alone.
+//
+// A key is used for what it was made for: the actions whose methods its grant
+// covers, `/cr.Registry/Pull` and the like, and a key that covers none of them
+// is refused. A password is the whole of its holder.
+//
+// What roster accepted is remembered for a while, and forgotten sooner when
 // roster's sync stream says the holder changed.
 type Authenticator struct {
 	c        *Client
@@ -229,7 +338,6 @@ type Authenticator struct {
 	mu       sync.Mutex
 	decided  map[[32]byte]decision
 	byHolder map[string]map[[32]byte]struct{}
-	teams    map[string]string
 }
 
 type decision struct {
@@ -247,7 +355,6 @@ func New(c *Client, remember time.Duration) *Authenticator {
 		now:      time.Now,
 		decided:  map[[32]byte]decision{},
 		byHolder: map[string]map[[32]byte]struct{}{},
-		teams:    map[string]string{},
 	}
 }
 
@@ -289,10 +396,10 @@ func (a *Authenticator) Authenticate(ctx context.Context, username, password str
 	var (
 		holder              []byte
 		tenant, holderAlias string
+		only                []auth.Action
 	)
 	if strings.HasPrefix(password, "rt_") {
-		res := &pdpb.TokenIntrospectResponse{}
-		err := a.c.call(ctx, "payday.TokenService/Introspect", pdpb.TokenIntrospectRequest_builder{Token: password}.Build(), res)
+		res, err := a.c.introspect(ctx, password)
 		if errors.Is(err, ErrNotFound) {
 			return auth.Subject{}, auth.ErrUnauthenticated
 		}
@@ -301,6 +408,10 @@ func (a *Authenticator) Authenticate(ctx context.Context, username, password str
 		}
 		if exp := res.GetExpires(); exp != nil && !exp.AsTime().After(a.now()) {
 			return auth.Subject{}, auth.ErrUnauthenticated
+		}
+		only = usedFor(res.GetGrant())
+		if only != nil && len(only) == 0 {
+			return auth.Subject{}, fmt.Errorf("%w: the key allows none of cr's methods; make one with --allow '/cr.Registry/*'", auth.ErrUnauthenticated)
 		}
 		holder, tenant, holderAlias = res.GetId(), res.GetTenant(), res.GetAlias()
 	} else {
@@ -329,7 +440,7 @@ func (a *Authenticator) Authenticate(ctx context.Context, username, password str
 	if err != nil {
 		return auth.Subject{}, fmt.Errorf("roster: holder: %w", err)
 	}
-	s := auth.Subject{ID: id.String(), Claims: map[string]any{"tenant": tenant, "holder": holderAlias}}
+	s := auth.Subject{ID: id.String(), Claims: map[string]any{"tenant": tenant, "holder": holderAlias}, Only: only}
 	if tenant != "" && holderAlias != "" {
 		s.Aliases = []string{"@" + tenant + "/" + holderAlias}
 	}
@@ -346,11 +457,27 @@ func (a *Authenticator) Authenticate(ctx context.Context, username, password str
 	return s, nil
 }
 
-type ref struct {
-	Id []byte `json:"id"`
+// usedFor is what a key's grant lets it be used for here: every action whose
+// method the grant covers, by payday's rule for method patterns. A grant that
+// narrows no method narrows nothing, and a grant that is not there allows
+// nothing, which is how payday reads one.
+func usedFor(g *pdpb.Grant) []auth.Action {
+	if g == nil {
+		return []auth.Action{}
+	}
+	if g.GetAnyAction() {
+		return nil
+	}
+	out := []auth.Action{}
+	for _, a := range auth.Actions {
+		if slices.ContainsFunc(g.GetActions(), func(held string) bool { return frame.Covers(held, a.Method()) }) {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
-// teamsOf is `@tenant/team` for each team holder is in.
+// teamsOf is a group for each team holder is in.
 func (a *Authenticator) teamsOf(ctx context.Context, holder []byte, tenant string) ([]string, error) {
 	var out []string
 	after := ""
@@ -369,13 +496,14 @@ func (a *Authenticator) teamsOf(ctx context.Context, holder []byte, tenant strin
 			return nil, err
 		}
 		for _, item := range res.Items {
-			alias, err := a.teamAlias(ctx, item.Team.Id)
+			g, err := a.teamGroup(ctx, item.Team.Id, tenant)
+			if errors.Is(err, ErrNotFound) {
+				continue
+			}
 			if err != nil {
 				return nil, err
 			}
-			if alias != "" && tenant != "" {
-				out = append(out, "@"+tenant+"/"+alias)
-			}
+			out = append(out, g)
 		}
 		if res.Next == "" || len(res.Items) == 0 {
 			return out, nil
@@ -384,31 +512,29 @@ func (a *Authenticator) teamsOf(ctx context.Context, holder []byte, tenant strin
 	}
 }
 
-// teamAlias is a team's alias, remembered for the life of the process: an
-// alias that changes is a group that stops matching, which is the safe way to
-// be wrong.
-func (a *Authenticator) teamAlias(ctx context.Context, id []byte) (string, error) {
-	k := string(id)
-	a.mu.Lock()
-	alias, ok := a.teams[k]
-	a.mu.Unlock()
-	if ok {
-		return alias, nil
-	}
-	var res struct {
-		Alias string `json:"alias"`
-	}
-	err := a.c.call(ctx, "roster.TeamService/Get", map[string]any{"ref": ref{Id: id}}, &res)
-	if errors.Is(err, ErrNotFound) {
-		return "", nil
-	}
+// teamGroup is the group a team is: `@tenant/site/team`, or the team's
+// identifier when it is in no site. A team's alias is unique within its site
+// and not within its tenant, so `@tenant/team` would be two teams at once.
+func (a *Authenticator) teamGroup(ctx context.Context, id []byte, tenant string) (string, error) {
+	team, err := a.c.get(ctx, "roster.TeamService/Get", id)
 	if err != nil {
 		return "", err
 	}
-	a.mu.Lock()
-	a.teams[k] = res.Alias
-	a.mu.Unlock()
-	return res.Alias, nil
+	if team.Site == nil || len(team.Site.Id) == 0 {
+		v, err := pdid.From(id)
+		if err != nil {
+			return "", fmt.Errorf("%w: team: %s", ErrNotFound, err)
+		}
+		return v.String(), nil
+	}
+	site, err := a.c.get(ctx, "roster.SiteService/Get", team.Site.Id)
+	if err != nil {
+		return "", err
+	}
+	if tenant == "" || site.Alias == "" || team.Alias == "" {
+		return "", fmt.Errorf("%w: a team with no name", ErrNotFound)
+	}
+	return "@" + tenant + "/" + site.Alias + "/" + team.Alias, nil
 }
 
 func (a *Authenticator) recall(key [32]byte) (auth.Subject, bool) {
@@ -447,10 +573,10 @@ func (a *Authenticator) Forget(id string) {
 
 func (a *Authenticator) forgetAll() {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	clear(a.decided)
 	clear(a.byHolder)
-	clear(a.teams)
+	a.mu.Unlock()
+	a.c.forgetNames()
 }
 
 // Spin follows roster's sync stream, forgetting a holder it names. A stream

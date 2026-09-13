@@ -63,6 +63,16 @@ func Strings(as []Action) []string {
 	return out
 }
 
+// Method is the action by the name a credential that lists methods gives it,
+// `/cr.Registry/Push`: how a roster key made for cr says what it is for.
+// Every action is `/cr.Registry/*`.
+func (a Action) Method() string {
+	if a == "" || a == ActionAll {
+		return "/cr.Registry/*"
+	}
+	return "/cr.Registry/" + strings.ToUpper(string(a[:1])) + string(a[1:])
+}
+
 // Anonymous is the subject of a caller that gave no credential. Every caller
 // is also anonymous, so a binding to it is a binding to everyone.
 const Anonymous = "anonymous"
@@ -84,6 +94,11 @@ type Subject struct {
 	// Claims are what the credential said beyond the subject, for a binding's
 	// `when`. Empty for credentials that say nothing more.
 	Claims map[string]any
+
+	// Only, when it is not nil, is every action the credential may be used
+	// for, whatever the bindings grant the subject: a key made for less than
+	// its holder may do. Nil narrows nothing, and empty allows nothing.
+	Only []Action
 }
 
 func (s Subject) IsAnonymous() bool { return s.ID == "" || s.ID == Anonymous }
@@ -99,6 +114,18 @@ func (s Subject) In(g string) bool {
 		return !s.IsAnonymous()
 	}
 	return slices.Contains(s.Groups, g)
+}
+
+// permits reports whether the credential may be used for a, whatever a
+// binding grants.
+func (s Subject) permits(a Action) bool {
+	if s.Only == nil {
+		return true
+	}
+	if a == ActionAll {
+		return !slices.ContainsFunc(Actions, func(v Action) bool { return !slices.Contains(s.Only, v) })
+	}
+	return slices.Contains(s.Only, a)
 }
 
 var (

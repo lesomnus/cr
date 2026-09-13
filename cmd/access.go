@@ -58,13 +58,15 @@ type OidcConfig struct {
 // RosterConfig is roster as an authenticator: `rt_` keys, and passwords of
 // people who have no second factor.
 type RosterConfig struct {
-	// Url is roster's control plane over HTTP, where cr's key is good.
+	// Url is roster's data plane over HTTP, `server.http` in roster's
+	// configuration: the listener its people and apps call.
 	Url string `yaml:"url"`
 
-	// Key is cr's `rk_` key there, which must be allowed
-	// `/payday.TokenService/Introspect`, `/roster.VouchService/Verify`,
-	// `/roster.TeamMembershipService/List`, `/roster.TeamService/Get` and
-	// `/roster.SyncService/Watch`.
+	// Key is the `rk_` key `roster key add --service cr` made, which must be
+	// allowed `/payday.TokenService/Introspect`, `/roster.VouchService/Verify`,
+	// `/roster.HolderService/Get`, `/roster.TenantService/Get`,
+	// `/roster.TeamMembershipService/List`, `/roster.TeamService/Get`,
+	// `/roster.SiteService/Get` and `/roster.SyncService/Watch`.
 	Key string `yaml:"key"`
 
 	// Remember is how long a credential roster accepted is accepted again

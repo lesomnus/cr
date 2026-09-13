@@ -115,6 +115,13 @@ func TestAllow(t *testing.T) {
 	require.Equal(t, []Action{ActionPush}, p.Allow(release, "gh/app", []Action{ActionPush}))
 	require.Empty(t, p.Allow(sibling, "gh/app", []Action{ActionPush}))
 
+	// A credential made for less than its holder may do is used for that
+	// alone, whatever the bindings grant.
+	narrow := Subject{ID: "alice", Only: []Action{ActionPull}}
+	require.Equal(t, []Action{ActionPull}, p.Allow(narrow, "acme/app", []Action{ActionPull, ActionPush, ActionDelete}))
+	require.Empty(t, p.Allow(Subject{ID: "alice", Only: []Action{}}, "acme/app", []Action{ActionPull}))
+	require.Empty(t, p.AllowRegistry(Subject{ID: "ops", Only: []Action{ActionPull}}, []Action{ActionAdmin}))
+
 	require.Equal(t, []Action{ActionCatalog}, p.AllowRegistry(anon, []Action{ActionCatalog, ActionSearch}))
 	require.Equal(t, []Action{ActionAdmin}, p.AllowRegistry(Subject{ID: "ops"}, []Action{ActionAdmin}))
 	// A binding narrower than `*` grants nothing registry-wide.
@@ -321,4 +328,10 @@ func TestServeToken(t *testing.T) {
 	w := httptest.NewRecorder()
 	g.ServeToken(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestActionMethod(t *testing.T) {
+	require.Equal(t, "/cr.Registry/Pull", ActionPull.Method())
+	require.Equal(t, "/cr.Registry/Catalog", ActionCatalog.Method())
+	require.Equal(t, "/cr.Registry/*", ActionAll.Method())
 }

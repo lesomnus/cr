@@ -157,7 +157,7 @@ func (g *Guard) Caller(r *http.Request) (*Caller, error) {
 		if err != nil {
 			return nil, ErrUnauthenticated
 		}
-		return &Caller{Subject: Subject{ID: c.Subject, Aliases: c.Aliases, Groups: c.Groups}, claims: c, policy: p}, nil
+		return &Caller{Subject: Subject{ID: c.Subject, Aliases: c.Aliases, Groups: c.Groups, Only: only(c.Narrowed, c.Only)}, claims: c, policy: p}, nil
 	case "basic":
 		user, pass, ok := r.BasicAuth()
 		if !ok {

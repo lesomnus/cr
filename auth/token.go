@@ -43,9 +43,24 @@ type Claims struct {
 	// Aliases are the subject's other names, for the same decisions.
 	Aliases []string `json:"aliases,omitempty"`
 
+	// Narrowed says Only is every action the credential behind the token may
+	// be used for, none included; see [Subject.Only]. It is its own claim
+	// because a list that allows nothing and a list that is not there look
+	// the same once `omitempty` is done with them.
+	Narrowed bool     `json:"narrowed,omitempty"`
+	Only     []string `json:"only,omitempty"`
+
 	// Use is `login` for a token that stands in for a credential, which is
 	// given as a password and is never an access token; see IssueLogin.
 	Use string `json:"use,omitempty"`
+}
+
+// only is the Only a token's claims carry back to a subject.
+func only(narrowed bool, vs []string) []Action {
+	if !narrowed {
+		return nil
+	}
+	return ParseActions(vs)
 }
 
 // Issuer signs the tokens `/token` hands out and verifies the ones `/v2/` is
@@ -115,10 +130,12 @@ func (i *Issuer) Issue(s Subject, access []Access, refused ...Access) (string, C
 			IssuedAt:  jwt.NewNumericDate(now),
 			ID:        base64.RawURLEncoding.EncodeToString(id),
 		},
-		Access:  access,
-		Refused: refused,
-		Groups:  s.Groups,
-		Aliases: s.Aliases,
+		Access:   access,
+		Refused:  refused,
+		Groups:   s.Groups,
+		Aliases:  s.Aliases,
+		Narrowed: s.Only != nil,
+		Only:     Strings(s.Only),
 	}
 	if c.Access == nil {
 		c.Access = []Access{}

@@ -15,7 +15,7 @@ checklist lives in its issue; this page is the running record beside them.
 | 4 | [#6](https://github.com/lesomnus/cr/issues/6) operations | done; the compose of cr on MinIO and PostgreSQL pushed, pulled through a 307 to MinIO, and answered `docker search` |
 | 5 | [#7](https://github.com/lesomnus/cr/issues/7) mark-and-sweep, rebuild | done; on the compose, full collections every 20 seconds erased stray blobs while 14 pushes to another repository all landed, and `cr index rebuild` from MinIO alone gave back every tag and manifest |
 | 6 | [#8](https://github.com/lesomnus/cr/issues/8) pull-through | done; `library/ubuntu` pulled through the compose's Docker Hub cache fetched the index, the amd64 manifest and its attestation and nothing else, and later pulls came from MinIO |
-| 7 | [#9](https://github.com/lesomnus/cr/issues/9) OIDC, roster, export, UI | not started |
+| 7 | [#9](https://github.com/lesomnus/cr/issues/9) OIDC, roster, export, UI | done; GitHub's own ID tokens let `oidc-release.yml` push and refused `oidc-sibling.yml`, and against a real roster `docker login` took an `rt_` key and a password, a pull-only key pushed nothing, and a revoked key stopped working |
 
 ## Conformance
 
@@ -265,4 +265,81 @@ changed to match.
     shared with other projects, so it was not given `registry-mirrors`; the
     pulls named the cache (`localhost:5000/docker.io/library/ubuntu`), which
     is the same code path with a prefix.
+
+### Phase 7
+
+58. **An ID token's claims are the subject's, for `when`.** OIDC is checked
+    offline against the keys the provider publishes, and a binding can name
+    any claim of the token, with a glob for its value. GitHub's
+    `workflow_ref` is what tells a release workflow from its siblings in the
+    same repository; `repository` alone cannot.
+59. **The exchange hands out a password, not an access token.**
+    `POST /token/exchange` trades a credential for a token cr signs that
+    stands for the same subject, claims included, for `auth.exchange.ttl`.
+    It is refused as a bearer token, and a token from the exchange cannot be
+    exchanged again, or it would never expire.
+60. **Checked on GitHub with GitHub's tokens.** `oidc-release.yml` and
+    `oidc-sibling.yml` call one reusable workflow that serves cr on the runner
+    with a single binding naming the release workflow. Each caller's ID token
+    carries its own `workflow_ref`, so the release pushed and the sibling was
+    refused, with the ID token and with the exchanged token alike.
+61. **roster is spoken to over Connect's JSON, not through its Go module.** cr
+    carries none of roster's generated code, so the two need not agree on the
+    version of anything but the wire.
+62. **Found by the real roster: the data plane, not the control plane.** A key
+    made with `roster key add --service` is a row of the control plane, and
+    the first reading was that cr calls the control plane with it. That
+    listener knows none of the data plane's holders and keys
+    (`ApiKey not found`); a service calls the data plane, `server.http`. The
+    fake the tests used had been written from the same wrong reading, and was
+    rewritten from what the real one answered.
+63. **Found by the real roster: introspection names nobody by alias.** The
+    data plane answers with the holder's and the tenant's identifiers and
+    empty aliases, so `@acme/ci` matched no binding and the management API's
+    mirror had no name to put a row up under. cr reads the aliases with
+    `HolderService/Get` and `TenantService/Get`, and keeps a name for a
+    minute.
+64. **A team is `@tenant/site/team`.** A team's alias is unique within its
+    site and not within its tenant, so `@tenant/team` could be two teams at
+    once. A team in no site, which roster itself names by identifier alone,
+    is its identifier.
+65. **A roster key is used for what it was made for.** A key lists methods, so
+    the registry's actions are given method names, `/cr.Registry/Pull` and so
+    on, matched with payday's own rule for method patterns. What a key allows
+    narrows what the bindings grant and never widens it, and a key that allows
+    none of them is refused at login rather than logging in to be refused
+    everything. The narrowing rides in access and login tokens with a
+    `narrowed` claim of its own, since a list that allows nothing and a list
+    that is not there look alike once `omitempty` is done with them. A
+    password is the whole of its holder.
+66. **A second factor sends a person to a key.** `docker login` carries a
+    username and a password and nothing else, so a holder roster asks a second
+    factor of is refused with a message naming `rt_` keys, which
+    `roster sign-in` mints.
+67. **What roster accepted is remembered for `auth.roster.remember`.** The sync
+    stream forgets a holder at once, and a stream that ends forgets everybody,
+    so a revoked key stops working within `remember` at the latest.
+68. **The management API mirrors roster's tenants and holders.** payday's
+    `auth.Remote` introspects a key roster issued on every request, and the
+    tenant and holder it names are put up here under roster's identifiers the
+    first time they are seen, so bindings can belong to roster's tenants.
+69. **Checked against a real roster** (7cca74b, built from source) and the
+    shared Docker engine, which reached cr through a forwarder on its host
+    network. `docker login` took an `rt_` key and a person's password;
+    `@acme/ci` pushed `acme/*` and was refused elsewhere; a member of team
+    `devs` in site `main` pushed through `@acme/main/devs`; a pull-only key
+    pulled and was refused a push its binding allowed; a key for roster alone,
+    a wrong password, an unknown key and a revoked key were refused; and a key
+    allowing `/app.*/*` listed repositories and the mirrored holder over the
+    management API, where a pull-only key was refused.
+70. **`cr export` writes an OCI image layout.** Each tag is a manifest in
+    `index.json` named with `org.opencontainers.image.ref.name`, referrers are
+    written without a name, and a blob that is not there -- a layer a cache
+    never fetched, or a non-distributable one -- is reported rather than
+    failing the export.
+71. **The management page is cr's own, in `ts/`.** It is built on the
+    TypeScript client payday generates, and the sandbox runs it against the
+    whole of cr compiled to WebAssembly. registry-ui was not forked: it
+    browses a registry through the distribution API and does not manage one.
+    Whether cr should also offer a browsing page of that kind is left open.
 
