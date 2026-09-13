@@ -10,7 +10,9 @@ pass to run and nothing that has to hold a lock to answer whether a blob exists.
 Pull-through caching streams: a blob is served to the client while it is being
 written to the cache, not after.
 
-Status: design. See the issues.
+Status: design done, implementation starting. The storage model is argued in
+[issue #1](https://github.com/lesomnus/cr/issues/1); what is built on it, and
+in what order, is [docs/plan.md](docs/plan.md).
 
 ## Why not one of the existing ones
 
