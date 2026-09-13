@@ -120,11 +120,14 @@ per request, the wall, the gate.
   native builds all pass.
 - payday needs Go 1.27 (`go.work`), for the standard library `uuid` package.
 
-**Tenancy.** payday's wall is per `Tenant`. The natural mapping is Tenant =
-the owner of a namespace prefix (`acme/*`), which is also Docker Hub's shape,
-with one operator tenant owning unprefixed names. Repository, Binding and
-TagRule sit behind that wall. It is a decision for phase 3 and does not touch
-phases 0–2.
+**Tenancy.** payday's wall is per `Tenant`. Tenant = the owner of a
+namespace prefix (`acme/*`), which is also Docker Hub's shape and Harbor's
+"project", with one operator tenant owning unprefixed names. Repository,
+Binding and TagRule sit behind that wall. With roster on, cr's tenants
+mirror roster's: the `tenant_id` that `Introspect` returns is the row, and
+members, teams and robots are roster's, not cr's. Without roster there is
+the operator tenant and nothing to mirror. Phase 3; phases 0–2 do not
+touch it.
 
 ### The name → flob id mapping
 
@@ -374,7 +377,7 @@ since many private deployments never run the token flow.
 | | verifies | subject and groups |
 | --- | --- | --- |
 | `htpasswd` | a bcrypt file, reloaded on change | username; groups from config |
-| `static` | long-lived tokens in config, for CI | the token's name |
+| `static` | long-lived tokens in config, for CI **without roster** | the token's name |
 | `oidc` | a JWT pasted as the password: issuer, audience, signature | `sub`, `groups` |
 | `roster` | `rt_` keys via `payday.TokenService/Introspect`; passwords via `roster.VouchService/Verify`; teams via `HolderService/Reaches` | `Holder.id`, tenant, team ids |
 
@@ -391,6 +394,17 @@ cached decisions when a holder is disabled. **No roster change is needed for
 any of this**, and the two things that would shorten cr's list, minting the
 registry JWT and holding per-repository permissions, are both things roster
 refuses by design; moving that line would cost roster its reason to exist.
+
+**Robots and projects are roster's.** A CI robot is a roster holder with
+no credential and an `rt_` key (`roster holder add @acme/ci`, `roster key
+add --tenant acme --holder ci`): printed once, `date_expires`, `date_used`,
+narrowing, revocation by deletion, audited. cr has no Robot entity; what a
+robot may do in cr is a binding on its holder id, as for anyone. A project
+is a roster tenant with its teams and groups; cr adds only the bindings,
+tag rules and, later, quotas. So the management plane is `Repository`,
+`Binding` and `TagRule`, and there are two modes rather than two copies:
+without roster, htpasswd users and `static` tokens and one tenant; with
+roster, people, robots and tenants come from it.
 
 The management plane's own authentication is payday's: `auth.Bearer` over a
 `TokenStore`, or `auth.Remote` to roster, or sessions for a browser. The
