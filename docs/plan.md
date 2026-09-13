@@ -300,7 +300,15 @@ phase 1: `Tag: <name>` as one value per tag, replaced on every move.
   first caller streams while the primary fills, later callers for the same
   digest wait for that fill instead of hitting upstream, and the tap survives
   `ServeContent`'s seek probe, so the blob handler is the same code with and
-  without a cache.
+  without a cache. It is on demand at every level: a tag fetch brings the
+  index alone, the client's next request brings that platform's manifest,
+  and only its layers follow. Nothing pre-fetches the other platforms. For a
+  proxied repository the manifest handler therefore skips the "referenced
+  blobs must exist" check, `Manifest().Put` may record `holds` that are not
+  local, and GC never tries to erase what was never fetched. Tags carry a
+  TTL and are revalidated upstream with a `HEAD`; digests are never
+  revalidated. Cache capacity is a `retention` by last pull, which is why
+  manifest `GET` records `last_pulled_at`, batched and asynchronous.
 - **Blob DELETE.** The spec allows `405 UNSUPPORTED` or a delete. cr deletes
   when `Manifest().Holds` is false and answers `DENIED` when a manifest in the
   repository still holds the blob; deleting it would make that manifest
@@ -356,6 +364,28 @@ deny. Globs: `acme/*`, `acme/app`, `*`. Anonymous is a subject like any other
 (`anonymous`), so public pull is a binding. Groups are whatever the
 authenticator reports: roster teams, OIDC `groups`, or names from config.
 
+A binding may also carry `when`, a set of claim conditions that must all
+hold, values as globs. That is what lets one GitHub Actions workflow, and no
+other, push a repository:
+
+```yaml
+- repo: acme/app
+  actions: [pull, push, tag]
+  when:
+    iss: https://token.actions.githubusercontent.com
+    repository: acme/app
+    workflow_ref: acme/app/.github/workflows/release.yml@refs/heads/main
+```
+
+The job asks GitHub for an ID token with cr's hostname as audience and runs
+`docker login -u oidc -p "$ID_TOKEN"`; cr verifies it against GitHub's
+JWKS, offline. GitHub's token lives minutes and the Docker CLI replays the
+stored password on every push, so long jobs use the exchange first:
+`POST /token/exchange` with the ID token returns a cr-issued token bound to
+the same claims for a configurable lifetime, and that is what goes into
+`docker login`. This is Fulcio's and AWS's trust-policy shape applied to a
+registry, and it is the answer to CI push, not anonymous push.
+
 **Tag rules.** Matched by repository glob and tag pattern, checked on end-7
 and end-9 before anything is written, and read by GC:
 
@@ -378,7 +408,7 @@ since many private deployments never run the token flow.
 | --- | --- | --- |
 | `htpasswd` | a bcrypt file, reloaded on change | username; groups from config |
 | `static` | long-lived tokens in config, for CI **without roster** | the token's name |
-| `oidc` | a JWT pasted as the password: issuer, audience, signature | `sub`, `groups` |
+| `oidc` | a JWT pasted as the password: issuer, audience, signature | `sub`, `groups`, and every claim as a `name=value` group |
 | `roster` | `rt_` keys via `payday.TokenService/Introspect`; passwords via `roster.VouchService/Verify`; teams via `HolderService/Reaches` | `Holder.id`, tenant, team ids |
 
 roster's `Verify` answers `ok=false` plus a continuation when the holder has a
