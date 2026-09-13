@@ -10,6 +10,7 @@ import (
 	ent "github.com/lesomnus/cr/internal/ent"
 	audit "github.com/lesomnus/cr/internal/ent/audit"
 	binding "github.com/lesomnus/cr/internal/ent/binding"
+	gcrun "github.com/lesomnus/cr/internal/ent/gcrun"
 	holder "github.com/lesomnus/cr/internal/ent/holder"
 	manifest "github.com/lesomnus/cr/internal/ent/manifest"
 	manifestblob "github.com/lesomnus/cr/internal/ent/manifestblob"
@@ -319,6 +320,7 @@ func record(ctx context.Context, rec Recorder, db *ent.Client, c Change) error {
 type Scope interface {
 	TenantScope(ctx context.Context) (predicate.Tenant, error)
 	BindingScope(ctx context.Context) (predicate.Binding, error)
+	GcRunScope(ctx context.Context) (predicate.GcRun, error)
 	ManifestScope(ctx context.Context) (predicate.Manifest, error)
 	ManifestBlobScope(ctx context.Context) (predicate.ManifestBlob, error)
 	AuditScope(ctx context.Context) (predicate.Audit, error)
@@ -345,6 +347,9 @@ func (Unscoped) TenantScope(_ context.Context) (predicate.Tenant, error) {
 	return nil, nil
 }
 func (Unscoped) BindingScope(_ context.Context) (predicate.Binding, error) {
+	return nil, nil
+}
+func (Unscoped) GcRunScope(_ context.Context) (predicate.GcRun, error) {
 	return nil, nil
 }
 func (Unscoped) ManifestScope(_ context.Context) (predicate.Manifest, error) {
@@ -429,6 +434,26 @@ func (ss Scopes) BindingScope(ctx context.Context) (predicate.Binding, error) {
 	}
 
 	return binding.And(ps...), nil
+}
+
+func (ss Scopes) GcRunScope(ctx context.Context) (predicate.GcRun, error) {
+	ps := make([]predicate.GcRun, 0, len(ss))
+	for _, s := range ss {
+		p, err := s.GcRunScope(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if p == nil {
+			continue
+		}
+
+		ps = append(ps, p)
+	}
+	if len(ps) == 0 {
+		return nil, nil
+	}
+
+	return gcrun.And(ps...), nil
 }
 
 func (ss Scopes) ManifestScope(ctx context.Context) (predicate.Manifest, error) {
@@ -711,6 +736,7 @@ func (s Server) WithDriver(drv dialect.Driver) (api.Server, error) {
 
 func (s Server) Tenant() api.TenantServiceServer     { return TenantServiceServer{Store: s.Store} }
 func (s Server) Binding() api.BindingServiceServer   { return BindingServiceServer{Store: s.Store} }
+func (s Server) GcRun() api.GcRunServiceServer       { return GcRunServiceServer{Store: s.Store} }
 func (s Server) Manifest() api.ManifestServiceServer { return ManifestServiceServer{Store: s.Store} }
 func (s Server) ManifestBlob() api.ManifestBlobServiceServer {
 	return ManifestBlobServiceServer{Store: s.Store}

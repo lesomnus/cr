@@ -33,6 +33,18 @@ func (f BindingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BindingMutation", m)
 }
 
+// The GcRunFunc type is an adapter to allow the use of ordinary
+// function as GcRun mutator.
+type GcRunFunc func(context.Context, *ent.GcRunMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f GcRunFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.GcRunMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.GcRunMutation", m)
+}
+
 // The HolderFunc type is an adapter to allow the use of ordinary
 // function as Holder mutator.
 type HolderFunc func(context.Context, *ent.HolderMutation) (ent.Value, error)

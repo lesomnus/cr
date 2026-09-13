@@ -16,6 +16,7 @@ import (
 	ent "github.com/lesomnus/cr/internal/ent"
 	audit "github.com/lesomnus/cr/internal/ent/audit"
 	binding "github.com/lesomnus/cr/internal/ent/binding"
+	gcrun "github.com/lesomnus/cr/internal/ent/gcrun"
 	holder "github.com/lesomnus/cr/internal/ent/holder"
 	manifest "github.com/lesomnus/cr/internal/ent/manifest"
 	manifestblob "github.com/lesomnus/cr/internal/ent/manifestblob"
@@ -85,6 +86,7 @@ func Check() error { return version.Same(Payday) }
 const (
 	AuditDomain        pdid.Domain = 3  // "audit"
 	BindingDomain      pdid.Domain = 12 // "binding"
+	GcRunDomain        pdid.Domain = 14 // "gc-run"
 	HolderDomain       pdid.Domain = 2  // "holder"
 	ManifestDomain     pdid.Domain = 9  // "manifest"
 	ManifestBlobDomain pdid.Domain = 10 // "manifest-blob"
@@ -98,6 +100,7 @@ const (
 func init() {
 	pdid.Register("app.Audit", AuditDomain, "audit")
 	pdid.Register("app.Binding", BindingDomain, "binding")
+	pdid.Register("app.GcRun", GcRunDomain, "gc-run")
 	pdid.Register("app.Holder", HolderDomain, "holder")
 	pdid.Register("app.Manifest", ManifestDomain, "manifest")
 	pdid.Register("app.ManifestBlob", ManifestBlobDomain, "manifest-blob")
@@ -115,6 +118,7 @@ func init() {
 var Domains = map[string]pdid.Domain{
 	"app.Audit":        AuditDomain,
 	"app.Binding":      BindingDomain,
+	"app.GcRun":        GcRunDomain,
 	"app.Holder":       HolderDomain,
 	"app.Manifest":     ManifestDomain,
 	"app.ManifestBlob": ManifestBlobDomain,
@@ -185,6 +189,11 @@ func (wall) BindingScope(ctx context.Context) (predicate.Binding, error) {
 	}
 
 	return binding.TenantIdIn(vs...), nil
+}
+
+// GcRunScope: declared `global`, so it is not behind the wall at all.
+func (wall) GcRunScope(ctx context.Context) (predicate.GcRun, error) {
+	return nil, nil
 }
 
 // HolderScope: a row belongs to the tenant its "tenant" reaches.
@@ -924,6 +933,334 @@ func (s sinkBinding) watchBindingKeys(
 		}
 
 		v, err := s.Get(ctx, api.BindingGetRequest_builder{Ref: f.GetRef()}.Build())
+		if err != nil {
+			return nil, err
+		}
+
+		k, err := pdid.From(v.GetId())
+		if err != nil {
+			return nil, err
+		}
+
+		ks = append(ks, k)
+	}
+
+	return ks, nil
+}
+
+type sinkGcRun struct {
+	api.GcRunServiceServer
+	store  bare.Store
+	w      *watch.Watch
+	namer  slug.Namer
+	joined bool
+}
+
+func (s Sink) GcRun() api.GcRunServiceServer {
+	return sinkGcRun{s.Server.GcRun(), s.Server.Store, s.w, s.namer, s.joined}
+}
+
+// orderGcRun is how GcRuns come back.
+//
+// The last column is the key, and it is not decoration: a cursor cannot
+// tell apart two rows equal in every column of the order, so the page after
+// the first of them either repeats the second or skips it. Rows written by
+// one request are stamped a moment apart at best.
+var orderGcRun = []sqlpage.Order{
+	{Column: gcrun.FieldDateCreated, Desc: true},
+	{Column: gcrun.FieldId, Desc: true},
+}
+
+const (
+	// GcRunPageSize is what a request that did not say gets, and
+	// GcRunPageLimit is the most it gets however loudly it asks.
+	GcRunPageSize  = 20
+	GcRunPageLimit = 100
+
+	// GcRunFilterLimit is how many filters one request may carry. Each is a
+	// predicate in the same query, so it is what says how much of the
+	// database a request may ask to read -- and it is refused rather than
+	// clamped, because dropping half the filters would answer a question
+	// nobody asked.
+	GcRunFilterLimit = 32
+)
+
+// List answers with the GcRuns that match any of the given filters, or with
+// every one there is if the request named none, a page at a time.
+func (s sinkGcRun) List(ctx context.Context, req *api.GcRunListRequest) (*api.GcRunListResponse, error) {
+	q := s.store.Db.GcRun.Query()
+
+	// Through the same narrowing every generated read goes through, and not
+	// by asking the scope alone: what narrows a read is the wall today and
+	// the wall and something else tomorrow, and a list that reached past it
+	// would be the one read that missed the something else.
+	if p, err := bare.GcRunNarrow(ctx, s.store.Scope, nil); err != nil {
+		return nil, err
+	} else if p != nil {
+		q.Where(p)
+	}
+
+	if fs := req.GetFilters(); len(fs) > 0 {
+		if len(fs) > GcRunFilterLimit {
+			return nil, status.Errorf(codes.InvalidArgument,
+				"filters: %d of them, and %d is the most one list carries", len(fs), GcRunFilterLimit)
+		}
+
+		ps := make([]predicate.GcRun, 0, len(fs))
+		for i, f := range fs {
+			p, err := filterGcRun(f)
+			if err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "filters[%d]: %s", i, err)
+			}
+
+			ps = append(ps, p)
+		}
+
+		q.Where(gcrun.Or(ps...))
+	}
+
+	if v := req.GetAfter(); v != "" {
+		var (
+			at0 time.Time
+			at1 uuid.UUID
+		)
+		if err := sqlpage.Decode(v, &at0, &at1); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "after: %s", err)
+		}
+
+		p, err := sqlpage.After(orderGcRun, []any{at0, at1})
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "after: %s", err)
+		}
+
+		q.Where(p)
+	}
+
+	// One row more than the page, which is how "is there another" is answered
+	// without a second query and without a count. The extra is dropped before
+	// the answer is built; it was only ever asked for to see whether it was
+	// there -- so a full last page answers with no cursor rather than sending
+	// the caller back for an empty one.
+	size := sqlpage.Size(int(req.GetSize()), GcRunPageSize, GcRunPageLimit)
+	us, err := q.Order(gcrun.ByDateCreated(sql.OrderDesc()), gcrun.ById(sql.OrderDesc())).Limit(size + 1).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	more := len(us) > size
+	if more {
+		us = us[:size]
+	}
+
+	items := make([]*api.GcRun, len(us))
+	for i, u := range us {
+		items[i] = u.Proto()
+	}
+
+	res := api.GcRunListResponse_builder{Items: items}.Build()
+	if more {
+		last := us[len(us)-1]
+		next, err := sqlpage.Encode(last.DateCreated, last.Id)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "next: %s", err)
+		}
+
+		res.SetNext(next)
+	}
+
+	return res, nil
+}
+
+// filterGcRun turns one filter into the predicate that selects what it
+// names. Naming nothing is refused, since the request asked for "these" and
+// did not say which.
+func filterGcRun(f *api.GcRunFilter) (predicate.GcRun, error) {
+	ps := make([]predicate.GcRun, 0, 1)
+	if f.HasRef() {
+		p, err := bare.GcRunPick(f.GetRef())
+		if err != nil {
+			return nil, err
+		}
+
+		ps = append(ps, p)
+	}
+	if f.HasState() {
+		ps = append(ps, gcrun.StateEQ(f.GetState()))
+	}
+	if len(ps) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "a filter that names nothing")
+	}
+
+	return gcrun.And(ps...), nil
+}
+
+// GcRunService is the prefix of every Rpc of that service, which is how a
+// change is known to be about a GcRun. A service is named for the entity it
+// is about, so the name carries it.
+var GcRunService = watch.ServiceOf(api.GcRunService_Get_FullMethodName)
+
+// Watch answers with the GcRuns this caller may see, as they are now and as
+// they change.
+//
+// What is sent is **state and never a delta**, which is what makes a stream
+// that missed something still correct: the next item about a row carries the
+// whole of it, so a client converges rather than replays. It is also what
+// makes the first message safe to duplicate against the ones after it.
+func (s sinkGcRun) Watch(req *api.GcRunWatchRequest, out grpc.ServerStreamingServer[api.GcRunWatchResponse]) error {
+	ctx := out.Context()
+
+	// A watch with no filters is the whole table, forever. It is the one
+	// shape that has no cap at all, so it is the one shape refused.
+	fs := req.GetFilters()
+	switch {
+	case len(fs) == 0:
+		return status.Error(codes.InvalidArgument,
+			"filters: a watch says which rows it is about; one that says nothing is the whole table, for as long as it is open")
+	case len(fs) > GcRunFilterLimit:
+		return status.Errorf(codes.InvalidArgument,
+			"filters: %d of them, and %d is the most one watch carries", len(fs), GcRunFilterLimit)
+	}
+
+	// Resolved before anything is subscribed to, so a name that names
+	// nothing is an answer rather than a stream that quietly watches none.
+	watching, err := s.watchGcRunKeys(ctx, fs)
+	if err != nil {
+		return err
+	}
+
+	var snapshot func(watch.Seen) error
+	if !req.GetSkipSnapshot() {
+		snapshot = func(sent watch.Seen) error { return s.watchNow(ctx, req, out, sent) }
+	}
+
+	if s.w == nil {
+		return status.Error(codes.Unimplemented,
+			"this deployment publishes no changes; see WithWatch")
+	}
+
+	return watch.Stream(ctx, s.w, GcRunService, snapshot,
+		func(ks map[pdid.Id]string, sent watch.Seen) error {
+			items := make([]*api.GcRunWatchItem, 0, len(ks))
+			for k, action := range ks {
+				u, err := s.watchRead(ctx, watching, k)
+				if err != nil {
+					return err
+				}
+				if u == nil && !sent[k] {
+					// Not theirs, or not what they asked for, and they
+					// have never been told about it. A row that never
+					// matched is not news.
+					continue
+				}
+
+				sent[k] = u != nil
+				items = append(items, api.GcRunWatchItem_builder{
+					Id:     k.Bytes(),
+					Value:  u,
+					Action: action,
+				}.Build())
+			}
+			if len(items) == 0 {
+				return nil
+			}
+
+			return out.Send(api.GcRunWatchResponse_builder{Items: items}.Build())
+		})
+}
+
+// watchNow sends what matches right now, through the same List a caller
+// would have called -- so what a stream begins with and what a list answers
+// cannot disagree, and a client does not have to do both and race them.
+func (s sinkGcRun) watchNow(
+	ctx context.Context, req *api.GcRunWatchRequest, out grpc.ServerStreamingServer[api.GcRunWatchResponse],
+	sent watch.Seen,
+) error {
+	after := ""
+	for {
+		res, err := s.List(ctx, api.GcRunListRequest_builder{
+			Filters: req.GetFilters(),
+			After:   after,
+		}.Build())
+		if err != nil {
+			return err
+		}
+
+		items := make([]*api.GcRunWatchItem, 0, len(res.GetItems()))
+		for _, u := range res.GetItems() {
+			k, err := pdid.From(u.GetId())
+			if err != nil {
+				return err
+			}
+
+			sent[k] = true
+			// No action: this is not something anybody asked for, it is
+			// what is already there.
+			items = append(items, api.GcRunWatchItem_builder{Id: u.GetId(), Value: u}.Build())
+		}
+		if len(items) > 0 {
+			if err := out.Send(api.GcRunWatchResponse_builder{Items: items}.Build()); err != nil {
+				return err
+			}
+		}
+
+		if after = res.GetNext(); after == "" {
+			return nil
+		}
+	}
+}
+
+// watchRead answers with the row as it is now, or nil when it is no longer
+// one this caller may see -- erased, walled off, or no longer matching what
+// they asked for. The three are deliberately indistinguishable to a caller:
+// a stream that told them apart would be saying which rows stopped being
+// theirs, which is the thing the wall is for.
+//
+// The Get is what keeps the wall out of this file. It goes through the same
+// server every other read does, with the context of the caller who asked, so
+// a row they may not see comes back NotFound and is never sent.
+func (s sinkGcRun) watchRead(
+	ctx context.Context, watching []pdid.Id, k pdid.Id,
+) (*api.GcRun, error) {
+	// Not one of the rows this stream is about. Asked before the read, so a
+	// busy table costs a stream nothing for the rows it does not watch.
+	if !slices.Contains(watching, k) {
+		return nil, nil
+	}
+
+	v, err := s.Get(ctx, api.GcRunGetRequest_builder{
+		Ref: api.GcRunRef_builder{Id: k.Bytes()}.Build(),
+	}.Build())
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	return v, nil
+}
+
+// watchGcRunKeys is the rows a stream is about, resolved once when it opens.
+//
+// A filter names a row and a row is named several ways -- by identifier, or
+// by whatever unique index the schema declared. Resolving them here rather
+// than comparing them per event does three things: the comparison afterwards
+// is an identifier against an identifier, a name that names nothing is
+// refused when the stream opens rather than silently watching nothing, and a
+// row renamed while the stream is open goes on being the row that was asked
+// for -- which is what somebody watching a thing meant.
+func (s sinkGcRun) watchGcRunKeys(
+	ctx context.Context, fs []*api.GcRunFilter,
+) ([]pdid.Id, error) {
+	ks := make([]pdid.Id, 0, len(fs))
+	for i, f := range fs {
+		if !f.HasRef() {
+			return nil, status.Errorf(codes.InvalidArgument,
+				"filters[%d]: a watch says which rows it is about by naming them", i)
+		}
+
+		v, err := s.Get(ctx, api.GcRunGetRequest_builder{Ref: f.GetRef()}.Build())
 		if err != nil {
 			return nil, err
 		}
@@ -3977,6 +4314,30 @@ func (s interceptBinding) Watch(req *api.BindingWatchRequest, out grpc.ServerStr
 		api.BindingService_Watch_FullMethodName, req, out, s.BindingServiceServer.Watch)
 }
 
+func (s Intercept) GcRun() api.GcRunServiceServer {
+	return interceptGcRun{s, s.Next().GcRun()}
+}
+
+type interceptGcRun struct {
+	Intercept
+	api.GcRunServiceServer
+}
+
+func (s interceptGcRun) Get(ctx context.Context, req *api.GcRunGetRequest) (*api.GcRun, error) {
+	return grpcx.RunUnary(ctx, s.unary, s.GcRunServiceServer,
+		api.GcRunService_Get_FullMethodName, req, s.GcRunServiceServer.Get)
+}
+
+func (s interceptGcRun) List(ctx context.Context, req *api.GcRunListRequest) (*api.GcRunListResponse, error) {
+	return grpcx.RunUnary(ctx, s.unary, s.GcRunServiceServer,
+		api.GcRunService_List_FullMethodName, req, s.GcRunServiceServer.List)
+}
+
+func (s interceptGcRun) Watch(req *api.GcRunWatchRequest, out grpc.ServerStreamingServer[api.GcRunWatchResponse]) error {
+	return grpcx.RunStream(s.stream, s.GcRunServiceServer,
+		api.GcRunService_Watch_FullMethodName, req, out, s.GcRunServiceServer.Watch)
+}
+
 func (s Intercept) ManifestBlob() api.ManifestBlobServiceServer {
 	return interceptManifestBlob{s, s.Next().ManifestBlob()}
 }
@@ -4876,6 +5237,32 @@ func dispatch(ctx context.Context, s api.Server, op *pdpb.Op) (*anypb.Any, error
 		}
 
 		res, err := s.Binding().List(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+
+		return anypb.New(res)
+
+	case api.GcRunService_Get_FullMethodName:
+		v := &api.GcRunGetRequest{}
+		if err := op.GetRequest().UnmarshalTo(v); err != nil {
+			return nil, batch.ErrRequest(m, err)
+		}
+
+		res, err := s.GcRun().Get(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+
+		return anypb.New(res)
+
+	case api.GcRunService_List_FullMethodName:
+		v := &api.GcRunListRequest{}
+		if err := op.GetRequest().UnmarshalTo(v); err != nil {
+			return nil, batch.ErrRequest(m, err)
+		}
+
+		res, err := s.GcRun().List(ctx, v)
 		if err != nil {
 			return nil, err
 		}

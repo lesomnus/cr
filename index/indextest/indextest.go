@@ -29,6 +29,7 @@ func Run(t *testing.T, open Open) {
 	t.Run("tags", func(t *testing.T) { testTags(t, open(t, 0)) })
 	t.Run("tx rolls back", func(t *testing.T) { testRollback(t, open(t, 0)) })
 	t.Run("tx busy", func(t *testing.T) { testBusy(t, open(t, 100*time.Millisecond)) })
+	t.Run("lock", func(t *testing.T) { testLock(t, open(t, 100*time.Millisecond)) })
 	t.Run("marks", func(t *testing.T) { testMarks(t, open(t, 0)) })
 	t.Run("pulled", func(t *testing.T) { testPulled(t, open(t, 0)) })
 }
@@ -320,4 +321,23 @@ func testPulled(t *testing.T, ix index.Index) {
 	tag, err := ix.Tag().Get(ctx, "r", "latest")
 	require.NoError(t, err)
 	require.True(t, at.Equal(tag.PulledAt))
+}
+
+// testLock is the lock held outside a transaction keeping out a transaction
+// that wants it, and a second lock.
+func testLock(t *testing.T, ix index.Index) {
+	ctx := context.Background()
+	unlock, err := ix.Lock(ctx, "r")
+	require.NoError(t, err)
+
+	err = ix.Tx(ctx, "r", func(index.Index) error { return nil })
+	require.ErrorIs(t, err, index.ErrBusy)
+	_, err = ix.Lock(ctx, "r")
+	require.ErrorIs(t, err, index.ErrBusy)
+
+	unlock()
+	require.NoError(t, ix.Tx(ctx, "r", func(index.Index) error { return nil }))
+	unlock, err = ix.Lock(ctx, "r")
+	require.NoError(t, err)
+	unlock()
 }

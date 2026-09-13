@@ -1,0 +1,80 @@
+edition = "2023";
+
+package app;
+
+import "google/protobuf/timestamp.proto";
+import "orm.proto";
+import "payday.proto";
+
+option features.field_presence = IMPLICIT;
+option go_package = "github.com/lesomnus/cr/api";
+
+// GcRun is one run of garbage collection and what it did: the record behind
+// `GET /admin/gc/<id>`, and the history of a deployment's collections.
+message GcRun {
+  bytes id = 1 [(orm.field) = {
+    type: TYPE_UUID
+    key: true
+    default: ""
+  }];
+
+  // online, which runs on its own ticker, or full, which also sweeps every
+  // repository's store.
+  string kind = 8;
+
+  // schedule, admin or cli: what started it.
+  string trigger = 9;
+
+  // running, done or failed. A run whose process died stays running; the
+  // time it started says how stale that is.
+  string state = 10;
+
+  // The first failure, when there was one.
+  string error = 11;
+
+  int64 stages = 12;
+  int64 tags = 16;
+  int64 manifests = 17;
+  int64 repositories = 18;
+  int64 blobs = 19;
+  int64 bytes = 20;
+
+  // `repo@digest` of the manifests the index has and the store does not.
+  repeated string missing = 21;
+
+  google.protobuf.Timestamp date_finished = 22 [(orm.field) = {nullable: true}];
+
+  google.protobuf.Timestamp date_updated = 13 [(orm.field) = {version: {}}];
+
+  google.protobuf.Timestamp date_created = 15 [(orm.field) = {
+    immutable: true
+    default: ""
+  }];
+
+  // Written by the collector and read here.
+  option (orm.message) = {
+    rpc: {crud: true, add: {disabled: true}, patch: {disabled: true}, erase: {disabled: true}}
+    indexes: [
+      {
+        name: "page"
+        refs: [
+          {name: "date_created", number: 15},
+          {name: "id", number: 1}
+        ]
+      }
+    ]
+  };
+  option (payday.entity) = {
+    domain: 14
+    global: {}
+    erase: {hard: {}}
+
+    list: {
+      order: [{field: {name: "date_created"}, desc: true}, {field: {name: "id"}, desc: true}]
+      by: [{name: "ref"}, {name: "state"}]
+      size: 20
+      max: 100
+    }
+    watch: {}
+  };
+}

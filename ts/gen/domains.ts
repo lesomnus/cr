@@ -18,6 +18,9 @@ export const AuditDomain = 3
 /** The domain identifiers of app.Binding carry. */
 export const BindingDomain = 12
 
+/** The domain identifiers of app.GcRun carry. */
+export const GcRunDomain = 14
+
 /** The domain identifiers of app.Holder carry. */
 export const HolderDomain = 2
 
@@ -46,6 +49,7 @@ export const TenantDomain = 1
 // whole of what an app does with it.
 pdid.register("app.Audit", AuditDomain, "audit")
 pdid.register("app.Binding", BindingDomain, "binding")
+pdid.register("app.GcRun", GcRunDomain, "gc-run")
 pdid.register("app.Holder", HolderDomain, "holder")
 pdid.register("app.Manifest", ManifestDomain, "manifest")
 pdid.register("app.ManifestBlob", ManifestBlobDomain, "manifest-blob")

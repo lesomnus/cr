@@ -12,6 +12,9 @@ type Audit func(*sql.Selector)
 // Binding is the predicate function for binding builders.
 type Binding func(*sql.Selector)
 
+// GcRun is the predicate function for gcrun builders.
+type GcRun func(*sql.Selector)
+
 // Holder is the predicate function for holder builders.
 type Holder func(*sql.Selector)
 

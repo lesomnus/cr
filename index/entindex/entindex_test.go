@@ -68,7 +68,7 @@ func openPostgres(t *testing.T, wait time.Duration) *entindex.Index {
 
 func TestSqlite(t *testing.T) {
 	indextest.Run(t, func(t *testing.T, wait time.Duration) index.Index { return openSqlite(t, wait) })
-	t.Run("lock", func(t *testing.T) { testLock(t, openSqlite(t, 100*time.Millisecond)) })
+	t.Run("other repository", func(t *testing.T) { testOtherRepository(t, openSqlite(t, 100*time.Millisecond)) })
 }
 
 func TestPostgres(t *testing.T) {
@@ -76,29 +76,22 @@ func TestPostgres(t *testing.T) {
 		t.Skip("CR_TEST_POSTGRES is not set")
 	}
 	indextest.Run(t, func(t *testing.T, wait time.Duration) index.Index { return openPostgres(t, wait) })
-	t.Run("lock", func(t *testing.T) { testLock(t, openPostgres(t, 100*time.Millisecond)) })
+	t.Run("other repository", func(t *testing.T) { testOtherRepository(t, openPostgres(t, 100*time.Millisecond)) })
 	t.Run("lead", func(t *testing.T) { testLead(t, openPostgres(t, 0)) })
 }
 
-// testLock is the lock held outside a transaction keeping out a transaction
-// that wants it, and not one that does not.
-func testLock(t *testing.T, ix *entindex.Index) {
+// testOtherRepository is a lock that keeps out its own repository's writers
+// and not another's. Not in the shared suite: the memory index has one lock.
+func testOtherRepository(t *testing.T, ix *entindex.Index) {
 	ctx := context.Background()
 	unlock, err := ix.Lock(ctx, "r")
 	require.NoError(t, err)
+	defer unlock()
 
-	err = ix.Tx(ctx, "r", func(index.Index) error { return nil })
-	require.ErrorIs(t, err, index.ErrBusy)
-	_, err = ix.Lock(ctx, "r")
-	require.ErrorIs(t, err, index.ErrBusy)
-
-	require.NoError(t, ix.Tx(ctx, "other", func(tx index.Index) error {
-		_, err := tx.Repo().Ensure(ctx, "other")
+	require.NoError(t, ix.Tx(ctx, "an-other-repository", func(tx index.Index) error {
+		_, err := tx.Repo().Ensure(ctx, "an-other-repository")
 		return err
 	}))
-
-	unlock()
-	require.NoError(t, ix.Tx(ctx, "r", func(index.Index) error { return nil }))
 }
 
 func testLead(t *testing.T, ix *entindex.Index) {

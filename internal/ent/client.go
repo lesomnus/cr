@@ -12,6 +12,7 @@ import (
 
 	"github.com/lesomnus/cr/internal/ent/audit"
 	"github.com/lesomnus/cr/internal/ent/binding"
+	"github.com/lesomnus/cr/internal/ent/gcrun"
 	"github.com/lesomnus/cr/internal/ent/holder"
 	"github.com/lesomnus/cr/internal/ent/manifest"
 	"github.com/lesomnus/cr/internal/ent/manifestblob"
@@ -33,6 +34,8 @@ type Client struct {
 	Audit *AuditClient
 	// Binding is the client for interacting with the Binding builders.
 	Binding *BindingClient
+	// GcRun is the client for interacting with the GcRun builders.
+	GcRun *GcRunClient
 	// Holder is the client for interacting with the Holder builders.
 	Holder *HolderClient
 	// Manifest is the client for interacting with the Manifest builders.
@@ -61,6 +64,7 @@ func NewClient(opts ...Option) *Client {
 func (c *Client) init() {
 	c.Audit = NewAuditClient(c.config)
 	c.Binding = NewBindingClient(c.config)
+	c.GcRun = NewGcRunClient(c.config)
 	c.Holder = NewHolderClient(c.config)
 	c.Manifest = NewManifestClient(c.config)
 	c.ManifestBlob = NewManifestBlobClient(c.config)
@@ -163,6 +167,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		config:       cfg,
 		Audit:        NewAuditClient(cfg),
 		Binding:      NewBindingClient(cfg),
+		GcRun:        NewGcRunClient(cfg),
 		Holder:       NewHolderClient(cfg),
 		Manifest:     NewManifestClient(cfg),
 		ManifestBlob: NewManifestBlobClient(cfg),
@@ -192,6 +197,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		config:       cfg,
 		Audit:        NewAuditClient(cfg),
 		Binding:      NewBindingClient(cfg),
+		GcRun:        NewGcRunClient(cfg),
 		Holder:       NewHolderClient(cfg),
 		Manifest:     NewManifestClient(cfg),
 		ManifestBlob: NewManifestBlobClient(cfg),
@@ -275,7 +281,7 @@ func (c *Client) InTx() bool {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.Audit, c.Binding, c.Holder, c.Manifest, c.ManifestBlob, c.Outbox,
+		c.Audit, c.Binding, c.GcRun, c.Holder, c.Manifest, c.ManifestBlob, c.Outbox,
 		c.Repository, c.Tag, c.TagRule, c.Tenant,
 	} {
 		n.Use(hooks...)
@@ -286,7 +292,7 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.Audit, c.Binding, c.Holder, c.Manifest, c.ManifestBlob, c.Outbox,
+		c.Audit, c.Binding, c.GcRun, c.Holder, c.Manifest, c.ManifestBlob, c.Outbox,
 		c.Repository, c.Tag, c.TagRule, c.Tenant,
 	} {
 		n.Intercept(interceptors...)
@@ -300,6 +306,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Audit.mutate(ctx, m)
 	case *BindingMutation:
 		return c.Binding.mutate(ctx, m)
+	case *GcRunMutation:
+		return c.GcRun.mutate(ctx, m)
 	case *HolderMutation:
 		return c.Holder.mutate(ctx, m)
 	case *ManifestMutation:
@@ -600,6 +608,139 @@ func (c *BindingClient) mutate(ctx context.Context, m *BindingMutation) (Value, 
 		return (&BindingDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Binding mutation op: %q", m.Op())
+	}
+}
+
+// GcRunClient is a client for the GcRun schema.
+type GcRunClient struct {
+	config
+}
+
+// NewGcRunClient returns a client for the GcRun from the given config.
+func NewGcRunClient(c config) *GcRunClient {
+	return &GcRunClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `gcrun.Hooks(f(g(h())))`.
+func (c *GcRunClient) Use(hooks ...Hook) {
+	c.hooks.GcRun = append(c.hooks.GcRun, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `gcrun.Intercept(f(g(h())))`.
+func (c *GcRunClient) Intercept(interceptors ...Interceptor) {
+	c.inters.GcRun = append(c.inters.GcRun, interceptors...)
+}
+
+// Create returns a builder for creating a GcRun entity.
+func (c *GcRunClient) Create() *GcRunCreate {
+	mutation := newGcRunMutation(c.config, OpCreate)
+	return &GcRunCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of GcRun entities.
+func (c *GcRunClient) CreateBulk(builders ...*GcRunCreate) *GcRunCreateBulk {
+	return &GcRunCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *GcRunClient) MapCreateBulk(slice any, setFunc func(*GcRunCreate, int)) *GcRunCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &GcRunCreateBulk{err: fmt.Errorf("calling to GcRunClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*GcRunCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &GcRunCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for GcRun.
+func (c *GcRunClient) Update() *GcRunUpdate {
+	mutation := newGcRunMutation(c.config, OpUpdate)
+	return &GcRunUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *GcRunClient) UpdateOne(_m *GcRun) *GcRunUpdateOne {
+	mutation := newGcRunMutation(c.config, OpUpdateOne, withGcRun(_m))
+	return &GcRunUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneId returns an update builder for the given id.
+func (c *GcRunClient) UpdateOneId(id uuid.UUID) *GcRunUpdateOne {
+	mutation := newGcRunMutation(c.config, OpUpdateOne, withGcRunId(id))
+	return &GcRunUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for GcRun.
+func (c *GcRunClient) Delete() *GcRunDelete {
+	mutation := newGcRunMutation(c.config, OpDelete)
+	return &GcRunDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *GcRunClient) DeleteOne(_m *GcRun) *GcRunDeleteOne {
+	return c.DeleteOneId(_m.Id)
+}
+
+// DeleteOneId returns a builder for deleting the given entity by its id.
+func (c *GcRunClient) DeleteOneId(id uuid.UUID) *GcRunDeleteOne {
+	builder := c.Delete().Where(gcrun.Id(id))
+	builder.mutation.id = &id
+	builder.mutation.SetOp(OpDeleteOne)
+	return &GcRunDeleteOne{builder}
+}
+
+// Query returns a query builder for GcRun.
+func (c *GcRunClient) Query() *GcRunQuery {
+	return &GcRunQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeGcRun},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a GcRun entity by its id.
+func (c *GcRunClient) Get(ctx context.Context, id uuid.UUID) (*GcRun, error) {
+	return c.Query().Where(gcrun.Id(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *GcRunClient) GetX(ctx context.Context, id uuid.UUID) *GcRun {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *GcRunClient) Hooks() []Hook {
+	return c.hooks.GcRun
+}
+
+// Interceptors returns the client interceptors.
+func (c *GcRunClient) Interceptors() []Interceptor {
+	return c.inters.GcRun
+}
+
+func (c *GcRunClient) mutate(ctx context.Context, m *GcRunMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&GcRunCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&GcRunUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&GcRunUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&GcRunDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown GcRun mutation op: %q", m.Op())
 	}
 }
 
@@ -1702,11 +1843,11 @@ func (c *TenantClient) mutate(ctx context.Context, m *TenantMutation) (Value, er
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Audit, Binding, Holder, Manifest, ManifestBlob, Outbox, Repository, Tag,
+		Audit, Binding, GcRun, Holder, Manifest, ManifestBlob, Outbox, Repository, Tag,
 		TagRule, Tenant []ent.Hook
 	}
 	inters struct {
-		Audit, Binding, Holder, Manifest, ManifestBlob, Outbox, Repository, Tag,
+		Audit, Binding, GcRun, Holder, Manifest, ManifestBlob, Outbox, Repository, Tag,
 		TagRule, Tenant []ent.Interceptor
 	}
 )

@@ -12,6 +12,7 @@ import (
 	"github.com/lesomnus/cr/blob"
 	"github.com/lesomnus/cr/cmd"
 	"github.com/lesomnus/cr/gc"
+	"github.com/lesomnus/cr/gc/entruns"
 	"github.com/lesomnus/cr/httpx"
 	"github.com/lesomnus/cr/index/entindex"
 	"github.com/lesomnus/cr/registry"
@@ -39,6 +40,21 @@ func Registry(ctx context.Context, c *cmd.Config, s *cmd.Server) error {
 		return err
 	}
 
+	var policy func() *auth.Policy
+	if guard != nil {
+		policy = guard.Policy.Current
+	}
+	collector := gc.New(gc.Config{
+		Stores:    stores,
+		Index:     ix,
+		Policy:    policy,
+		Untagged:  c.Registry.Gc.Untagged,
+		Every:     c.Registry.Gc.Every,
+		FullEvery: c.Registry.Gc.FullEvery,
+		Leader:    ix,
+		Runs:      entruns.New(s.Ent),
+	})
+
 	reg := registry.New(registry.Config{
 		Stores:           stores,
 		Index:            ix,
@@ -47,19 +63,7 @@ func Registry(ctx context.Context, c *cmd.Config, s *cmd.Server) error {
 		Guard:            guard,
 		Redirect:         c.Registry.Storage.Redirect.Enabled,
 		RedirectTTL:      c.Registry.Storage.Redirect.Ttl,
-	})
-
-	var policy func() *auth.Policy
-	if guard != nil {
-		policy = guard.Policy.Current
-	}
-	collector := gc.New(gc.Config{
-		Stores:   stores,
-		Index:    ix,
-		Policy:   policy,
-		Untagged: c.Registry.Gc.Untagged,
-		Every:    c.Registry.Gc.Every,
-		Leader:   ix,
+		Collector:        collector,
 	})
 
 	instrument := func(h http.Handler) http.Handler {
@@ -70,6 +74,7 @@ func Registry(ctx context.Context, c *cmd.Config, s *cmd.Server) error {
 	}
 	s.Routes["/v2/"] = instrument(reg)
 	s.Routes["/v1/"] = instrument(reg.V1())
+	s.Routes["/admin/"] = instrument(reg.Admin())
 	if guard != nil {
 		s.Routes["/token"] = instrument(http.HandlerFunc(guard.ServeToken))
 		s.Routes["/.well-known/jwks.json"] = instrument(http.HandlerFunc(guard.ServeJWKS))

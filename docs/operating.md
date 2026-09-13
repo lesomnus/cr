@@ -89,11 +89,12 @@ different stores is a copy.
 ```yaml
 registry:
   gc:
-    every: 1h        # negative never runs it
-    untagged: 168h   # zero keeps untagged manifests
+    every: 1h          # the online collection; negative never runs it
+    untagged: 168h     # zero keeps untagged manifests
+    full_every: 168h   # the full collection; zero never
 ```
 
-Every `every`, one replica, chosen by a PostgreSQL advisory lock, collects:
+**Online**, every `every`, on one replica chosen by a PostgreSQL advisory lock:
 
 - uploads past `upload.ttl`;
 - tags that every `retention` rule matching them puts past its `keep`, newest
@@ -104,6 +105,50 @@ Every `every`, one replica, chosen by a PostgreSQL advisory lock, collects:
 
 Every step removes a reference the index no longer has, so a push racing it can
 leave a blob behind and cannot lose one.
+
+**Full** is the online collection and then a mark-and-sweep of every
+repository, one at a time: holding that repository's lock, it marks everything
+the index says the repository holds, walks the repository's store, and erases
+the rest. It is what reclaims what the online collection leaks. There is no
+read-only window. Pulls, blob uploads and every other repository carry on; a
+manifest push to the repository being swept waits for the lock, and past
+`lock_wait` is answered `503` with `Retry-After`. A blob uploaded to that
+repository during its sweep may be erased before its manifest arrives, and that
+push fails with `MANIFEST_BLOB_UNKNOWN` and uploads again.
+
+A sweep also reports the manifests the index has and the store does not, as
+`repo@digest` in the run's `missing`; nothing repairs those.
+
+Run one when you like:
+
+```sh
+curl -X POST -u admin:... https://cr.example.com/admin/gc     # 202 and the run
+curl -u admin:... https://cr.example.com/admin/gc/<id>        # how it went
+curl -u admin:... https://cr.example.com/admin/gc             # the recent runs
+cr gc --full                                                  # from the host
+```
+
+The endpoints need `admin` from a binding over `*`. A second `POST` while this
+replica runs one answers `409` with the run in progress. Every run, online and
+full, is a `GcRun` row: `cr gc-run ls -o table`.
+
+`cr gc` runs in its own process. On PostgreSQL it takes the same locks the
+server does. On SQLite the locks are the serving process's, so `cr gc` refuses
+unless the server is stopped and `--offline` says so.
+
+## Rebuilding the index
+
+```sh
+cr index rebuild
+```
+
+reads every repository's namespace in the store and puts back what it finds:
+repositories, manifests and what they hold, and the tags each manifest carries
+as labels. It only adds, so it runs over an empty database or a partial one.
+What the store does not keep is lost: when a manifest was pushed and pulled, a
+repository's description, and bindings and tag rules, which are rows of their
+own. On S3 the tags live in object metadata, which AWS caps at 2 KB, so a
+manifest with a great many tags gives back only the ones that fit.
 
 ## Health and telemetry
 

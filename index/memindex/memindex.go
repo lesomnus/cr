@@ -15,12 +15,16 @@ import (
 	"github.com/lesomnus/cr/index"
 )
 
-// Index keeps everything behind one lock, which a transaction holds for its
-// whole length. That is stricter than the per-repository lock the port asks
-// for, and indistinguishable from it in a test.
+// Index keeps its state behind one lock, which a transaction holds for its
+// whole length and a read for its own. The repository locks are apart from
+// it, as they are in a database: a transaction takes its repository's before
+// the state's, and Lock takes only the repository's, so a sweep holding one
+// can still read.
 type Index struct {
 	sem chan struct{}
 	s   *state
+
+	repos chan map[string]chan struct{}
 
 	// Wait bounds how long a [index.Index.Tx] waits for the lock before it is
 	// [index.ErrBusy]; zero waits for as long as the context allows.
@@ -33,7 +37,9 @@ type Index struct {
 var _ index.Index = (*Index)(nil)
 
 func New() *Index {
-	return &Index{sem: make(chan struct{}, 1), s: newState()}
+	repos := make(chan map[string]chan struct{}, 1)
+	repos <- map[string]chan struct{}{}
+	return &Index{sem: make(chan struct{}, 1), s: newState(), repos: repos}
 }
 
 type entry struct {
@@ -74,14 +80,14 @@ func (ix *Index) now() time.Time {
 	return time.Now()
 }
 
-func (ix *Index) lock(ctx context.Context) error {
+func (ix *Index) acquire(ctx context.Context, c chan struct{}) error {
 	if ix.Wait > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, ix.Wait)
 		defer cancel()
 	}
 	select {
-	case ix.sem <- struct{}{}:
+	case c <- struct{}{}:
 		return nil
 	case <-ctx.Done():
 		if ix.Wait > 0 && ctx.Err() == context.DeadlineExceeded {
@@ -91,7 +97,21 @@ func (ix *Index) lock(ctx context.Context) error {
 	}
 }
 
+func (ix *Index) lock(ctx context.Context) error { return ix.acquire(ctx, ix.sem) }
+
 func (ix *Index) unlock() { <-ix.sem }
+
+// repo is the lock of the repository called name.
+func (ix *Index) repo(name string) chan struct{} {
+	m := <-ix.repos
+	defer func() { ix.repos <- m }()
+	c, ok := m[name]
+	if !ok {
+		c = make(chan struct{}, 1)
+		m[name] = c
+	}
+	return c
+}
 
 // view is the Index as a transaction sees it when s is set, and as everyone
 // else does when it is not.
@@ -120,14 +140,36 @@ func (ix *Index) Tx(ctx context.Context, repo string, fn func(index.Index) error
 	return view{ix: ix}.Tx(ctx, repo, fn)
 }
 
+func (ix *Index) Lock(ctx context.Context, repo string) (func(), error) {
+	c := ix.repo(repo)
+	if err := ix.acquire(ctx, c); err != nil {
+		return nil, err
+	}
+	return func() { <-c }, nil
+}
+
 func (v view) Repo() index.Repos         { return repos(v) }
 func (v view) Manifest() index.Manifests { return manifests(v) }
 func (v view) Tag() index.Tags           { return tags(v) }
 func (v view) Pulled() index.Pulled      { return pulled(v) }
 
+func (v view) Lock(ctx context.Context, repo string) (func(), error) {
+	if v.s != nil {
+		return func() {}, nil
+	}
+	return v.ix.Lock(ctx, repo)
+}
+
 func (v view) Tx(ctx context.Context, repo string, fn func(index.Index) error) error {
 	if v.s != nil {
 		return fn(v)
+	}
+	if repo != "" {
+		c := v.ix.repo(repo)
+		if err := v.ix.acquire(ctx, c); err != nil {
+			return err
+		}
+		defer func() { <-c }()
 	}
 	if err := v.ix.lock(ctx); err != nil {
 		return err

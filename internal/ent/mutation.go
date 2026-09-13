@@ -12,6 +12,7 @@ import (
 
 	"github.com/lesomnus/cr/internal/ent/audit"
 	"github.com/lesomnus/cr/internal/ent/binding"
+	"github.com/lesomnus/cr/internal/ent/gcrun"
 	"github.com/lesomnus/cr/internal/ent/holder"
 	"github.com/lesomnus/cr/internal/ent/manifest"
 	"github.com/lesomnus/cr/internal/ent/manifestblob"
@@ -34,6 +35,7 @@ const (
 	// Node types.
 	TypeAudit        = "Audit"
 	TypeBinding      = "Binding"
+	TypeGcRun        = "GcRun"
 	TypeHolder       = "Holder"
 	TypeManifest     = "Manifest"
 	TypeManifestBlob = "ManifestBlob"
@@ -700,6 +702,392 @@ func (m *BindingMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldTenantId(ctx)
 	}
 	return nil, fmt.Errorf("unknown Binding field %s", name)
+}
+
+// GcRunMutation represents an operation that mutates the GcRun nodes in the graph.
+type GcRunMutation struct {
+	gcrun.Mutation
+	config
+	id       *uuid.UUID
+	done     bool
+	oldValue func(context.Context) (*GcRun, error)
+}
+
+var _ ent.Mutation = (*GcRunMutation)(nil)
+
+// gcrunOption allows management of the mutation configuration using functional options.
+type gcrunOption func(*GcRunMutation)
+
+// newGcRunMutation creates new mutation for the GcRun entity.
+func newGcRunMutation(c config, op Op, opts ...gcrunOption) *GcRunMutation {
+	m := &GcRunMutation{
+		Mutation: *gcrun.NewMutation(op),
+		config:   c,
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// SetId sets the value of the id field. Note that this
+// operation is only accepted on creation of GcRun entities.
+func (m *GcRunMutation) SetId(id uuid.UUID) {
+	m.id = &id
+}
+
+// Id returns the Id value in the mutation. Note that the Id is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *GcRunMutation) Id() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// withGcRunId sets the Id field of the mutation.
+func withGcRunId(id uuid.UUID) gcrunOption {
+	return func(m *GcRunMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *GcRun
+		)
+		m.oldValue = func(ctx context.Context) (*GcRun, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().GcRun.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withGcRun sets the old GcRun of the mutation.
+func withGcRun(node *GcRun) gcrunOption {
+	return func(m *GcRunMutation) {
+		m.oldValue = func(context.Context) (*GcRun, error) {
+			return node, nil
+		}
+		m.id = &node.Id
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m GcRunMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m GcRunMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// Ids queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *GcRunMutation) Ids(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.Op().Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.Id()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.Op().Is(OpUpdate | OpDelete):
+		return m.Client().GcRun.Query().Where(m.Predicates()...).Ids(ctx)
+	default:
+		return nil, fmt.Errorf("Ids is not allowed on %s operations", m.Op())
+	}
+}
+
+// OldKind returns the old "kind" field's value of the GcRun entity.
+// If the GcRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GcRunMutation) OldKind(ctx context.Context) (v string, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldKind is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldKind requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldKind: %w", err)
+	}
+	return oldValue.Kind, nil
+}
+
+// OldTrigger returns the old "trigger" field's value of the GcRun entity.
+// If the GcRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GcRunMutation) OldTrigger(ctx context.Context) (v string, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldTrigger is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldTrigger requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTrigger: %w", err)
+	}
+	return oldValue.Trigger, nil
+}
+
+// OldState returns the old "state" field's value of the GcRun entity.
+// If the GcRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GcRunMutation) OldState(ctx context.Context) (v string, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldState is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldState requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldState: %w", err)
+	}
+	return oldValue.State, nil
+}
+
+// OldError returns the old "error" field's value of the GcRun entity.
+// If the GcRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GcRunMutation) OldError(ctx context.Context) (v string, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldError is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldError requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldError: %w", err)
+	}
+	return oldValue.Error, nil
+}
+
+// OldStages returns the old "stages" field's value of the GcRun entity.
+// If the GcRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GcRunMutation) OldStages(ctx context.Context) (v int64, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldStages is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldStages requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStages: %w", err)
+	}
+	return oldValue.Stages, nil
+}
+
+// OldTags returns the old "tags" field's value of the GcRun entity.
+// If the GcRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GcRunMutation) OldTags(ctx context.Context) (v int64, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldTags is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldTags requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTags: %w", err)
+	}
+	return oldValue.Tags, nil
+}
+
+// OldManifests returns the old "manifests" field's value of the GcRun entity.
+// If the GcRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GcRunMutation) OldManifests(ctx context.Context) (v int64, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldManifests is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldManifests requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldManifests: %w", err)
+	}
+	return oldValue.Manifests, nil
+}
+
+// OldRepositories returns the old "repositories" field's value of the GcRun entity.
+// If the GcRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GcRunMutation) OldRepositories(ctx context.Context) (v int64, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldRepositories is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldRepositories requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRepositories: %w", err)
+	}
+	return oldValue.Repositories, nil
+}
+
+// OldBlobs returns the old "blobs" field's value of the GcRun entity.
+// If the GcRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GcRunMutation) OldBlobs(ctx context.Context) (v int64, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldBlobs is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldBlobs requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBlobs: %w", err)
+	}
+	return oldValue.Blobs, nil
+}
+
+// OldBytes returns the old "bytes" field's value of the GcRun entity.
+// If the GcRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GcRunMutation) OldBytes(ctx context.Context) (v int64, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldBytes is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldBytes requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBytes: %w", err)
+	}
+	return oldValue.Bytes, nil
+}
+
+// OldMissing returns the old "missing" field's value of the GcRun entity.
+// If the GcRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GcRunMutation) OldMissing(ctx context.Context) (v []string, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldMissing is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldMissing requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMissing: %w", err)
+	}
+	return oldValue.Missing, nil
+}
+
+// OldDateFinished returns the old "date_finished" field's value of the GcRun entity.
+// If the GcRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GcRunMutation) OldDateFinished(ctx context.Context) (v *time.Time, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldDateFinished is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldDateFinished requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDateFinished: %w", err)
+	}
+	return oldValue.DateFinished, nil
+}
+
+// OldDateUpdated returns the old "date_updated" field's value of the GcRun entity.
+// If the GcRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GcRunMutation) OldDateUpdated(ctx context.Context) (v time.Time, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldDateUpdated is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldDateUpdated requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDateUpdated: %w", err)
+	}
+	return oldValue.DateUpdated, nil
+}
+
+// OldDateCreated returns the old "date_created" field's value of the GcRun entity.
+// If the GcRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GcRunMutation) OldDateCreated(ctx context.Context) (v time.Time, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldDateCreated is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldDateCreated requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDateCreated: %w", err)
+	}
+	return oldValue.DateCreated, nil
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *GcRunMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case gcrun.FieldKind:
+		return m.OldKind(ctx)
+	case gcrun.FieldTrigger:
+		return m.OldTrigger(ctx)
+	case gcrun.FieldState:
+		return m.OldState(ctx)
+	case gcrun.FieldError:
+		return m.OldError(ctx)
+	case gcrun.FieldStages:
+		return m.OldStages(ctx)
+	case gcrun.FieldTags:
+		return m.OldTags(ctx)
+	case gcrun.FieldManifests:
+		return m.OldManifests(ctx)
+	case gcrun.FieldRepositories:
+		return m.OldRepositories(ctx)
+	case gcrun.FieldBlobs:
+		return m.OldBlobs(ctx)
+	case gcrun.FieldBytes:
+		return m.OldBytes(ctx)
+	case gcrun.FieldMissing:
+		return m.OldMissing(ctx)
+	case gcrun.FieldDateFinished:
+		return m.OldDateFinished(ctx)
+	case gcrun.FieldDateUpdated:
+		return m.OldDateUpdated(ctx)
+	case gcrun.FieldDateCreated:
+		return m.OldDateCreated(ctx)
+	}
+	return nil, fmt.Errorf("unknown GcRun field %s", name)
 }
 
 // HolderMutation represents an operation that mutates the Holder nodes in the graph.

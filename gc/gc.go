@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/lesomnus/flob"
@@ -20,6 +21,7 @@ import (
 	"github.com/opencontainers/go-digest"
 
 	"github.com/lesomnus/cr/auth"
+	"github.com/lesomnus/cr/blob"
 	"github.com/lesomnus/cr/index"
 )
 
@@ -42,8 +44,14 @@ type Config struct {
 	// Every is how often Spin runs; zero is an hour and negative is never.
 	Every time.Duration
 
+	// FullEvery is how often a full collection runs on its own; zero never.
+	FullEvery time.Duration
+
 	// Leader picks the one replica that runs; nil runs here.
 	Leader Leader
+
+	// Runs records every run; nil records nothing.
+	Runs Runs
 
 	// Now is the clock; nil is time.Now.
 	Now func() time.Time
@@ -58,6 +66,9 @@ type Report struct {
 
 type Collector struct {
 	c Config
+
+	mu   sync.Mutex
+	full *Run
 }
 
 func New(c Config) *Collector {
@@ -67,46 +78,124 @@ func New(c Config) *Collector {
 	return &Collector{c: c}
 }
 
+// Runs is where this collector records its runs, or nil.
+func (c *Collector) Runs() Runs { return c.c.Runs }
+
 func (c *Collector) Spin(ctx context.Context) error {
-	if c.c.Every < 0 {
-		<-ctx.Done()
-		return nil
+	var online, full <-chan time.Time
+	if c.c.Every >= 0 {
+		every := c.c.Every
+		if every == 0 {
+			every = time.Hour
+		}
+		t := time.NewTicker(every)
+		defer t.Stop()
+		online = t.C
 	}
-	every := c.c.Every
-	if every == 0 {
-		every = time.Hour
+	if c.c.FullEvery > 0 {
+		t := time.NewTicker(c.c.FullEvery)
+		defer t.Stop()
+		full = t.C
 	}
-	t := time.NewTicker(every)
-	defer t.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-t.C:
-			c.tick(ctx)
+		case <-online:
+			if _, err := c.Collect(ctx, KindOnline, TriggerSchedule); err != nil && ctx.Err() == nil {
+				log.From(ctx).WarnContext(ctx, "gc", slog.String("err", err.Error()))
+			}
+		case <-full:
+			if _, err := c.Trigger(ctx, TriggerSchedule); err != nil && !errors.Is(err, ErrRunning) {
+				log.From(ctx).WarnContext(ctx, "gc: full", slog.String("err", err.Error()))
+			}
 		}
 	}
 }
 
-func (c *Collector) tick(ctx context.Context) {
-	l := log.From(ctx)
-	run := func(ctx context.Context) error {
-		r, err := c.Run(ctx)
-		attrs := []any{slog.Int("stages", r.Stages), slog.Int("tags", r.Tags), slog.Int("manifests", r.Manifests)}
+// Collect runs a collection of kind now, on the replica that wins the right
+// to, recording it when there is somewhere to.
+func (c *Collector) Collect(ctx context.Context, kind, trigger string) (Run, error) {
+	run := Run{Kind: kind, Trigger: trigger, State: StateRunning, Missing: []string{}, Started: c.c.Now().UTC()}
+	if c.c.Runs != nil {
+		r, err := c.c.Runs.Start(ctx, kind, trigger)
 		if err != nil {
-			l.WarnContext(ctx, "gc", append(attrs, slog.String("err", err.Error()))...)
+			return run, err
+		}
+		run = r
+	}
+	return c.collect(ctx, run)
+}
+
+func (c *Collector) collect(ctx context.Context, run Run) (Run, error) {
+	var (
+		rep FullReport
+		err error
+	)
+	work := func(ctx context.Context) error {
+		if run.Kind == KindFull {
+			rep, err = c.Full(ctx)
 		} else {
-			l.InfoContext(ctx, "gc", attrs...)
+			rep.Report, err = c.Run(ctx)
 		}
 		return nil
 	}
 	if c.c.Leader == nil {
-		run(ctx)
-		return
+		work(ctx)
+	} else if won, lerr := c.c.Leader.Lead(ctx, "gc/"+run.Kind, work); lerr != nil {
+		err = lerr
+	} else if !won {
+		err = errors.New("another replica is collecting")
 	}
-	if _, err := c.c.Leader.Lead(ctx, "gc", run); err != nil {
-		l.WarnContext(ctx, "gc: leader", slog.String("err", err.Error()))
+
+	run.finish(rep, err, c.c.Now().UTC())
+	if c.c.Runs != nil {
+		if ferr := c.c.Runs.Finish(context.WithoutCancel(ctx), run); ferr != nil && err == nil {
+			err = ferr
+		}
 	}
+	attrs := []any{
+		slog.String("kind", run.Kind), slog.String("trigger", run.Trigger),
+		slog.Int("stages", run.Stages), slog.Int("tags", run.Tags), slog.Int("manifests", run.Manifests),
+		slog.Int("repositories", run.Repositories), slog.Int("blobs", run.Blobs), slog.Int64("bytes", run.Bytes),
+		slog.Int("missing", len(run.Missing)),
+	}
+	if err != nil {
+		log.From(ctx).WarnContext(ctx, "gc", append(attrs, slog.String("err", err.Error()))...)
+	} else {
+		log.From(ctx).InfoContext(ctx, "gc", attrs...)
+	}
+	return run, err
+}
+
+// Trigger starts a full collection in the background and answers its run. One
+// already running in this process is [ErrRunning], with that run.
+func (c *Collector) Trigger(ctx context.Context, trigger string) (Run, error) {
+	c.mu.Lock()
+	if c.full != nil {
+		r := *c.full
+		c.mu.Unlock()
+		return r, ErrRunning
+	}
+	run := Run{Kind: KindFull, Trigger: trigger, State: StateRunning, Missing: []string{}, Started: c.c.Now().UTC()}
+	if c.c.Runs != nil {
+		r, err := c.c.Runs.Start(ctx, KindFull, trigger)
+		if err != nil {
+			c.mu.Unlock()
+			return run, err
+		}
+		run = r
+	}
+	c.full = &run
+	c.mu.Unlock()
+
+	go func() {
+		c.collect(context.WithoutCancel(ctx), run)
+		c.mu.Lock()
+		c.full = nil
+		c.mu.Unlock()
+	}()
+	return run, nil
 }
 
 // Run collects once, every repository in turn. A failure in one repository
@@ -230,7 +319,7 @@ func (c *Collector) retention(ctx context.Context, repo string, p *auth.Policy) 
 		}
 		if erased {
 			n++
-			LabelTag(ctx, c.c.Stores.Use(repo), t.Digest, t.Name, false)
+			blob.LabelTag(ctx, c.c.Stores.Use(repo), t.Digest, t.Name, false)
 		}
 	}
 	return n, errors.Join(errs...)
@@ -343,41 +432,4 @@ func Release(ctx context.Context, ix index.Index, s flob.Store, repo string, ds 
 		}
 		return nil
 	})
-}
-
-// TagLabel is the label a manifest in the store carries once for each tag
-// pointing at it, which is how a rebuild finds tags without the index.
-const TagLabel = "Tag"
-
-// LabelTag adds or removes one tag in d's labels. It is best effort: the index
-// is what answers, and a label that did not land costs a rebuild one tag.
-func LabelTag(ctx context.Context, s flob.Store, d digest.Digest, tag string, add bool) error {
-	info, err := s.Stat(ctx, flob.Digest(d))
-	if err != nil {
-		if errors.Is(err, flob.ErrNotExist) {
-			return nil
-		}
-		return err
-	}
-	ls, err := info.Labels(ctx)
-	if err != nil {
-		return err
-	}
-	next := ls.Clone()
-	if next == nil {
-		next = flob.Labels{}
-	}
-	vs := slices.DeleteFunc(slices.Clone(next.Values(TagLabel)), func(v string) bool { return v == tag })
-	if add {
-		vs = append(vs, tag)
-	}
-	if len(vs) == 0 {
-		next.Del(TagLabel)
-	} else {
-		next[TagLabel] = vs
-	}
-	if err := s.Label(ctx, flob.Digest(d), next); err != nil && !errors.Is(err, flob.ErrNotExist) {
-		return err
-	}
-	return nil
 }

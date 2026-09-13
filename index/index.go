@@ -41,6 +41,13 @@ type Index interface {
 	//
 	// A Tx inside fn runs in the same transaction.
 	Tx(ctx context.Context, repo string, fn func(Index) error) error
+
+	// Lock takes repo's lock outside any transaction and holds it until the
+	// answered function is called: for work that must not race the writes
+	// that change what the repository references and is not itself a
+	// transaction, the sweep's walk of a store. A lock not taken within the
+	// bound is [ErrBusy].
+	Lock(ctx context.Context, repo string) (func(), error)
 }
 
 // Page is (last, n) as the spec paginates: names after Last, at most N. An N

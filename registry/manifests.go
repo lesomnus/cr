@@ -19,6 +19,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/lesomnus/cr/auth"
+	"github.com/lesomnus/cr/blob"
 	"github.com/lesomnus/cr/gc"
 	"github.com/lesomnus/cr/index"
 	"github.com/lesomnus/cr/oci"
@@ -304,7 +305,7 @@ func (g *Registry) setTag(ctx context.Context, ix index.Index, s flob.Store, nam
 
 // label adds or removes one tag in d's labels, best effort.
 func (g *Registry) label(ctx context.Context, s flob.Store, d digest.Digest, tag string, add bool) {
-	if err := gc.LabelTag(ctx, s, d, tag, add); err != nil {
+	if err := blob.LabelTag(ctx, s, d, tag, add); err != nil {
 		log.From(ctx).WarnContext(ctx, "tag label", slog.String("digest", d.String()), slog.String("tag", tag), slog.String("err", err.Error()))
 	}
 }

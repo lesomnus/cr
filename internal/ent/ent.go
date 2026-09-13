@@ -11,6 +11,7 @@ import (
 
 	"github.com/lesomnus/cr/internal/ent/audit"
 	"github.com/lesomnus/cr/internal/ent/binding"
+	"github.com/lesomnus/cr/internal/ent/gcrun"
 	"github.com/lesomnus/cr/internal/ent/holder"
 	"github.com/lesomnus/cr/internal/ent/manifest"
 	"github.com/lesomnus/cr/internal/ent/manifestblob"
@@ -84,6 +85,7 @@ func checkColumn(t, c string) error {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			audit.Table:        audit.ValidColumn,
 			binding.Table:      binding.ValidColumn,
+			gcrun.Table:        gcrun.ValidColumn,
 			holder.Table:       holder.ValidColumn,
 			manifest.Table:     manifest.ValidColumn,
 			manifestblob.Table: manifestblob.ValidColumn,

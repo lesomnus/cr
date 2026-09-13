@@ -113,4 +113,9 @@ type GcConfig struct {
 	// Untagged is how old a manifest nothing tags, holds or refers to must be
 	// before it is deleted; zero keeps them.
 	Untagged time.Duration `yaml:"untagged"`
+
+	// FullEvery is how often a full collection, which also sweeps every
+	// repository's store, runs on its own; zero never. `POST /admin/gc` and
+	// `cr gc --full` run one when asked.
+	FullEvery time.Duration `yaml:"full_every"`
 }

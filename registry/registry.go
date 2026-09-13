@@ -45,6 +45,9 @@ type Config struct {
 	// RedirectTTL is how long such a URL is good for; zero is 15 minutes.
 	RedirectTTL time.Duration
 
+	// Collector is what `/admin/gc` drives; nil serves no such endpoint.
+	Collector Collector
+
 	// Now is the clock; nil is time.Now.
 	Now func() time.Time
 }
@@ -74,8 +77,11 @@ func RouteOf(r *http.Request) string {
 	switch p {
 	case "/v2", "/v2/":
 		return "/v2/"
-	case "/v2/_catalog", "/v1/_ping", "/v1/search", "/token", "/.well-known/jwks.json":
+	case "/v2/_catalog", "/v1/_ping", "/v1/search", "/token", "/.well-known/jwks.json", "/admin/gc":
 		return p
+	}
+	if strings.HasPrefix(p, "/admin/gc/") {
+		return "/admin/gc/{id}"
 	}
 	rest, ok := strings.CutPrefix(p, "/v2/")
 	if !ok {

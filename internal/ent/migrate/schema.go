@@ -106,6 +106,37 @@ var (
 			},
 		},
 	}
+	// GcrunColumns holds the columns for the "gcrun" table.
+	GcrunColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUuid, Unique: true},
+		{Name: "kind", Type: field.TypeString},
+		{Name: "trigger", Type: field.TypeString},
+		{Name: "state", Type: field.TypeString},
+		{Name: "error", Type: field.TypeString},
+		{Name: "stages", Type: field.TypeInt64},
+		{Name: "tags", Type: field.TypeInt64},
+		{Name: "manifests", Type: field.TypeInt64},
+		{Name: "repositories", Type: field.TypeInt64},
+		{Name: "blobs", Type: field.TypeInt64},
+		{Name: "bytes", Type: field.TypeInt64},
+		{Name: "missing", Type: field.TypeJson, Nullable: true},
+		{Name: "date_finished", Type: field.TypeTime, Nullable: true},
+		{Name: "date_updated", Type: field.TypeTime},
+		{Name: "date_created", Type: field.TypeTime, Nullable: true},
+	}
+	// GcrunTable holds the schema information for the "gcrun" table.
+	GcrunTable = &schema.Table{
+		Name:       "gcrun",
+		Columns:    GcrunColumns,
+		PrimaryKey: []*schema.Column{GcrunColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "gcrun_date_created_id",
+				Unique:  false,
+				Columns: []*schema.Column{GcrunColumns[14], GcrunColumns[0]},
+			},
+		},
+	}
 	// HolderColumns holds the columns for the "holder" table.
 	HolderColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUuid, Unique: true},
@@ -368,6 +399,7 @@ var (
 	Tables = []*schema.Table{
 		AuditTable,
 		BindingTable,
+		GcrunTable,
 		HolderTable,
 		ManifestTable,
 		ManifestblobTable,
@@ -386,6 +418,9 @@ func init() {
 	BindingTable.ForeignKeys[0].RefTable = TenantTable
 	BindingTable.Annotation = &entsql.Annotation{
 		Table: "binding",
+	}
+	GcrunTable.Annotation = &entsql.Annotation{
+		Table: "gcrun",
 	}
 	HolderTable.ForeignKeys[0].RefTable = TenantTable
 	HolderTable.Annotation = &entsql.Annotation{

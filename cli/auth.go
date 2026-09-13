@@ -76,28 +76,7 @@ func Guard(ctx context.Context, c *cmd.Config, s *cmd.Server) (*auth.Guard, erro
 		return nil, fmt.Errorf("auth.token: %w", err)
 	}
 
-	static := auth.Static{}
-	for _, b := range a.Bindings {
-		static.Bindings = append(static.Bindings, auth.Binding{
-			Subject: b.Subject,
-			Group:   b.Group,
-			Repo:    b.Repo,
-			Actions: auth.ParseActions(b.Actions),
-			When:    b.When,
-		})
-	}
-	for _, r := range a.TagRules {
-		static.TagRules = append(static.TagRules, auth.TagRule{
-			Name:    r.Name,
-			Repo:    r.Repo,
-			Tag:     r.Tag,
-			Kind:    auth.TagRuleKind(r.Kind),
-			Pattern: r.Pattern,
-			Groups:  r.Groups,
-			Keep:    r.Keep,
-		})
-	}
-
+	static := staticPolicy(a)
 	policy := auth.NewPolicyStore(a.Refresh, static, entpolicy.New(s.Ent))
 	if err := policy.Refresh(ctx); err != nil {
 		return nil, fmt.Errorf("auth: policy: %w", err)
@@ -143,4 +122,30 @@ func Management(c cmd.ManagementConfig) (pdauth.Handler, error) {
 		}
 		return id, nil
 	})), nil
+}
+
+// staticPolicy is the bindings and tag rules the configuration writes.
+func staticPolicy(a cmd.AuthConfig) auth.Static {
+	static := auth.Static{}
+	for _, b := range a.Bindings {
+		static.Bindings = append(static.Bindings, auth.Binding{
+			Subject: b.Subject,
+			Group:   b.Group,
+			Repo:    b.Repo,
+			Actions: auth.ParseActions(b.Actions),
+			When:    b.When,
+		})
+	}
+	for _, r := range a.TagRules {
+		static.TagRules = append(static.TagRules, auth.TagRule{
+			Name:    r.Name,
+			Repo:    r.Repo,
+			Tag:     r.Tag,
+			Kind:    auth.TagRuleKind(r.Kind),
+			Pattern: r.Pattern,
+			Groups:  r.Groups,
+			Keep:    r.Keep,
+		})
+	}
+	return static
 }

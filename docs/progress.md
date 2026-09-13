@@ -13,7 +13,7 @@ checklist lives in its issue; this page is the running record beside them.
 | 2 | [#4](https://github.com/lesomnus/cr/issues/4) referrers, catalog, deletes, mount | done; the Postgres lock tested in phase 4 |
 | 3 | [#5](https://github.com/lesomnus/cr/issues/5) auth and policy | done; checked with `docker login`, push and a refused tag move against a container |
 | 4 | [#6](https://github.com/lesomnus/cr/issues/6) operations | done; the compose of cr on MinIO and PostgreSQL pushed, pulled through a 307 to MinIO, and answered `docker search` |
-| 5 | [#7](https://github.com/lesomnus/cr/issues/7) mark-and-sweep, rebuild | not started |
+| 5 | [#7](https://github.com/lesomnus/cr/issues/7) mark-and-sweep, rebuild | done; on the compose, full collections every 20 seconds erased stray blobs while 14 pushes to another repository all landed, and `cr index rebuild` from MinIO alone gave back every tag and manifest |
 | 6 | [#8](https://github.com/lesomnus/cr/issues/8) pull-through | not started |
 | 7 | [#9](https://github.com/lesomnus/cr/issues/9) OIDC, roster, export, UI | not started |
 
@@ -182,4 +182,48 @@ changed to match.
 37. **The PostgreSQL tests run on a schema each** (`CR_TEST_POSTGRES`), so
     they need one database and nothing else, and they run in their own CI
     job.
+
+### Phase 5
+
+38. **The sweep holds the repository lock outside a transaction**
+    (`Index.Lock`, now on the port): the session form of the advisory lock on
+    PostgreSQL, the process's stripe on SQLite, so it does not take SQLite's
+    one writer and other repositories keep writing through a walk.
+39. **A blob uploaded during its repository's sweep can be erased** before the
+    manifest that names it arrives, and that push fails and retries. flob's
+    `Info` carries no time, so a fresh upload cannot be told from a leak; the
+    alternative is a read-only window, which the principle rules out.
+40. **A full collection sweeps what the store lists and what the index has**,
+    so a namespace holding blobs and no manifest is swept too, and a
+    repository whose rows point at a store with nothing is reported. A
+    repository busy past the bound is tried once more at the end.
+41. **Runs are `GcRun` rows**, global and read-only over the API, online runs
+    included. A run whose process died stays `running`; its start time says
+    how stale it is.
+42. **`POST /admin/gc` starts the run in the background** and answers 202 with
+    it, or 409 with the one this replica is running. Across replicas the run
+    goes to whoever takes the advisory lock, and the other records
+    `failed: another replica is collecting`.
+43. **`cr gc` refuses on SQLite without `--offline`**, since the lock there is
+    the serving process's; on PostgreSQL it takes the server's own locks.
+44. **`cr index rebuild` only adds.** A manifest is a blob up to
+    `max_manifest_size` that starts with `{` and parses as one; its tags come
+    from its labels, the first manifest found wins a tag two of them claim, and
+    that is reported. Push and pull times are not in the store and become now
+    and never.
+45. **Tag labels moved to `blob`** (`blob.LabelTag`), so retention removes the
+    label with the tag; otherwise a rebuild would bring back a tag retention
+    had deleted.
+46. **Found by the compose run: a run could not be recorded.** The collector's
+    run rows have required counters, and the collector's own tests used the
+    memory recorder, so the first scheduled collection on PostgreSQL failed
+    to start. The counters start at zero now, and the ent recorder has a test
+    of its own.
+47. **Found by the rebuild: S3 joins a label's values.** flob keeps labels as
+    object metadata, one header per label, so a manifest's `Tag` label came
+    back as `t1,t2,...` and rebuild found no valid tag in it. A tag cannot
+    contain a comma, so `blob.TagsOf` splits them, and editing a label reads
+    them the same way. S3 caps user metadata at 2 KB, so a manifest with very
+    many tags keeps only as many labels as fit; the index is what answers, and
+    a rebuild of such a manifest recovers fewer tags.
 
