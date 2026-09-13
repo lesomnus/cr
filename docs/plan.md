@@ -252,6 +252,14 @@ endpoints paginate by `(last, n)`; the fork's `sqlpage` keyset cursors fit.
 leaves an untagged manifest, which retention covers. Delete: index first, then
 `Erase`; the other order can leave a tag pointing at nothing.
 
+**Manifest writes are serialized per repository.** Without that, a delete
+of manifest M that releases layer L can commit before a concurrent put of
+manifest N that holds L, and then erase L from flob after N is indexed: a
+loss, not a leak. `Tx` for `Manifest().Put` and `Manifest().Erase` takes
+`pg_advisory_xact_lock(hash(repo))` on Postgres; SQLite is one writer
+anyway. Manifest writes are rare, so the lock costs nothing, and the blob
+path stays lock-free as before.
+
 **Rebuild.** `cr index rebuild` walks every namespace with flob's
 `Namespacer` and `Walker`, re-parses each manifest, and recreates the rows.
 Tags are the one thing a walk cannot recover unless they are also written as
@@ -555,8 +563,36 @@ Phases 0–2 do not depend on payday beyond the schema: the handler is
 needed, is go-app `main` with the same handler, the same ports, hand-written
 ent schemas on the same fork, and a policy file instead of a management API.
 
-## 10. Non-goals, still
+## 10. Scale-out
 
-Replication, vulnerability scanning, multi-writer. The last stays a question in
-#1 until something needs more than one replica. A web UI is not a non-goal any
+More than one cr replica is supported on **S3 and Postgres**, and on nothing
+else. Where the state is:
+
+- The index is Postgres; transactions and the per-repository lock above make
+  concurrent writers safe. payday's `Watch` needs `brokerpg`.
+- Blobs are S3. flob's S3 backend was written for shared use: stage records
+  live in the bucket under `stages/<ns>/<id>/manifest` with the ETag as a
+  fencing token and conditional writes (`If-Match`, `If-None-Match: *`), so a
+  `PATCH` that the load balancer sends to another replica is a `Resume` there.
+  `Erase` never removes the shared object; concurrent `Add`s of one digest
+  both succeed.
+- Tokens are JWTs under a shared key; nothing is remembered per replica.
+  htpasswd ships with the config.
+- Upload `Location`s are relative, or built from the configured public URL,
+  never from the replica's own address.
+- The cache's shared fill is per process. Two replicas may fetch the same
+  blob from upstream once each; both `Add`, one wins, nothing breaks.
+
+One runner only, chosen with a Postgres advisory lock: GC, `PruneStages`,
+the sync scheduler, the webhook dispatcher if one exists. The read-only flag
+for mark-and-sweep is a row, not a process variable, so every replica stops
+writing together.
+
+The `os` backend on a shared filesystem is not a scale-out path: flob's
+per-digest `flock` and `nlink` reclamation cannot be trusted on NFS. That is
+the answer to the multi-writer question in #1: yes, on S3 and Postgres.
+
+## 11. Non-goals, still
+
+Replication and vulnerability scanning. A web UI is not a non-goal any
 more: registry-ui exists, and the management plane is the half it lacks.
