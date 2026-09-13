@@ -15,6 +15,7 @@ import (
 	"github.com/lesomnus/otx/log"
 	"github.com/opencontainers/go-digest"
 
+	"github.com/lesomnus/cr/auth"
 	"github.com/lesomnus/cr/index"
 	"github.com/lesomnus/cr/oci"
 )
@@ -33,6 +34,9 @@ type Config struct {
 
 	// DisableWellKnown sends the constant blobs to the store like any other.
 	DisableWellKnown bool
+
+	// Guard is who may do what; nil lets everybody do everything.
+	Guard *auth.Guard
 
 	// Now is the clock; nil is time.Now.
 	Now func() time.Time
@@ -93,6 +97,17 @@ func (g *Registry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	p := r.URL.Path
 	if p == "/v2" || p == "/v2/" {
+		// A client learns how to authenticate from this answer, and
+		// `docker login` checks a credential against it, so a request
+		// with no credential is challenged even where anonymous pulls
+		// are allowed.
+		if g.c.Guard != nil && r.Header.Get("Authorization") == "" {
+			g.fail(w, r, g.c.Guard.Challenge(r, nil, false))
+			return
+		}
+		if r = g.guard(w, r, "", []auth.Action{}...); r == nil {
+			return
+		}
 		g.base(w, r)
 		return
 	}
@@ -102,6 +117,9 @@ func (g *Registry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if rest == "_catalog" {
+		if r = g.guard(w, r, "", auth.ActionCatalog); r == nil {
+			return
+		}
 		g.only(w, r, g.catalog, http.MethodGet)
 		return
 	}
@@ -114,6 +132,11 @@ func (g *Registry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !oci.ValidName(name) {
 		g.fail(w, r, oci.ErrNameInvalid(name))
 		return
+	}
+	if want, ok := need(rt, r.Method, arg); ok {
+		if r = g.guard(w, r, name, want...); r == nil {
+			return
+		}
 	}
 
 	switch rt {

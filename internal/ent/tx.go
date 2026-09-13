@@ -14,6 +14,8 @@ type Tx struct {
 	config
 	// Audit is the client for interacting with the Audit builders.
 	Audit *AuditClient
+	// Binding is the client for interacting with the Binding builders.
+	Binding *BindingClient
 	// Holder is the client for interacting with the Holder builders.
 	Holder *HolderClient
 	// Manifest is the client for interacting with the Manifest builders.
@@ -26,6 +28,8 @@ type Tx struct {
 	Repository *RepositoryClient
 	// Tag is the client for interacting with the Tag builders.
 	Tag *TagClient
+	// TagRule is the client for interacting with the TagRule builders.
+	TagRule *TagRuleClient
 	// Tenant is the client for interacting with the Tenant builders.
 	Tenant *TenantClient
 
@@ -160,12 +164,14 @@ func (tx *Tx) Client() *Client {
 
 func (tx *Tx) init() {
 	tx.Audit = NewAuditClient(tx.config)
+	tx.Binding = NewBindingClient(tx.config)
 	tx.Holder = NewHolderClient(tx.config)
 	tx.Manifest = NewManifestClient(tx.config)
 	tx.ManifestBlob = NewManifestBlobClient(tx.config)
 	tx.Outbox = NewOutboxClient(tx.config)
 	tx.Repository = NewRepositoryClient(tx.config)
 	tx.Tag = NewTagClient(tx.config)
+	tx.TagRule = NewTagRuleClient(tx.config)
 	tx.Tenant = NewTenantClient(tx.config)
 }
 

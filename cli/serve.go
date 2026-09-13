@@ -71,6 +71,14 @@ func NewCmdServe(c *cmd.Config) *xli.Command {
 				return err
 			}
 
+			// Not `Plain`: this listener is reachable, and `Plain`
+			// believes whoever a caller says they are.
+			h, err := Management(c.Management)
+			if err != nil {
+				return err
+			}
+			s.Auth = h
+
 			l, err := net.Listen("tcp", c.Server.ListenAddr())
 			if err != nil {
 				return err

@@ -21,6 +21,18 @@ func (f AuditFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AuditMutation", m)
 }
 
+// The BindingFunc type is an adapter to allow the use of ordinary
+// function as Binding mutator.
+type BindingFunc func(context.Context, *ent.BindingMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f BindingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.BindingMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BindingMutation", m)
+}
+
 // The HolderFunc type is an adapter to allow the use of ordinary
 // function as Holder mutator.
 type HolderFunc func(context.Context, *ent.HolderMutation) (ent.Value, error)
@@ -91,6 +103,18 @@ func (f TagFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) 
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.TagMutation", m)
+}
+
+// The TagRuleFunc type is an adapter to allow the use of ordinary
+// function as TagRule mutator.
+type TagRuleFunc func(context.Context, *ent.TagRuleMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TagRuleFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.TagRuleMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.TagRuleMutation", m)
 }
 
 // The TenantFunc type is an adapter to allow the use of ordinary

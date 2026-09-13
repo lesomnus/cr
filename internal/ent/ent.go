@@ -10,12 +10,14 @@ import (
 	"sync"
 
 	"github.com/lesomnus/cr/internal/ent/audit"
+	"github.com/lesomnus/cr/internal/ent/binding"
 	"github.com/lesomnus/cr/internal/ent/holder"
 	"github.com/lesomnus/cr/internal/ent/manifest"
 	"github.com/lesomnus/cr/internal/ent/manifestblob"
 	"github.com/lesomnus/cr/internal/ent/outbox"
 	"github.com/lesomnus/cr/internal/ent/repository"
 	"github.com/lesomnus/cr/internal/ent/tag"
+	"github.com/lesomnus/cr/internal/ent/tagrule"
 	"github.com/lesomnus/cr/internal/ent/tenant"
 	"github.com/protobuf-orm/ent"
 	"github.com/protobuf-orm/ent/dialect/sql"
@@ -81,12 +83,14 @@ func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			audit.Table:        audit.ValidColumn,
+			binding.Table:      binding.ValidColumn,
 			holder.Table:       holder.ValidColumn,
 			manifest.Table:     manifest.ValidColumn,
 			manifestblob.Table: manifestblob.ValidColumn,
 			outbox.Table:       outbox.ValidColumn,
 			repository.Table:   repository.ValidColumn,
 			tag.Table:          tag.ValidColumn,
+			tagrule.Table:      tagrule.ValidColumn,
 			tenant.Table:       tenant.ValidColumn,
 		})
 	})

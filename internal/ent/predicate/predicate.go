@@ -9,6 +9,9 @@ import (
 // Audit is the predicate function for audit builders.
 type Audit func(*sql.Selector)
 
+// Binding is the predicate function for binding builders.
+type Binding func(*sql.Selector)
+
 // Holder is the predicate function for holder builders.
 type Holder func(*sql.Selector)
 
@@ -26,6 +29,9 @@ type Repository func(*sql.Selector)
 
 // Tag is the predicate function for tag builders.
 type Tag func(*sql.Selector)
+
+// TagRule is the predicate function for tagrule builders.
+type TagRule func(*sql.Selector)
 
 // Tenant is the predicate function for tenant builders.
 type Tenant func(*sql.Selector)

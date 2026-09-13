@@ -14,20 +14,24 @@
 import type { EntityDesc } from '@lesomnus/payday/store'
 
 import { AuditSchema } from './app/payday/audit_pb.js'
+import { BindingSchema } from './app/binding_pb.js'
 import { HolderSchema } from './app/payday/holder_pb.js'
 import { ManifestSchema } from './app/manifest_pb.js'
 import { ManifestBlobSchema } from './app/manifest_blob_pb.js'
 import { OutboxSchema } from './app/payday/outbox_pb.js'
 import { RepositorySchema } from './app/repository_pb.js'
 import { TagSchema } from './app/tag_pb.js'
+import { TagRuleSchema } from './app/tag_rule_pb.js'
 import { TenantSchema } from './app/payday/tenant_pb.js'
 import { AuditService } from './app/payday/audit_svc_pb.js'
+import { BindingService } from './app/binding_svc_pb.js'
 import { HolderService } from './app/payday/holder_svc_pb.js'
 import { ManifestService } from './app/manifest_svc_pb.js'
 import { ManifestBlobService } from './app/manifest_blob_svc_pb.js'
 import { OutboxService } from './app/payday/outbox_svc_pb.js'
 import { RepositoryService } from './app/repository_svc_pb.js'
 import { TagService } from './app/tag_svc_pb.js'
+import { TagRuleService } from './app/tag_rule_svc_pb.js'
 import { TenantService } from './app/payday/tenant_svc_pb.js'
 
 /** app.Audit, as the store holds it. */
@@ -38,6 +42,19 @@ export const Audit = {
 	key: "id",
 	ids: ["id", "tenantId", "actorId", "objectId", "actorTenantId", "counterpartTenantId"],
 	service: AuditService,
+} as const satisfies EntityDesc
+
+/** app.Binding, as the store holds it. */
+export const Binding = {
+	typeName: "app.Binding",
+	schema: BindingSchema,
+	domain: 12,
+	version: "dateUpdated",
+	refs: [{ field: "tenant", to: "app.Tenant" }],
+	alias: "alias",
+	key: "id",
+	ids: ["id"],
+	service: BindingService,
 } as const satisfies EntityDesc
 
 /** app.Holder, as the store holds it. */
@@ -106,6 +123,19 @@ export const Tag = {
 	service: TagService,
 } as const satisfies EntityDesc
 
+/** app.TagRule, as the store holds it. */
+export const TagRule = {
+	typeName: "app.TagRule",
+	schema: TagRuleSchema,
+	domain: 13,
+	version: "dateUpdated",
+	refs: [{ field: "tenant", to: "app.Tenant" }],
+	alias: "alias",
+	key: "id",
+	ids: ["id"],
+	service: TagRuleService,
+} as const satisfies EntityDesc
+
 /** app.Tenant, as the store holds it. */
 export const Tenant = {
 	typeName: "app.Tenant",
@@ -119,5 +149,5 @@ export const Tenant = {
 } as const satisfies EntityDesc
 
 /** Every entity of this app, which is what a store is opened over. */
-export const entities = [Audit, Holder, Manifest, ManifestBlob, Outbox, Repository, Tag, Tenant] as const
+export const entities = [Audit, Binding, Holder, Manifest, ManifestBlob, Outbox, Repository, Tag, TagRule, Tenant] as const
 

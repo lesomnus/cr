@@ -33,9 +33,11 @@
 
 import { createClient, type Client, type Transport } from '@connectrpc/connect'
 
+import { BindingService } from '../gen/app/binding_svc_pb.js'
 import { ManifestBlobService } from '../gen/app/manifest_blob_svc_pb.js'
 import { ManifestService } from '../gen/app/manifest_svc_pb.js'
 import { RepositoryService } from '../gen/app/repository_svc_pb.js'
+import { TagRuleService } from '../gen/app/tag_rule_svc_pb.js'
 import { TagService } from '../gen/app/tag_svc_pb.js'
 import { TenantService } from '../gen/app/payday/tenant_svc_pb.js'
 import { HolderService } from '../gen/app/payday/holder_svc_pb.js'
@@ -46,6 +48,8 @@ export interface App {
 	readonly manifest: Client<typeof ManifestService>
 	readonly manifestBlob: Client<typeof ManifestBlobService>
 	readonly tag: Client<typeof TagService>
+	readonly binding: Client<typeof BindingService>
+	readonly tagRule: Client<typeof TagRuleService>
 	readonly tenant: Client<typeof TenantService>
 	readonly holder: Client<typeof HolderService>
 
@@ -59,6 +63,8 @@ export function app(transport: Transport): App {
 		manifest: createClient(ManifestService, transport),
 		manifestBlob: createClient(ManifestBlobService, transport),
 		tag: createClient(TagService, transport),
+		binding: createClient(BindingService, transport),
+		tagRule: createClient(TagRuleService, transport),
 		tenant: createClient(TenantService, transport),
 		holder: createClient(HolderService, transport),
 		batch: createClient(BatchService, transport),

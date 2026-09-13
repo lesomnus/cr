@@ -1,0 +1,91 @@
+edition = "2023";
+
+package app;
+
+import "app/payday/tenant.proto";
+import "google/protobuf/timestamp.proto";
+import "orm.proto";
+import "payday.proto";
+
+option features.field_presence = IMPLICIT;
+option go_package = "github.com/lesomnus/cr/api";
+
+// Binding grants actions on the repositories a glob matches, to a subject or to
+// a group.
+//
+// Bindings only add. There is no deny, and what a caller may do in a
+// repository is the union of every binding that matches it; a caller nothing
+// matches may do nothing.
+message Binding {
+  bytes id = 1 [(orm.field) = {
+    type: TYPE_UUID
+    key: true
+    default: ""
+  }];
+
+  Tenant tenant = 2 [(orm.edge) = {immutable: true}];
+
+  string alias = 4;
+  string desc = 6;
+
+  // Who, as an authenticator names them: a subject, or `anonymous` for a
+  // caller that gave no credential, which every caller is as well. Exactly one
+  // of subject and group is set.
+  string subject = 8;
+
+  // A group an authenticator reports, or `authenticated` for any caller that
+  // gave a credential that checked.
+  string group = 9;
+
+  // The repositories, as a glob: `acme/app`, `acme/*`, `*`. A `*` matches any
+  // run of characters, slashes included.
+  string repo = 10;
+
+  // pull, push, delete, tag, catalog, search, admin, or `*` for all of them.
+  repeated string actions = 11;
+
+  // Claims of the caller's credential that must all hold, each value a glob:
+  // what lets one CI workflow, and no other, push a repository.
+  map<string, string> when = 12;
+
+  google.protobuf.Timestamp date_erased = 14 [(orm.field) = {erased: {}}];
+
+  google.protobuf.Timestamp date_updated = 13 [(orm.field) = {version: {}}];
+
+  google.protobuf.Timestamp date_created = 15 [(orm.field) = {
+    immutable: true
+    default: ""
+  }];
+
+  option (orm.message) = {
+    rpc: {crud: true}
+    indexes: [
+      {
+        name: "page"
+        refs: [
+          {name: "date_created", number: 15},
+          {name: "id", number: 1}
+        ]
+      },
+      {
+        name: "slug"
+        refs: [
+          {name: "alias", number: 4},
+          {name: "tenant", number: 2}
+        ]
+        unique: true
+      }
+    ]
+  };
+  option (payday.entity) = {
+    domain: 12
+
+    list: {
+      order: [{field: {name: "date_created"}}, {field: {name: "id"}}]
+      by: [{name: "ref"}, {name: "tenant"}, {name: "subject"}, {name: "group"}]
+      size: 20
+      max: 100
+    }
+    watch: {}
+  };
+}

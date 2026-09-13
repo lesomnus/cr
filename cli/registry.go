@@ -30,17 +30,27 @@ func Registry(ctx context.Context, c *cmd.Config, s *cmd.Server) error {
 	}
 	ix := entindex.New(s.Ent, opts...)
 
+	guard, err := Guard(ctx, c, s)
+	if err != nil {
+		return err
+	}
+
 	reg := registry.New(registry.Config{
 		Stores:           stores,
 		Index:            ix,
 		MaxManifestSize:  c.Registry.MaxManifestSize,
 		DisableWellKnown: c.Registry.DisableWellKnown,
+		Guard:            guard,
 	})
 
 	if s.Routes == nil {
 		s.Routes = map[string]http.Handler{}
 	}
 	s.Routes["/v2/"] = reg
+	if guard != nil {
+		s.Routes["/token"] = http.HandlerFunc(guard.ServeToken)
+		s.Routes["/.well-known/jwks.json"] = http.HandlerFunc(guard.ServeJWKS)
+	}
 	s.Spin = append(s.Spin, ix)
 	return nil
 }

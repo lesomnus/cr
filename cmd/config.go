@@ -32,5 +32,7 @@ type Config struct {
 	Otel   config.OtelConfig   `yaml:"otel"`
 	Watch  config.WatchConfig  `yaml:"watch"`
 
-	Registry RegistryConfig `yaml:"registry"`
+	Registry   RegistryConfig   `yaml:"registry"`
+	Auth       AuthConfig       `yaml:"auth"`
+	Management ManagementConfig `yaml:"management"`
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/opencontainers/go-digest"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/lesomnus/cr/auth"
 	"github.com/lesomnus/cr/index"
 	"github.com/lesomnus/cr/oci"
 )
@@ -279,6 +280,15 @@ func (g *Registry) setTag(ctx context.Context, ix index.Index, s flob.Store, nam
 	case !errors.Is(err, index.ErrNotFound):
 		return err
 	}
+	if from != d {
+		op := auth.TagCreate
+		if from != "" {
+			op = auth.TagMove
+		}
+		if err := auth.CallerFrom(ctx).CheckTag(name, tag, op); err != nil {
+			return oci.ErrDenied(err.Error())
+		}
+	}
 	if err := ix.Tag().Set(ctx, name, tag, d, from); err != nil {
 		return err
 	}
@@ -346,6 +356,9 @@ func (g *Registry) deleteManifest(w http.ResponseWriter, r *http.Request, name, 
 			if err != nil {
 				return err
 			}
+			if err := auth.CallerFrom(ctx).CheckTag(name, ref.Tag, auth.TagDelete); err != nil {
+				return oci.ErrDenied(err.Error())
+			}
 			if err := ix.Tag().Erase(ctx, name, ref.Tag); err != nil {
 				return err
 			}
@@ -371,6 +384,11 @@ func (g *Registry) deleteManifest(w http.ResponseWriter, r *http.Request, name, 
 		ts, err := ix.Tag().Of(ctx, name, d)
 		if err != nil {
 			return err
+		}
+		for _, t := range ts {
+			if err := auth.CallerFrom(ctx).CheckTag(name, t.Name, auth.TagDelete); err != nil {
+				return oci.ErrDenied(err.Error())
+			}
 		}
 		for _, t := range ts {
 			if err := ix.Tag().Erase(ctx, name, t.Name); err != nil {

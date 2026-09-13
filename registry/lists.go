@@ -10,6 +10,7 @@ import (
 	specs "github.com/opencontainers/image-spec/specs-go"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 
+	"github.com/lesomnus/cr/auth"
 	"github.com/lesomnus/cr/index"
 	"github.com/lesomnus/cr/oci"
 )
@@ -71,12 +72,30 @@ func (g *Registry) catalog(w http.ResponseWriter, r *http.Request) {
 	p, given := pageOf(r)
 	repos := []string{}
 	if !given || p.N > 0 {
-		vs, err := g.c.Index.Repo().List(ctx, p)
-		if err != nil {
-			g.fail(w, r, err)
-			return
+		// Only what the caller may pull, and still a full page when there
+		// is one: a page is read past the repositories it may not see.
+		c := auth.CallerFrom(ctx)
+		batch := max(p.N, 100)
+		last := p.Last
+		for {
+			vs, err := g.c.Index.Repo().List(ctx, index.Page{Last: last, N: batch})
+			if err != nil {
+				g.fail(w, r, err)
+				return
+			}
+			for _, v := range vs {
+				if c.CanPull(v) {
+					repos = append(repos, v)
+				}
+				if given && len(repos) == p.N {
+					break
+				}
+			}
+			if len(vs) < batch || (given && len(repos) == p.N) {
+				break
+			}
+			last = vs[len(vs)-1]
 		}
-		repos = append(repos, vs...)
 	}
 	if given && p.N > 0 && len(repos) == p.N {
 		next(w, "/v2/_catalog", p.N, repos[len(repos)-1])

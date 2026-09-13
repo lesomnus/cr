@@ -37,7 +37,7 @@ func NewCmdInit(c *cmd.Config) *xli.Command {
 		Handler: xli.OnRun(func(ctx context.Context, self *xli.Command, next xli.Next) error {
 			tenant, ok := flg.Find[string](self, "tenant")
 			if !ok || tenant == "" {
-				tenant = "acme"
+				tenant = "operator"
 			}
 
 			holder, ok := flg.Find[string](self, "holder")

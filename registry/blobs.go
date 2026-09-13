@@ -14,6 +14,7 @@ import (
 	"github.com/lesomnus/flob"
 	"github.com/opencontainers/go-digest"
 
+	"github.com/lesomnus/cr/auth"
 	"github.com/lesomnus/cr/blob"
 	"github.com/lesomnus/cr/index"
 	"github.com/lesomnus/cr/oci"
@@ -219,8 +220,9 @@ func (g *Registry) mount(w http.ResponseWriter, r *http.Request, name string) {
 	q := r.URL.Query()
 	d, err := oci.ParseDigest(q.Get("mount"))
 	from := q.Get("from")
-	if err != nil || from == "" || !oci.ValidName(from) {
-		// The spec's answer to a mount that cannot happen is a session.
+	if err != nil || from == "" || !oci.ValidName(from) || len(auth.CallerFrom(ctx).Allowed(from, auth.ActionPull)) == 0 {
+		// The spec's answer to a mount that cannot happen is a session, and
+		// a source the caller may not pull is a mount that cannot happen.
 		g.beginUpload(w, r, name)
 		return
 	}

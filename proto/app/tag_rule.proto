@@ -1,0 +1,94 @@
+edition = "2023";
+
+package app;
+
+import "app/payday/tenant.proto";
+import "google/protobuf/timestamp.proto";
+import "orm.proto";
+import "payday.proto";
+
+option features.field_presence = IMPLICIT;
+option go_package = "github.com/lesomnus/cr/api";
+
+// TagRule constrains what may happen to the tags a pair of globs matches.
+//
+// Checked on a manifest push and delete before anything is written, and read
+// by retention.
+message TagRule {
+  bytes id = 1 [(orm.field) = {
+    type: TYPE_UUID
+    key: true
+    default: ""
+  }];
+
+  Tenant tenant = 2 [(orm.edge) = {immutable: true}];
+
+  string alias = 4;
+  string desc = 6;
+
+  // The repositories, as a glob.
+  string repo = 8;
+
+  // The tags, as a glob: `v*`, `latest`, `*`.
+  string tag = 9;
+
+  // What the rule does:
+  //
+  //   immutable  once set, the tag may not move or be deleted
+  //   protected  moving or deleting needs `admin`, or one of `groups`
+  //   pattern    the tag must match `pattern`, or the push is refused
+  //   retention  keep the newest `keep` matching tags; older ones are garbage
+  string kind = 10;
+
+  // For `pattern`: an RE2 expression the whole tag must match.
+  string pattern = 11;
+
+  // For `protected`: groups that may move or delete the tag besides a caller
+  // with `admin`.
+  repeated string groups = 12;
+
+  // For `retention`: how many matching tags to keep, newest first by when they
+  // last moved.
+  int32 keep = 16;
+
+  google.protobuf.Timestamp date_erased = 14 [(orm.field) = {erased: {}}];
+
+  google.protobuf.Timestamp date_updated = 13 [(orm.field) = {version: {}}];
+
+  google.protobuf.Timestamp date_created = 15 [(orm.field) = {
+    immutable: true
+    default: ""
+  }];
+
+  option (orm.message) = {
+    rpc: {crud: true}
+    indexes: [
+      {
+        name: "page"
+        refs: [
+          {name: "date_created", number: 15},
+          {name: "id", number: 1}
+        ]
+      },
+      {
+        name: "slug"
+        refs: [
+          {name: "alias", number: 4},
+          {name: "tenant", number: 2}
+        ]
+        unique: true
+      }
+    ]
+  };
+  option (payday.entity) = {
+    domain: 13
+
+    list: {
+      order: [{field: {name: "date_created"}}, {field: {name: "id"}}]
+      by: [{name: "ref"}, {name: "tenant"}, {name: "kind"}]
+      size: 20
+      max: 100
+    }
+    watch: {}
+  };
+}

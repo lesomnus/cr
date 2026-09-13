@@ -11,7 +11,7 @@ checklist lives in its issue; this page is the running record beside them.
 | 0 | [#2](https://github.com/lesomnus/cr/issues/2) scaffold | done |
 | 1 | [#3](https://github.com/lesomnus/cr/issues/3) blobs, manifests, tags | done |
 | 2 | [#4](https://github.com/lesomnus/cr/issues/4) referrers, catalog, deletes, mount | done, Postgres lock untested until phase 4 |
-| 3 | [#5](https://github.com/lesomnus/cr/issues/5) auth and policy | not started |
+| 3 | [#5](https://github.com/lesomnus/cr/issues/5) auth and policy | done; checked with `docker login`, push and a refused tag move against a container |
 | 4 | [#6](https://github.com/lesomnus/cr/issues/6) operations | not started |
 | 5 | [#7](https://github.com/lesomnus/cr/issues/7) mark-and-sweep, rebuild | not started |
 | 6 | [#8](https://github.com/lesomnus/cr/issues/8) pull-through | not started |
@@ -90,3 +90,48 @@ changed to match.
     the manifests endpoint, since erasing the bytes would leave the row.
 14. **CI builds the image and does not push it.** Publishing is a release
     decision.
+
+### Phase 3
+
+15. **No `visibility` on a repository.** Public is a binding to `anonymous`,
+    which is the plan's own model; a second switch meaning the same thing
+    would be two answers to one question.
+16. **`anonymous` is everyone.** A binding to it applies to every caller, with
+    or without a credential, so logging in never takes away what a public
+    repository allowed. The group `authenticated` is every caller whose
+    credential checked.
+17. **Registry-wide actions come only from a binding over `*`.** `catalog`,
+    `search` and `admin` outside a repository are granted by a matching
+    binding whose repository glob is exactly `*`; `acme/*` with `admin` is
+    admin in `acme/*` and nowhere else.
+18. **A glob's `*` crosses slashes.** `acme/*` covers `acme/team/app`.
+    Namespaces nest, and a pattern that stopped at a slash would need a second
+    syntax to say what everybody means.
+19. **Tokens carry what was refused.** Clients ask for scopes as they go:
+    pull for the checks, then pull and push for the write. A token missing an
+    action it was never asked for is answered 401 with
+    `error="insufficient_scope"`, so the client fetches one that asks; an
+    action that was asked for and refused is 403 `DENIED` with the missing
+    action in the detail. Anonymous callers get 401 either way. Found by the
+    first `docker push` against the container, which a pull-only token had
+    turned into a denial.
+20. **`/v2/` challenges a request with no credential**, even where anonymous
+    pulls are allowed, since that answer is how a client learns the token
+    realm and how `docker login` checks a password. Any valid credential,
+    an anonymous token included, gets 200.
+21. **A push asks for `tag` implicitly.** Distribution's clients know nothing
+    of it, so the token endpoint adds `tag` to a scope that asks for `push`.
+22. **A mount needs `pull` on the source**; without it the request becomes an
+    ordinary upload session, which is the spec's answer to a mount that
+    cannot happen.
+23. **The management API takes bearer tokens from configuration** in place of
+    the template's `Plain`, which believes any caller. No tokens is an API
+    closed to the network.
+24. **`cr <entity> ...` runs the management API in-process** over a pipe, on
+    the host's database, acting as `management.as` (`@operator/admin`), so an
+    operator needs no token to write the first binding. `cr init` defaults to
+    the tenant `operator` to match.
+25. **Bindings and tag rules are reloaded on a timer** (`auth.refresh`, five
+    seconds) into a snapshot requests read, instead of watching. It is correct
+    across replicas without a broker, and a failed reload keeps the policy in
+    force.

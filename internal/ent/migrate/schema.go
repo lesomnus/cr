@@ -62,6 +62,50 @@ var (
 			},
 		},
 	}
+	// BindingColumns holds the columns for the "binding" table.
+	BindingColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUuid, Unique: true},
+		{Name: "alias", Type: field.TypeString},
+		{Name: "desc", Type: field.TypeString},
+		{Name: "subject", Type: field.TypeString},
+		{Name: "group", Type: field.TypeString},
+		{Name: "repo", Type: field.TypeString},
+		{Name: "actions", Type: field.TypeJson, Nullable: true},
+		{Name: "when", Type: field.TypeJson, Nullable: true},
+		{Name: "date_erased", Type: field.TypeTime, Nullable: true},
+		{Name: "date_updated", Type: field.TypeTime},
+		{Name: "date_created", Type: field.TypeTime, Nullable: true},
+		{Name: "tenant_id", Type: field.TypeUuid},
+	}
+	// BindingTable holds the schema information for the "binding" table.
+	BindingTable = &schema.Table{
+		Name:       "binding",
+		Columns:    BindingColumns,
+		PrimaryKey: []*schema.Column{BindingColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "binding_tenant_tenant",
+				Columns:    []*schema.Column{BindingColumns[11]},
+				RefColumns: []*schema.Column{TenantColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "binding_date_created_id",
+				Unique:  false,
+				Columns: []*schema.Column{BindingColumns[10], BindingColumns[0]},
+			},
+			{
+				Name:    "binding_alias_tenant_id",
+				Unique:  true,
+				Columns: []*schema.Column{BindingColumns[1], BindingColumns[11]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "date_erased IS NULL",
+				},
+			},
+		},
+	}
 	// HolderColumns holds the columns for the "holder" table.
 	HolderColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUuid, Unique: true},
@@ -259,6 +303,51 @@ var (
 			},
 		},
 	}
+	// TagruleColumns holds the columns for the "tagrule" table.
+	TagruleColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUuid, Unique: true},
+		{Name: "alias", Type: field.TypeString},
+		{Name: "desc", Type: field.TypeString},
+		{Name: "repo", Type: field.TypeString},
+		{Name: "tag", Type: field.TypeString},
+		{Name: "kind", Type: field.TypeString},
+		{Name: "pattern", Type: field.TypeString},
+		{Name: "groups", Type: field.TypeJson, Nullable: true},
+		{Name: "keep", Type: field.TypeInt32},
+		{Name: "date_erased", Type: field.TypeTime, Nullable: true},
+		{Name: "date_updated", Type: field.TypeTime},
+		{Name: "date_created", Type: field.TypeTime, Nullable: true},
+		{Name: "tenant_id", Type: field.TypeUuid},
+	}
+	// TagruleTable holds the schema information for the "tagrule" table.
+	TagruleTable = &schema.Table{
+		Name:       "tagrule",
+		Columns:    TagruleColumns,
+		PrimaryKey: []*schema.Column{TagruleColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "tagrule_tenant_tenant",
+				Columns:    []*schema.Column{TagruleColumns[12]},
+				RefColumns: []*schema.Column{TenantColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "tagrule_date_created_id",
+				Unique:  false,
+				Columns: []*schema.Column{TagruleColumns[11], TagruleColumns[0]},
+			},
+			{
+				Name:    "tagrule_alias_tenant_id",
+				Unique:  true,
+				Columns: []*schema.Column{TagruleColumns[1], TagruleColumns[12]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "date_erased IS NULL",
+				},
+			},
+		},
+	}
 	// TenantColumns holds the columns for the "tenant" table.
 	TenantColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUuid, Unique: true},
@@ -278,12 +367,14 @@ var (
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		AuditTable,
+		BindingTable,
 		HolderTable,
 		ManifestTable,
 		ManifestblobTable,
 		OutboxTable,
 		RepositoryTable,
 		TagTable,
+		TagruleTable,
 		TenantTable,
 	}
 )
@@ -291,6 +382,10 @@ var (
 func init() {
 	AuditTable.Annotation = &entsql.Annotation{
 		Table: "audit",
+	}
+	BindingTable.ForeignKeys[0].RefTable = TenantTable
+	BindingTable.Annotation = &entsql.Annotation{
+		Table: "binding",
 	}
 	HolderTable.ForeignKeys[0].RefTable = TenantTable
 	HolderTable.Annotation = &entsql.Annotation{
@@ -310,6 +405,10 @@ func init() {
 	}
 	TagTable.Annotation = &entsql.Annotation{
 		Table: "tag",
+	}
+	TagruleTable.ForeignKeys[0].RefTable = TenantTable
+	TagruleTable.Annotation = &entsql.Annotation{
+		Table: "tagrule",
 	}
 	TenantTable.Annotation = &entsql.Annotation{
 		Table: "tenant",

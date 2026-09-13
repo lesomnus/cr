@@ -51,18 +51,25 @@ import (
 // says. A command that loaded it for itself would be one more place for the
 // order to be wrong.
 func Cmd(c *cmd.Config) *xli.Command {
+	// `cr binding add`, `cr repository ls` and the rest, for every entity the
+	// schema declares, served in-process on the host's database; see `local`.
+	t, err := pdcmd.New(&local{c: c})
+	if err != nil {
+		panic(err)
+	}
+
 	return &xli.Command{
 		Name:  cmd.Name,
 		Brief: "cr",
 
 		Flags: flg.Flags{pdcmd.ConfigFlag()},
 
-		Commands: []*xli.Command{
+		Commands: append(xli.Commands{
 			pdcmd.NewCmdVersion(),
 			pdcmd.NewCmdConfig(cmd.Loader, c),
 			NewCmdInit(c),
 			NewCmdServe(c),
-		},
+		}, t.Commands()...),
 
 		Handler: xli.Chain(pdcmd.Load(cmd.Loader, c), xli.RequireSubcommand()),
 	}
