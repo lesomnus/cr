@@ -38,6 +38,13 @@ type Config struct {
 	// Guard is who may do what; nil lets everybody do everything.
 	Guard *auth.Guard
 
+	// Redirect answers a blob GET with a 307 to a URL the store signs, when
+	// the store can sign one, instead of streaming the bytes through.
+	Redirect bool
+
+	// RedirectTTL is how long such a URL is good for; zero is 15 minutes.
+	RedirectTTL time.Duration
+
 	// Now is the clock; nil is time.Now.
 	Now func() time.Time
 }
@@ -54,7 +61,43 @@ func New(c Config) *Registry {
 	if c.Now == nil {
 		c.Now = time.Now
 	}
+	if c.RedirectTTL <= 0 {
+		c.RedirectTTL = flob.DefaultRedirectTTL
+	}
 	return &Registry{c: c}
+}
+
+// RouteOf names the route r is for, without the repository or the digest in
+// it: what a span and a metric are labelled with.
+func RouteOf(r *http.Request) string {
+	p := r.URL.Path
+	switch p {
+	case "/v2", "/v2/":
+		return "/v2/"
+	case "/v2/_catalog", "/v1/_ping", "/v1/search", "/token", "/.well-known/jwks.json":
+		return p
+	}
+	rest, ok := strings.CutPrefix(p, "/v2/")
+	if !ok {
+		return "other"
+	}
+	_, rt, arg := parse(rest)
+	switch rt {
+	case routeBlob:
+		return "/v2/{name}/blobs/{digest}"
+	case routeUpload:
+		if arg == "" {
+			return "/v2/{name}/blobs/uploads/"
+		}
+		return "/v2/{name}/blobs/uploads/{reference}"
+	case routeManifest:
+		return "/v2/{name}/manifests/{reference}"
+	case routeTags:
+		return "/v2/{name}/tags/list"
+	case routeReferrers:
+		return "/v2/{name}/referrers/{digest}"
+	}
+	return "other"
 }
 
 type route int

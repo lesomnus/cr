@@ -5,6 +5,9 @@ the way they are; this page says how to use them.
 
 ## Running
 
+`compose.yaml` stands up cr on MinIO and PostgreSQL, with an `admin` user and
+anonymous pull, catalog and search; its header says how to push to it.
+
 ```sh
 cr --config cr.yaml init     # the operator tenant and its first holder
 cr --config cr.yaml serve
@@ -23,7 +26,7 @@ and tag rules.
 ```yaml
 registry:
   storage:
-    driver: os          # or memory, for a throwaway
+    driver: os          # os, s3, or memory for a throwaway
     os:
       root: /var/lib/cr/data
     upload:
@@ -33,8 +36,94 @@ registry:
   lock_wait: 30s        # a manifest write waiting for its repository
 ```
 
-The database is payday's `db:` block: SQLite for one process, PostgreSQL for
-more. The registry is served on `server.http.addr`, which must be set.
+The database is payday's `db:` block: `sqlite3` for one process, `pgx` for
+PostgreSQL and more than one. The registry is served on `server.http.addr`,
+which must be set.
+
+### S3
+
+```yaml
+registry:
+  storage:
+    driver: s3
+    s3:
+      endpoint: http://minio:9000         # empty is AWS in `region`
+      public_endpoint: https://blobs.example.com
+      region: us-east-1
+      bucket: cr-blobs
+      prefix: ""                          # to share a bucket
+      access_key_id: ...
+      secret_access_key: ...
+      path_style: true                    # MinIO and most S3-compatible servers
+    redirect:
+      enabled: true
+      ttl: 15m
+```
+
+flob needs conditional writes (`If-Match`, `If-None-Match: *`) and strong ETags
+from the service; AWS S3 and MinIO have both. With `redirect.enabled`, a blob
+`GET` is answered `307` to a URL signed for `public_endpoint`, so the bytes go
+from the object store to the client; a client has to be able to reach that
+endpoint. `HEAD` and manifests are always answered by cr.
+
+### Routes
+
+```yaml
+registry:
+  storage:
+    driver: os
+    os: {root: /var/lib/cr/data}
+    routes:
+      - prefix: library
+        driver: s3
+        s3: {...}
+```
+
+A route puts the repositories under its prefix on another store: `library`
+covers `library/ubuntu`, not `librarything`. The longest prefix wins, and the
+store above holds everything no route covers. A mount between repositories on
+different stores is a copy.
+
+## Garbage collection
+
+```yaml
+registry:
+  gc:
+    every: 1h        # negative never runs it
+    untagged: 168h   # zero keeps untagged manifests
+```
+
+Every `every`, one replica, chosen by a PostgreSQL advisory lock, collects:
+
+- uploads past `upload.ttl`;
+- tags that every `retention` rule matching them puts past its `keep`, newest
+  first by when they last moved; an `immutable` tag outlives retention;
+- manifests older than `untagged` that no tag points at, no index holds, no
+  pull touched within `untagged`, and that are not referrers of a manifest
+  still in the repository; their blobs go when nothing else holds them.
+
+Every step removes a reference the index no longer has, so a push racing it can
+leave a blob behind and cannot lose one.
+
+## Health and telemetry
+
+`/healthz` answers 200 while the process runs; `/readyz` answers 200 when the
+database answers within a second, and 503 otherwise.
+
+Requests to `/v2/`, `/v1/`, `/token` and the key set get a server span named for
+their route (`GET /v2/{name}/blobs/{digest}`) and a
+`http.server.request.duration` histogram by method, route and status, through
+payday's `otel:` configuration.
+
+## Search
+
+`docker search cr.example.com/term` asks `/v1/_ping` and then `/v1/search`,
+which answers in Docker Hub's shape and is what registry-ui's search speaks
+too. It needs the `search` action from a binding over `*`, and shows only
+repositories the caller may pull. A repository's description is its `desc`,
+set through the management plane (`cr repository patch`), or else the
+`org.opencontainers.image.description` annotation of the manifest its most
+recently moved tag points at.
 
 ## Who may do what
 

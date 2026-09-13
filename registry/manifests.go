@@ -19,6 +19,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/lesomnus/cr/auth"
+	"github.com/lesomnus/cr/gc"
 	"github.com/lesomnus/cr/index"
 	"github.com/lesomnus/cr/oci"
 )
@@ -301,40 +302,10 @@ func (g *Registry) setTag(ctx context.Context, ix index.Index, s flob.Store, nam
 	return nil
 }
 
-// label adds or removes one `Tag` value on a manifest's labels. It is best
-// effort: the index is what answers, and a label that did not land costs a
-// rebuild one tag.
+// label adds or removes one tag in d's labels, best effort.
 func (g *Registry) label(ctx context.Context, s flob.Store, d digest.Digest, tag string, add bool) {
-	fail := func(err error) {
+	if err := gc.LabelTag(ctx, s, d, tag, add); err != nil {
 		log.From(ctx).WarnContext(ctx, "tag label", slog.String("digest", d.String()), slog.String("tag", tag), slog.String("err", err.Error()))
-	}
-	info, err := s.Stat(ctx, flob.Digest(d))
-	if err != nil {
-		if !errors.Is(err, flob.ErrNotExist) {
-			fail(err)
-		}
-		return
-	}
-	ls, err := info.Labels(ctx)
-	if err != nil {
-		fail(err)
-		return
-	}
-	next := http.Header(ls).Clone()
-	if next == nil {
-		next = http.Header{}
-	}
-	vs := slices.DeleteFunc(slices.Clone(next.Values("Tag")), func(v string) bool { return v == tag })
-	if add {
-		vs = append(vs, tag)
-	}
-	if len(vs) == 0 {
-		next.Del("Tag")
-	} else {
-		next["Tag"] = vs
-	}
-	if err := s.Label(ctx, flob.Digest(d), next); err != nil && !errors.Is(err, flob.ErrNotExist) {
-		fail(err)
 	}
 }
 
@@ -407,36 +378,9 @@ func (g *Registry) deleteManifest(w http.ResponseWriter, r *http.Request, name, 
 	w.WriteHeader(http.StatusAccepted)
 }
 
-// release erases from the repository's store what the index no longer refers
-// to. It takes the repository's lock again and checks again, so a manifest
-// pushed since the delete committed keeps what it holds: every step removes a
-// reference nothing has, and a failure here is a leak for the sweep.
+// release erases what a delete released, leaking to the sweep on failure.
 func (g *Registry) release(ctx context.Context, name string, ds []digest.Digest) {
-	s := g.store(name)
-	err := g.c.Index.Tx(ctx, name, func(ix index.Index) error {
-		for _, d := range ds {
-			if _, ok := g.wellKnown(d); ok {
-				continue
-			}
-			held, err := ix.Manifest().Holds(ctx, name, d)
-			if err != nil {
-				return err
-			}
-			if held {
-				continue
-			}
-			if _, err := ix.Manifest().Get(ctx, name, d); err == nil {
-				continue
-			} else if !errors.Is(err, index.ErrNotFound) {
-				return err
-			}
-			if err := s.Erase(ctx, flob.Digest(d)); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	if err != nil {
+	if err := gc.Release(ctx, g.c.Index, g.store(name), name, ds); err != nil {
 		log.From(ctx).WarnContext(ctx, "release", slog.String("repo", name), slog.String("err", err.Error()))
 	}
 }

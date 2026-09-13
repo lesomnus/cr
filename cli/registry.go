@@ -8,7 +8,11 @@ import (
 
 	"github.com/lesomnus/flob"
 
+	"github.com/lesomnus/cr/auth"
+	"github.com/lesomnus/cr/blob"
 	"github.com/lesomnus/cr/cmd"
+	"github.com/lesomnus/cr/gc"
+	"github.com/lesomnus/cr/httpx"
 	"github.com/lesomnus/cr/index/entindex"
 	"github.com/lesomnus/cr/registry"
 )
@@ -41,36 +45,102 @@ func Registry(ctx context.Context, c *cmd.Config, s *cmd.Server) error {
 		MaxManifestSize:  c.Registry.MaxManifestSize,
 		DisableWellKnown: c.Registry.DisableWellKnown,
 		Guard:            guard,
+		Redirect:         c.Registry.Storage.Redirect.Enabled,
+		RedirectTTL:      c.Registry.Storage.Redirect.Ttl,
 	})
 
+	var policy func() *auth.Policy
+	if guard != nil {
+		policy = guard.Policy.Current
+	}
+	collector := gc.New(gc.Config{
+		Stores:   stores,
+		Index:    ix,
+		Policy:   policy,
+		Untagged: c.Registry.Gc.Untagged,
+		Every:    c.Registry.Gc.Every,
+		Leader:   ix,
+	})
+
+	instrument := func(h http.Handler) http.Handler {
+		return httpx.Instrument(ctx, registry.RouteOf, h)
+	}
 	if s.Routes == nil {
 		s.Routes = map[string]http.Handler{}
 	}
-	s.Routes["/v2/"] = reg
+	s.Routes["/v2/"] = instrument(reg)
+	s.Routes["/v1/"] = instrument(reg.V1())
 	if guard != nil {
-		s.Routes["/token"] = http.HandlerFunc(guard.ServeToken)
-		s.Routes["/.well-known/jwks.json"] = http.HandlerFunc(guard.ServeJWKS)
+		s.Routes["/token"] = instrument(http.HandlerFunc(guard.ServeToken))
+		s.Routes["/.well-known/jwks.json"] = instrument(http.HandlerFunc(guard.ServeJWKS))
 	}
-	s.Spin = append(s.Spin, ix)
+	s.Routes["/healthz"] = httpx.Live()
+	s.Routes["/readyz"] = httpx.Ready(s.Db.PingContext)
+
+	s.Spin = append(s.Spin, ix, collector)
 	return nil
 }
 
-// Stores opens the blob stores the configuration names.
+// Stores opens the blob stores the configuration names: one, or one per route
+// with the first holding whatever no route covers.
 func Stores(c cmd.StorageConfig) (flob.Stores, error) {
 	stage := flob.StageConfig{TTL: c.Upload.TTL, Retention: c.Upload.Retention}
-	switch c.Driver {
+	base, err := backend("registry.storage", c.Driver, c.Os, c.S3, stage)
+	if err != nil {
+		return nil, err
+	}
+	if len(c.Routes) == 0 {
+		return base, nil
+	}
+
+	routes := []blob.Route{{Prefix: "", Stores: base}}
+	for i, r := range c.Routes {
+		at := fmt.Sprintf("registry.storage.routes[%d]", i)
+		if r.Prefix == "" {
+			return nil, fmt.Errorf("%s.prefix is empty; the store above is the one for everything else", at)
+		}
+		s, err := backend(at, r.Driver, r.Os, r.S3, stage)
+		if err != nil {
+			return nil, err
+		}
+		routes = append(routes, blob.Route{Prefix: r.Prefix, Stores: s})
+	}
+	return blob.NewRouter(routes...)
+}
+
+func backend(at string, driver string, o cmd.OsStorageConfig, s cmd.S3StorageConfig, stage flob.StageConfig) (flob.Stores, error) {
+	switch driver {
 	case "", "os":
-		root := c.Os.Root
-		if root == "" {
-			return nil, fmt.Errorf("registry.storage.os.root is not set")
+		if o.Root == "" {
+			return nil, fmt.Errorf("%s.os.root is not set", at)
 		}
-		if err := os.MkdirAll(root, 0o755); err != nil {
-			return nil, fmt.Errorf("registry.storage.os.root: %w", err)
+		if err := os.MkdirAll(o.Root, 0o755); err != nil {
+			return nil, fmt.Errorf("%s.os.root: %w", at, err)
 		}
-		return flob.NewOsStores(root, stage), nil
+		return flob.NewOsStores(o.Root, stage), nil
+	case "s3":
+		stores, err := flob.NewS3Stores(flob.S3Config{
+			Stage:          stage,
+			StagePartSize:  s.PartSize,
+			Endpoint:       s.Endpoint,
+			PublicEndpoint: s.PublicEndpoint,
+			Region:         s.Region,
+			Bucket:         s.Bucket,
+			Prefix:         s.Prefix,
+			UsePathStyle:   s.PathStyle,
+			Credentials: flob.Credentials{
+				AccessKeyID:     s.AccessKeyId,
+				SecretAccessKey: s.SecretAccessKey,
+				SessionToken:    s.SessionToken,
+			},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("%s.s3: %w", at, err)
+		}
+		return stores, nil
 	case "memory":
 		return flob.NewMemStores(stage), nil
 	default:
-		return nil, fmt.Errorf("registry.storage.driver: unknown driver %q", c.Driver)
+		return nil, fmt.Errorf("%s.driver: unknown driver %q", at, driver)
 	}
 }

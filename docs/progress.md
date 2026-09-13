@@ -10,9 +10,9 @@ checklist lives in its issue; this page is the running record beside them.
 | --- | --- | --- |
 | 0 | [#2](https://github.com/lesomnus/cr/issues/2) scaffold | done |
 | 1 | [#3](https://github.com/lesomnus/cr/issues/3) blobs, manifests, tags | done |
-| 2 | [#4](https://github.com/lesomnus/cr/issues/4) referrers, catalog, deletes, mount | done, Postgres lock untested until phase 4 |
+| 2 | [#4](https://github.com/lesomnus/cr/issues/4) referrers, catalog, deletes, mount | done; the Postgres lock tested in phase 4 |
 | 3 | [#5](https://github.com/lesomnus/cr/issues/5) auth and policy | done; checked with `docker login`, push and a refused tag move against a container |
-| 4 | [#6](https://github.com/lesomnus/cr/issues/6) operations | not started |
+| 4 | [#6](https://github.com/lesomnus/cr/issues/6) operations | done; the compose of cr on MinIO and PostgreSQL pushed, pulled through a 307 to MinIO, and answered `docker search` |
 | 5 | [#7](https://github.com/lesomnus/cr/issues/7) mark-and-sweep, rebuild | not started |
 | 6 | [#8](https://github.com/lesomnus/cr/issues/8) pull-through | not started |
 | 7 | [#9](https://github.com/lesomnus/cr/issues/9) OIDC, roster, export, UI | not started |
@@ -135,3 +135,51 @@ changed to match.
     seconds) into a snapshot requests read, instead of watching. It is correct
     across replicas without a broker, and a failed reload keeps the policy in
     force.
+
+### Phase 4
+
+26. **MinIO comes from `quay.io/minio/minio`.** The Docker Hub image is gone,
+    and `compose.yaml` names the one that still pulls. MinIO also refuses a
+    root user shorter than three characters, which the first compose run
+    found.
+27. **Untagged is not unused.** A manifest nothing tags is kept while a pull
+    has touched it within the grace period, since deployments pin digests; a
+    referrer is kept while its subject is in the repository, and an index's
+    child while the index holds it. The pull times are the batched ones, so a
+    pull in the last few seconds before a run may not count.
+28. **Retention deletes a tag only when every rule matching it agrees.** A
+    rule keeping `v*` protects releases from a rule keeping the newest ten of
+    `*`, and an `immutable` tag is never deleted by retention.
+29. **One release path.** The registry's delete and the collector share
+    `gc.Release`: under the repository lock, each digest is checked again for
+    a holder or a manifest of that name before it is erased. It does not skip
+    the constant blobs any more: erasing a stored copy of `{}` is harmless
+    when cr answers it from memory, and correct when it does not.
+30. **One runner per run, not per process.** Each replica ticks, and the run
+    goes to whoever takes `pg_try_advisory_lock` first; a replica that dies
+    mid-run leaves the lock with its connection. On SQLite there is one
+    process and it always runs.
+31. **The repository lock exists outside a transaction too**
+    (`entindex.Lock`): the session form of the same advisory lock on
+    PostgreSQL, the process's stripe elsewhere. Nothing uses it yet; the
+    phase 5 sweep holds it across a walk of the store without holding a
+    transaction, or, on SQLite, the one writer.
+32. **A redirect is for `GET` only, and a failed signature streams.** `HEAD`
+    stays a stat, a manifest is always cr's, and a store behind a cache that
+    does not yet hold a blob answers `ErrNotExist` to the signature, so the
+    registry streams and the cache fills.
+33. **Routes match at a slash**, the empty prefix is required, and a
+    namespace a pool holds for a route that has since changed is not listed
+    as the router's.
+34. **Search needs `search` from a binding over `*`** and shows what the
+    caller may pull; its description falls back to the image's own
+    annotation. `/v1/_ping` says the registry is standalone, so the Docker
+    CLI authenticates to cr rather than to an index.
+35. **Requests carry the server's telemetry context.** The template's HTTP
+    server had none, so a handler's log went nowhere; `BaseContext` now hands
+    requests the context the server was built on, without its cancellation.
+36. **`watch.broker` is `postgres`**, the name payday registers, not `pg`.
+37. **The PostgreSQL tests run on a schema each** (`CR_TEST_POSTGRES`), so
+    they need one database and nothing else, and they run in their own CI
+    job.
+

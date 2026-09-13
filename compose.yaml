@@ -1,0 +1,102 @@
+# cr on MinIO and PostgreSQL: the shape a replicated deployment has, on one
+# machine.
+#
+#     docker compose up -d
+#     docker login localhost:5000 -u admin -p admin
+#     docker push localhost:5000/acme/app:latest
+#     docker search localhost:5000/acme
+#
+# Blob GETs are answered with a redirect to MinIO, so a client pulling has to
+# reach localhost:9000 as well. The token key is made at startup, which is
+# right for this one replica; a second one needs `auth.token.keys`.
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: cr
+      POSTGRES_PASSWORD: cr
+      POSTGRES_DB: cr
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "cr"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  minio:
+    image: quay.io/minio/minio:latest
+    command: ["server", "/data"]
+    environment:
+      # MinIO refuses a user shorter than three characters.
+      MINIO_ROOT_USER: cr-minio
+      MINIO_ROOT_PASSWORD: cr-secret
+    ports:
+      - "9000:9000"
+
+  # The bucket, once MinIO answers.
+  minio-init:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint:
+      - sh
+      - -c
+      - |
+        until mc alias set local http://minio:9000 cr-minio cr-secret >/dev/null 2>&1; do sleep 1; done
+        mc mb -p local/cr-blobs
+
+  cr:
+    build: .
+    image: ${CR_IMAGE:-ghcr.io/lesomnus/cr:local}
+    command: ["--config", "/etc/cr/cr.yaml", "serve"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    ports:
+      - "5000:5000"
+    configs:
+      - source: cr
+        target: /etc/cr/cr.yaml
+
+configs:
+  cr:
+    content: |
+      db:
+        driver: pgx
+        dsn: postgres://cr:cr@postgres:5432/cr?sslmode=disable
+        migrate: true
+      server:
+        addr: ":50051"
+        http:
+          addr: ":5000"
+      watch:
+        broker: postgres
+      registry:
+        storage:
+          driver: s3
+          s3:
+            endpoint: http://minio:9000
+            public_endpoint: http://localhost:9000
+            region: us-east-1
+            bucket: cr-blobs
+            access_key_id: cr-minio
+            secret_access_key: cr-secret
+            path_style: true
+          redirect:
+            enabled: true
+        gc:
+          every: 1h
+          untagged: 168h
+      auth:
+        static:
+          - name: admin
+            token: admin
+        bindings:
+          - subject: admin
+            repo: "*"
+            actions: ["*"]
+          - subject: anonymous
+            repo: "*"
+            actions: [pull, catalog, search]

@@ -318,7 +318,10 @@ func (s *Server) serveHttp(ctx context.Context, c Config, g *grpc.Server) (func(
 		return nil, err
 	}
 
-	srv := &http.Server{Handler: h}
+	// The requests' contexts carry what `ctx` carries -- the telemetry, the
+	// logger -- and not its cancellation, which is `srv.Close`'s to do.
+	base := context.WithoutCancel(ctx)
+	srv := &http.Server{Handler: h, BaseContext: func(net.Listener) context.Context { return base }}
 	go func() {
 		if err := srv.Serve(l); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.From(ctx).ErrorContext(ctx, "http", slog.String("err", err.Error()))

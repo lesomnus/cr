@@ -36,6 +36,35 @@ jobs:
       - run: go test -count=1 ./...
       - run: go tool pd gen --check .
 
+  # The index on the database a replicated deployment runs on. SQLite is what
+  # the `go` job uses and should keep using; it is also permissive in the
+  # directions that hide mistakes, and the per-repository lock is a different
+  # mechanism there.
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: cr
+          POSTGRES_PASSWORD: cr
+          POSTGRES_DB: cr
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go test -count=1 -run 'TestPostgres' ./index/...
+        env:
+          CR_TEST_POSTGRES: postgres://cr:cr@127.0.0.1:5432/cr?sslmode=disable
+
   conformance:
     runs-on: ubuntu-latest
     steps:

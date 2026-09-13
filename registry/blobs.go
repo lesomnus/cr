@@ -6,12 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/lesomnus/flob"
+	"github.com/lesomnus/otx/log"
 	"github.com/opencontainers/go-digest"
 
 	"github.com/lesomnus/cr/auth"
@@ -51,6 +53,24 @@ func (g *Registry) getBlob(w http.ResponseWriter, r *http.Request, name, arg str
 		h.Set("Accept-Ranges", "bytes")
 		w.WriteHeader(http.StatusOK)
 		return
+	}
+
+	if g.c.Redirect {
+		if p, ok := flob.AsPresigner(s); ok {
+			// A store behind a cache signs only what it already holds; a
+			// miss is answered by streaming, which is what fills it.
+			loc, _, err := p.PresignOpen(ctx, flob.Digest(d), g.c.RedirectTTL)
+			if err == nil {
+				h.Del("Content-Type")
+				h.Del("Etag")
+				h.Set("Location", loc)
+				w.WriteHeader(http.StatusTemporaryRedirect)
+				return
+			}
+			if !errors.Is(err, flob.ErrNotExist) {
+				log.From(ctx).WarnContext(ctx, "presign", slog.String("repo", name), slog.String("digest", d.String()), slog.String("err", err.Error()))
+			}
+		}
 	}
 
 	rc, _, err := s.Open(ctx, flob.Digest(d))
