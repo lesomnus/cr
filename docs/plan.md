@@ -142,27 +142,89 @@ Derived data over immutable content, authoritative for names and policy. Blob
 structurally impossible here.
 
 ```go
+// Index is the registry's view of names over the content flob holds. One
+// accessor per resource, the way payday's Server has one per entity, and
+// the only thing the /v2 handler talks to besides flob.
 type Index interface {
-	PutManifest(ctx, repo string, m Manifest, refs []Digest) error
-	GetManifest(ctx, repo string, d Digest) (Manifest, error)
-	DeleteManifest(ctx, repo string, d Digest) (released []Digest, err error)
+	Repo() Repos
+	Manifest() Manifests
+	Tag() Tags
+	// Tx runs fn inside one transaction. The Index handed to fn is the one
+	// fn uses; the outer one is not touched until fn returns.
+	Tx(ctx context.Context, fn func(Index) error) error
+}
 
-	SetTag(ctx, repo, tag string, d Digest) error
-	ResolveTag(ctx, repo, tag string) (Digest, error)
-	DeleteTag(ctx, repo, tag string) error
-	ListTags(ctx, repo, last string, n int) ([]string, error)
+// Page is (last, n) as the spec paginates: names after Last, at most N.
+type Page struct {
+	Last string
+	N    int
+}
 
-	ListRepositories(ctx, last string, n int) ([]string, error)
-	SearchRepositories(ctx, q string, n int) ([]RepoSummary, error)
-	ListReferrers(ctx, repo string, subject Digest, artifactType string) ([]Descriptor, error)
+type Repos interface {
+	// Ensure returns the repository, creating it on first use. Called from
+	// the first manifest put, never from a blob.
+	Ensure(ctx context.Context, name string) (Repo, error)
+	Get(ctx context.Context, name string) (Repo, error)
+	// Update changes what the management plane owns: description, visibility.
+	Update(ctx context.Context, name string, patch RepoPatch) (Repo, error)
+	// List is _catalog: lexical order, after p.Last.
+	List(ctx context.Context, p Page) ([]string, error)
+	// Search is /v1/search: name or description containing q, at most n.
+	Search(ctx context.Context, q string, n int) ([]RepoSummary, error)
+	// Erase removes the repository and every row under it. The caller has
+	// already walked Manifest().Marks and erased the blobs from flob.
+	Erase(ctx context.Context, name string) error
+}
 
-	IsBlobReferenced(ctx, repo string, d Digest) (bool, error)
-	ListUntaggedManifests(ctx, repo string, before time.Time) ([]Digest, error)
-	Marks(ctx, repo string) (iter.Seq[Digest], error)   // everything the index believes the repo holds
+type Manifests interface {
+	// Put records a manifest and the blobs it holds: layers, config, and
+	// child manifests of an index. Idempotent on (repo, digest).
+	Put(ctx context.Context, repo string, m Manifest, holds []Digest) error
+	Get(ctx context.Context, repo string, d Digest) (Manifest, error)
+	// Erase removes the manifest and returns the blobs no other manifest in
+	// the repository still holds, for the caller to erase from flob.
+	Erase(ctx context.Context, repo string, d Digest) (released []Digest, err error)
+	// Referrers is end-12: descriptors of the manifests whose subject is d,
+	// narrowed by artifactType when it is not "", built from the row alone.
+	Referrers(ctx context.Context, repo string, subject Digest, artifactType string) ([]Descriptor, error)
+	// Holds answers blob DELETE: does any manifest in repo still need d?
+	Holds(ctx context.Context, repo string, blob Digest) (bool, error)
+	// Untagged is GC input: manifests no tag points at, older than before,
+	// and not held by an index or named as a subject.
+	Untagged(ctx context.Context, repo string, before time.Time) ([]Digest, error)
+	// Marks is everything the index believes repo holds, manifests and the
+	// blobs they hold: the mark phase of the sweep, and repository deletion.
+	Marks(ctx context.Context, repo string) iter.Seq2[Digest, error]
+}
 
-	Tx(ctx, func(Index) error) error
+type Tags interface {
+	// Set points name at d. from is what the caller resolved a moment ago,
+	// "" for a tag it believes is new; a tag that moved in between fails
+	// with ErrTagMoved, so an immutable or protected tag is checked and
+	// written under the same row lock rather than in two steps.
+	Set(ctx context.Context, repo, name string, d, from Digest) error
+	Resolve(ctx context.Context, repo, name string) (Digest, error)
+	Erase(ctx context.Context, repo, name string) error
+	// List is end-8: lexical order, after p.Last.
+	List(ctx context.Context, repo string, p Page) ([]string, error)
+	// Of lists the tags pointing at d, for GC and for the management page.
+	Of(ctx context.Context, repo string, d Digest) ([]string, error)
 }
 ```
+
+Verbs: `Put` where the row is named by its content and writing it twice is
+the same as once; `Set` where it is a pointer; `Erase` because that is the
+word flob and payday both use; `Get`, `List`, `Search`, `Resolve` as they
+read. Bindings and tag rules are not here on purpose: they are policy, read
+through `Authorizer` and `TagPolicy` (§5), whose ent implementations share
+the client but not the port.
+
+Record types are plain structs: `Repo{Name, Description, Visibility,
+Tenant}`, `Manifest{Digest, MediaType, ArtifactType, Subject, Size,
+Annotations, CreatedAt}`, `RepoSummary{Name, Description}`, and
+`Descriptor` is the image-spec one. `entindex` implements `Tx` with the
+fork's shared `dialect.Tx` and rebinds each accessor onto it, which is what
+the generated clients' `WithDriver` exists for.
 
 Tables:
 
@@ -237,7 +299,7 @@ phase 1: `Tag: <name>` as one value per tag, replaced on every move.
   `ServeContent`'s seek probe, so the blob handler is the same code with and
   without a cache.
 - **Blob DELETE.** The spec allows `405 UNSUPPORTED` or a delete. cr deletes
-  when `IsBlobReferenced` is false and answers `DENIED` when a manifest in the
+  when `Manifest().Holds` is false and answers `DENIED` when a manifest in the
   repository still holds the blob; deleting it would make that manifest
   unpullable, which is worse than refusing.
 - **Errors.** flob's errors map onto the spec's envelope like this. The
@@ -360,7 +422,7 @@ also the shape registry-ui's client speaks as `ext.search.V1`
 (`src/search.ts`), so cr answering it makes the UI's search box work with no
 UI change.
 
-cr: `SearchRepositories` is a `LIKE` on name and description, filtered by what
+cr: `Repo().Search` is a `LIKE` on name and description, filtered by what
 the subject may `pull`, capped at `n`. `description` is a `Repository` field
 set through the management plane, and falls back to the
 `org.opencontainers.image.description` annotation of the manifest the newest
@@ -384,7 +446,7 @@ same shape (`README.md`, "Deliberate tolerance of leaks").
 
 1. flip the registry read-only: writes answer `503` with `Retry-After`, reads
    continue;
-2. mark: `Index.Marks(repo)` for every repository, which is `manifests` ∪
+2. mark: `Index.Manifest().Marks(repo)` for every repository, which is `manifests` ∪
    `manifest_blobs`;
 3. sweep: walk every flob namespace and `Erase` what is not marked; report
    index rows whose blob is missing;
