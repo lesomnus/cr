@@ -349,6 +349,18 @@ phase 1: `Tag: <name>` as one value per tag, replaced on every move.
   when `Manifest().Holds` is false and answers `DENIED` when a manifest in the
   repository still holds the blob; deleting it would make that manifest
   unpullable, which is worse than refusing.
+- **Well-known blobs** never reach flob. A handful of digests name constant
+  content and are asked for constantly: `{}` (`sha256:44136fa3…`, 2 bytes,
+  the OCI 1.1 empty descriptor that every cosign signature, attestation and
+  `oras` artifact uses as its config), Docker's empty layer
+  (`sha256:a3ed95ca…`, 32 bytes of gzip) and its uncompressed form
+  (`sha256:5f70bf18…`, 1024 bytes), and the empty blob (`sha256:e3b0c442…`).
+  cr keeps them in a table in code: `HEAD` and `GET` answer from memory after
+  the usual authorization, the manifest validator counts them as present,
+  mount and `DELETE` are no-ops, and `Manifest().Put` still records them in
+  `holds` so `Holds`, `Marks` and rebuild need no special case. Since clients
+  `HEAD` before they upload, these are rarely even pushed. Observed on the
+  zot deployment in #1 as a surprisingly large share of blob requests.
 - **Errors.** flob's errors map onto the spec's envelope like this. The
   spec's `BLOB_UPLOAD_UNKNOWN` is its name for "no such upload session", not
   for an unclassified failure; which of the three it was goes in `detail`.
