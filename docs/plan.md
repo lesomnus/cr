@@ -7,6 +7,32 @@ it and in what order. Facts about flob, payday, roster, go-app and the ent fork
 below were read from their sources on 2026-09-13; file references point into
 those repos.
 
+## The principle
+
+cr exists because a registry took a store-wide exclusive lock on every blob
+`HEAD` and made clients wait nineteen seconds for disks that were idle
+([#1](https://github.com/lesomnus/cr/issues/1)). So the rule that outranks
+the others is **availability over strong consistency**, the same trade flob
+makes and states in its README:
+
+- A request path never waits on anything store-wide. Blob `HEAD`, `GET`,
+  `PUT` and every read touch flob and nothing else; they take no lock and
+  open no transaction.
+- **Leaks are tolerated and swept later; losses are not.** Every online
+  reclamation step is "remove a reference the index no longer has", so a
+  race leaves bytes behind and never takes away bytes something still
+  points to.
+- The one serialization is manifest writes within one repository, and it
+  is a transaction-scoped database lock with no I/O inside it (§3). It
+  exists because the alternative is a loss, not a leak. Nothing else is
+  serialized, and GC runs per repository under that same lock so no other
+  repository notices (§7).
+- Bookkeeping that would put a write on a read path, such as last-pull
+  times, is batched and asynchronous, and losing a batch is acceptable.
+- A design that needs a store-wide lock, a global read-only window, or a
+  pass over every repository before it can answer is rejected on that
+  ground alone.
+
 ## 0. Decisions
 
 | question | decision | why |
@@ -17,7 +43,7 @@ those repos.
 | ORM | the ent fork at `github.com/lesomnus/ent` (module path `github.com/protobuf-orm/ent`), which is what payday generates against | it keeps Atlas: `dialect/sql/schema/atlas.go` and `versioned.go` drive versioned migrations through atlas's executor. Nothing to add for migrations. sqlite, postgres and mysql remain; gremlin is gone. |
 | users | **cr stores no credentials.** Subjects come from authenticators; roster is one of them and needs no change | per-repository authorization is cr's own. roster refuses it on purpose (`docs/position.md`: "repositories are the product's"). |
 | tokens | cr's own token endpoint, JWT signed by cr, JWKS published | the distribution flow needs an `access` claim; roster never issues anything a third party verifies |
-| GC | two tiers: online retention that may leak but never loses, and an operator-scheduled mark-and-sweep under read-only | strong consistency is not a goal; enumeration for the sweep is flob's `Walker` and `Namespacer` (`store.go:154-197`) |
+| GC | two tiers: online retention that may leak but never loses, and a mark-and-sweep that runs one repository at a time under that repository's write lock | no global read-only window; enumeration is flob's `Walker` and `Namespacer` (`store.go:154-197`), and `Erase` is namespace-local so a sweep is too |
 | pull-through | flob's `NewCacheStores(primary, origin)` in front of an OCI-origin `Store` that cr writes; the handler serves with `http.ServeContent` | the tap now survives the `ServeContent` seek probe and concurrent misses share one fill (flob `7b0208c`, `cfe82fb`). cr's part is the origin `Store`. |
 
 ## 1. The endpoint surface
@@ -255,10 +281,12 @@ leaves an untagged manifest, which retention covers. Delete: index first, then
 **Manifest writes are serialized per repository.** Without that, a delete
 of manifest M that releases layer L can commit before a concurrent put of
 manifest N that holds L, and then erase L from flob after N is indexed: a
-loss, not a leak. `Tx` for `Manifest().Put` and `Manifest().Erase` takes
-`pg_advisory_xact_lock(hash(repo))` on Postgres; SQLite is one writer
-anyway. Manifest writes are rare, so the lock costs nothing, and the blob
-path stays lock-free as before.
+loss, not a leak. Deferring the erase or re-checking after commit only
+narrows that window; a lock closes it. `Tx` for `Manifest().Put` and
+`Manifest().Erase` takes `pg_advisory_xact_lock(hash(repo))` on Postgres;
+SQLite is one writer anyway. This is the only lock in cr and it is not
+zot's: one repository, one transaction, no I/O inside, manifest writes
+only, never a read and never a blob.
 
 **Rebuild.** `cr index rebuild` walks every namespace with flob's
 `Namespacer` and `Walker`, re-parses each manifest, and recreates the rows.
@@ -493,20 +521,24 @@ concurrent push can leak a blob, never lose one, because every step is
 "remove a reference the index no longer has", and flob's own `Erase` is the
 same shape (`README.md`, "Deliberate tolerance of leaks").
 
-**Mark-and-sweep, operator-scheduled, stop-the-world.** `cr gc --full`, or
-`POST /admin/gc` from a scheduler:
+**Mark-and-sweep, operator-scheduled, one repository at a time.** `cr gc
+--full`, or `POST /admin/gc` from a scheduler, and for each repository:
 
-1. flip the registry read-only: writes answer `503` with `Retry-After`, reads
-   continue;
-2. mark: `Index.Manifest().Marks(repo)` for every repository, which is `manifests` ∪
+1. take that repository's manifest-write lock (§3), the same one a manifest
+   `PUT` takes, so nothing changes what the repository holds while it is
+   measured; reads, blob uploads and every other repository continue;
+2. mark: `Index.Manifest().Marks(repo)`, which is `manifests` ∪
    `manifest_blobs`;
-3. sweep: walk every flob namespace and `Erase` what is not marked; report
-   index rows whose blob is missing;
-4. resume, and record the run so `GET /admin/gc/<id>` can answer.
+3. sweep: `Walk` that one flob namespace and `Erase` what is not marked;
+   report index rows whose blob is missing;
+4. release the lock, record the result, move to the next repository.
 
-Step 3 is flob's `Namespacer` and `Walker`; the same walk is `cr index
-rebuild`. `Walk` promises no snapshot and may omit concurrent changes, which
-is why writes are off while it runs. Expired stages are not part of this:
+A manifest `PUT` that arrives during a repository's sweep waits for the
+lock; if the wait would exceed a bound it answers `503` with `Retry-After`.
+There is no global read-only mode, because flob's `Erase` is namespace-local
+and so is the sweep. `Walk` promises no snapshot and may omit concurrent
+changes, which is what the lock is for. The same walk over every namespace
+is `cr index rebuild`. Expired stages are not part of this:
 `StageCleaner.PruneStages` runs on the tier-one ticker.
 
 On S3 flob never removes the shared object on `Erase`; that sweep is
@@ -554,7 +586,7 @@ four workflows are turned on as they pass.
 | 2 | referrers with `OCI-Subject`, catalog, manifest and blob DELETE, mount | conformance **content discovery** and **content management** |
 | 3 | tenancy decision; `Repository`, `Binding`, `TagRule` entities and their generated services and commands; Basic, token endpoint, JWKS, `htpasswd`, `static`; anonymous pull as a binding; tag rules enforced | `docker login`, a denied push, a refused move of an immutable tag |
 | 4 | tier-one GC with `PruneStages`, health, metrics and traces on the handler, prefix router, S3 presign redirect, postgres in CI; `/v1/search` | a compose of cr on S3; `docker search` answers |
-| 5 | mark-and-sweep GC and `index rebuild` on flob's `Walker`; read-only mode and the admin trigger | a scheduled full GC on the compose |
+| 5 | per-repository mark-and-sweep and `index rebuild` on flob's `Walker`; the admin trigger and run history | a scheduled full GC on the compose while pushes to other repositories continue |
 | 6 | pull-through proxy for blobs, then manifests and tags with TTL | a Docker Hub mirror serving `library/ubuntu` |
 | 7 | `oidc` and `roster` authenticators; `cr export` to an OCI layout; the management side of registry-ui on the TS client | `docker login` with an `rt_` key |
 
@@ -584,9 +616,9 @@ else. Where the state is:
   blob from upstream once each; both `Add`, one wins, nothing breaks.
 
 One runner only, chosen with a Postgres advisory lock: GC, `PruneStages`,
-the sync scheduler, the webhook dispatcher if one exists. The read-only flag
-for mark-and-sweep is a row, not a process variable, so every replica stops
-writing together.
+the sync scheduler, the webhook dispatcher if one exists. GC's per-repository
+lock is the same advisory lock manifest writes take, so a replica pushing to
+a repository being swept waits on the database, not on a flag.
 
 The `os` backend on a shared filesystem is not a scale-out path: flob's
 per-digest `flock` and `nlink` reclamation cannot be trusted on NFS. That is
