@@ -58,8 +58,8 @@ never reach the store, unless `registry.disable_well_known` says otherwise.
 ## The index
 
 Names live in a database: repositories, manifests with their media type,
-artifact type and subject, the blobs each manifest holds, and tags. It is
-derived from what the store holds, and it is what answers for names.
+artifact type and subject, the blobs each manifest holds, and tags. It is what
+answers for names, and the only place tags are kept.
 
 - **A push writes the store first, then the index.** A crash in between leaves
   bytes no manifest names, which the collection finds. A delete changes the
@@ -69,11 +69,11 @@ derived from what the store holds, and it is what answers for names.
   refused while a manifest holds the blob.
 - **Referrers are a query** over the manifests whose subject is a digest, and
   the referrers API answers from rows without opening manifests.
-- **The store can rebuild it.** Every tag is also written as a label on its
-  manifest in the store, so `cr index rebuild` recovers repositories,
-  manifests, what they hold and their tags from the store alone. What the store
-  does not keep -- when things were pushed and pulled, descriptions, bindings
-  and tag rules -- a rebuild cannot bring back.
+- **The store can rebuild most of it.** `cr index rebuild` recovers
+  repositories, manifests and what they hold from the store alone. Tags are not
+  in the store, and neither are when things were pushed and pulled,
+  descriptions, bindings and tag rules, so a rebuild cannot bring those back:
+  the database is what to back up.
 
 ## Garbage collection
 

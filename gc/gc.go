@@ -21,7 +21,6 @@ import (
 	"github.com/opencontainers/go-digest"
 
 	"github.com/lesomnus/cr/auth"
-	"github.com/lesomnus/cr/blob"
 	"github.com/lesomnus/cr/index"
 )
 
@@ -333,7 +332,6 @@ func (c *Collector) retention(ctx context.Context, repo string, p *auth.Policy) 
 		}
 		if erased {
 			n++
-			blob.LabelTag(ctx, c.c.Stores.Use(repo), t.Digest, t.Name, false)
 		}
 	}
 	return n, errors.Join(errs...)
@@ -401,7 +399,6 @@ func (c *Collector) evict(ctx context.Context, repo string, keep time.Duration) 
 		}
 		if erased {
 			n++
-			blob.LabelTag(ctx, c.c.Stores.Use(repo), t.Digest, t.Name, false)
 		}
 	}
 

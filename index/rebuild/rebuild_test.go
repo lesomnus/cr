@@ -83,17 +83,11 @@ func TestRebuild(t *testing.T) {
 		Subject:      &image,
 		Annotations:  map[string]string{"signed": "yes"},
 	}, v1.MediaTypeImageManifest)
-	// A tag moved away from where it was: its label moves with it.
-	p.manifest(repo, "moving", mustManifest(t, stores, repo, image.Digest), v1.MediaTypeImageManifest)
-	p.manifest(repo, "moving", mustManifest(t, stores, repo, child.Digest), v1.MediaTypeImageManifest)
-
 	to := memindex.New()
 	r, err := rebuild.Rebuild(ctx, stores, to, 0)
 	require.NoError(t, err)
 	require.Equal(t, 1, r.Repositories)
 	require.Equal(t, 4, r.Manifests)
-	require.Equal(t, 4, r.Tags)
-	require.Empty(t, r.Conflicts)
 
 	for _, d := range []digest.Digest{image.Digest, child.Digest, multi.Digest, sig.Digest} {
 		want, err := from.Manifest().Get(ctx, repo, d)
@@ -107,13 +101,10 @@ func TestRebuild(t *testing.T) {
 		require.Equal(t, want.Annotations, got.Annotations)
 	}
 
-	tags, err := from.Tag().All(ctx, repo)
+	// Tags are the index's alone, and the store has none to give back.
+	tags, err := to.Tag().All(ctx, repo)
 	require.NoError(t, err)
-	for _, want := range tags {
-		got, err := to.Tag().Get(ctx, repo, want.Name)
-		require.NoError(t, err, want.Name)
-		require.Equal(t, want.Digest, got.Digest, want.Name)
-	}
+	require.Empty(t, tags)
 
 	held, err := to.Manifest().Holds(ctx, repo, layer.Digest)
 	require.NoError(t, err)
@@ -130,7 +121,6 @@ func TestRebuild(t *testing.T) {
 	r, err = rebuild.Rebuild(ctx, stores, to, 0)
 	require.NoError(t, err)
 	require.Zero(t, r.Manifests)
-	require.Zero(t, r.Tags)
 
 	names, err := to.Repo().List(ctx, index.Page{})
 	require.NoError(t, err)

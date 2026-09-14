@@ -14,8 +14,8 @@ pull-through caches, and garbage collection that never stops it.
   secret -- and [roster](https://github.com/lesomnus/roster).
 - **Pull-through caches** that stream while they fill, fetch only what is
   asked for, and keep serving cached tags when the upstream is down.
-- **Garbage collection without a read-only window**, and an index the store
-  alone can rebuild.
+- **Garbage collection without a read-only window**, and an index whose
+  repositories and manifests the store alone can rebuild.
 - **A management API** for bindings, tag rules, repositories and collection
   runs. SQLite or PostgreSQL; a local disk or S3.
 

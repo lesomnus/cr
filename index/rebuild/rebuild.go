@@ -1,6 +1,6 @@
-// Package rebuild recreates the index from the store alone: the manifests
-// found in each repository's namespace, what they hold, and the tags their
-// labels name.
+// Package rebuild recreates the index from the store alone: the repositories
+// that have manifests in their namespaces, the manifests, and what they hold.
+// Tags are the index's alone, so a rebuild cannot bring them back.
 package rebuild
 
 import (
@@ -13,7 +13,6 @@ import (
 	"github.com/lesomnus/flob"
 	"github.com/opencontainers/go-digest"
 
-	"github.com/lesomnus/cr/blob"
 	"github.com/lesomnus/cr/index"
 	"github.com/lesomnus/cr/oci"
 )
@@ -22,19 +21,14 @@ import (
 type Report struct {
 	Repositories int
 	Manifests    int
-	Tags         int
-
-	// Conflicts is tags whose label is on more than one manifest, where the
-	// first one found won.
-	Conflicts []string
 
 	// Skipped is namespaces that are not repository names.
 	Skipped []string
 }
 
 // Rebuild reads every namespace of stores into ix. It only adds: a manifest
-// already indexed is left as it is, and a tag that already exists is not
-// moved, so it can run over a partial index as well as an empty one.
+// already indexed is left as it is, so it can run over a partial index as well
+// as an empty one.
 //
 // A manifest is a blob of at most maxManifest bytes that parses as one; the
 // time it was pushed is not in the store and becomes now.
@@ -67,7 +61,6 @@ func Rebuild(ctx context.Context, stores flob.Stores, ix index.Index, maxManifes
 type found struct {
 	m     index.Manifest
 	holds []digest.Digest
-	tags  []string
 }
 
 func (r *Report) repository(ctx context.Context, s flob.Store, repo string, ix index.Index, maxManifest int64) error {
@@ -110,28 +103,6 @@ func (r *Report) repository(ctx context.Context, s flob.Store, repo string, ix i
 			}
 			r.Manifests++
 		}
-		claimed := map[string]digest.Digest{}
-		for _, f := range fs {
-			for _, tag := range f.tags {
-				if !oci.ValidTag(tag) {
-					continue
-				}
-				if d, ok := claimed[tag]; ok && d != f.m.Digest {
-					r.Conflicts = append(r.Conflicts, repo+":"+tag)
-					continue
-				}
-				claimed[tag] = f.m.Digest
-				if _, err := tx.Tag().Get(ctx, repo, tag); err == nil {
-					continue
-				} else if !errors.Is(err, index.ErrNotFound) {
-					return err
-				}
-				if err := tx.Tag().Set(ctx, repo, tag, f.m.Digest, ""); err != nil {
-					return err
-				}
-				r.Tags++
-			}
-		}
 		return nil
 	})
 }
@@ -168,9 +139,5 @@ func read(ctx context.Context, s flob.Store, info flob.Info) (found, bool, error
 	if p.Subject != nil {
 		m.Subject = p.Subject.Digest
 	}
-	labels, err := info.Labels(ctx)
-	if err != nil {
-		return found{}, false, err
-	}
-	return found{m: m, holds: p.Holds(), tags: blob.TagsOf(labels)}, true, nil
+	return found{m: m, holds: p.Holds()}, true, nil
 }

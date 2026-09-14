@@ -18,7 +18,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/lesomnus/cr/auth"
-	"github.com/lesomnus/cr/blob"
 	"github.com/lesomnus/cr/gc"
 	"github.com/lesomnus/cr/index"
 	"github.com/lesomnus/cr/oci"
@@ -187,7 +186,7 @@ func (g *Registry) putManifest(w http.ResponseWriter, r *http.Request, name, arg
 		if ref.Tag == "" {
 			return nil
 		}
-		return g.setTag(ctx, ix, s, name, ref.Tag, d)
+		return g.setTag(ctx, ix, name, ref.Tag, d)
 	})
 	if err != nil {
 		g.fail(w, r, err)
@@ -257,9 +256,8 @@ func (g *Registry) missing(ctx context.Context, ix index.Index, s flob.Store, na
 	return missing, nil
 }
 
-// setTag points tag at d in a transaction that holds the repository's lock,
-// and keeps the tag as a label on the manifest so a rebuild can recover it.
-func (g *Registry) setTag(ctx context.Context, ix index.Index, s flob.Store, name, tag string, d digest.Digest) error {
+// setTag points tag at d in a transaction that holds the repository's lock.
+func (g *Registry) setTag(ctx context.Context, ix index.Index, name, tag string, d digest.Digest) error {
 	from := digest.Digest("")
 	cur, err := ix.Tag().Get(ctx, name, tag)
 	switch {
@@ -277,23 +275,7 @@ func (g *Registry) setTag(ctx context.Context, ix index.Index, s flob.Store, nam
 			return oci.ErrDenied(err.Error())
 		}
 	}
-	if err := ix.Tag().Set(ctx, name, tag, d, from); err != nil {
-		return err
-	}
-	if from != d {
-		if from != "" {
-			g.label(ctx, s, from, tag, false)
-		}
-		g.label(ctx, s, d, tag, true)
-	}
-	return nil
-}
-
-// label adds or removes one tag in d's labels, best effort.
-func (g *Registry) label(ctx context.Context, s flob.Store, d digest.Digest, tag string, add bool) {
-	if err := blob.LabelTag(ctx, s, d, tag, add); err != nil {
-		log.From(ctx).WarnContext(ctx, "tag label", slog.String("digest", d.String()), slog.String("tag", tag), slog.String("err", err.Error()))
-	}
+	return ix.Tag().Set(ctx, name, tag, d, from)
 }
 
 func (g *Registry) deleteManifest(w http.ResponseWriter, r *http.Request, name, arg string) {
@@ -303,11 +285,9 @@ func (g *Registry) deleteManifest(w http.ResponseWriter, r *http.Request, name, 
 		g.fail(w, r, err)
 		return
 	}
-	s := g.store(name)
-
 	if ref.Tag != "" {
 		err := g.c.Index.Tx(ctx, name, func(ix index.Index) error {
-			t, err := ix.Tag().Get(ctx, name, ref.Tag)
+			_, err := ix.Tag().Get(ctx, name, ref.Tag)
 			if errors.Is(err, index.ErrNotFound) {
 				return oci.ErrManifestUnknown(ref.Tag)
 			}
@@ -317,11 +297,7 @@ func (g *Registry) deleteManifest(w http.ResponseWriter, r *http.Request, name, 
 			if err := auth.CallerFrom(ctx).CheckTag(name, ref.Tag, auth.TagDelete); err != nil {
 				return oci.ErrDenied(err.Error())
 			}
-			if err := ix.Tag().Erase(ctx, name, ref.Tag); err != nil {
-				return err
-			}
-			g.label(ctx, s, t.Digest, ref.Tag, false)
-			return nil
+			return ix.Tag().Erase(ctx, name, ref.Tag)
 		})
 		if err != nil {
 			g.fail(w, r, err)

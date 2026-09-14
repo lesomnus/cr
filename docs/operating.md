@@ -282,14 +282,14 @@ cr index rebuild
 ```
 
 reads every repository's namespace in the store and puts back what it finds:
-repositories, manifests and what they hold, and the tags each manifest carries
-as labels. It only adds, so it runs over an empty database or a partial one.
-When two manifests claim one tag, the first found keeps it and the rebuild
-reports the other. What the store does not keep is lost: when a manifest was
-pushed and pulled, a repository's description, and bindings and tag rules,
-which are rows of their own. On S3 the tags live in object metadata, which AWS
-caps at 2 KB, so a manifest with a great many tags gives back only the ones
-that fit.
+repositories, manifests and what they hold. It only adds, so it runs over an
+empty database or a partial one. What the store does not keep is lost: tags,
+when a manifest was pushed and pulled, a repository's description, and
+bindings and tag rules. A rebuilt index answers by digest until tags are
+pushed again. A rebuilt manifest counts as pushed at the rebuild, so the
+untagged collection takes it once `gc.untagged` has passed unless a tag points
+at it by then; set `untagged: 0` until the tags are back. The database is what
+to back up, and a rebuild is for when there is no backup.
 
 ## Pull-through caches
 

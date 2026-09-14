@@ -206,14 +206,7 @@ func (g *Registry) fetch(ctx context.Context, p *Proxy, name, remote, reference,
 		if from == d {
 			return nil
 		}
-		if err := ix.Tag().Set(ctx, name, tag, d, from); err != nil {
-			return err
-		}
-		if from != "" {
-			g.label(ctx, s, from, tag, false)
-		}
-		g.label(ctx, s, d, tag, true)
-		return nil
+		return ix.Tag().Set(ctx, name, tag, d, from)
 	})
 	if err != nil {
 		return err
