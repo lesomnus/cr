@@ -4,7 +4,9 @@ A [payday](https://github.com/lesomnus/payday) app. Most of it is **generated
 from `proto/`**, so the usual shape of a change is: edit the schema, regenerate,
 then write the part no schema can state.
 
-`README.md` is the long version of everything below.
+`docs/development.md` is the long version of everything below. `README.md` and
+the rest of `docs/` are for people running cr; keep them in step when a change
+alters what a deployment configures or sees.
 
 ## Regenerate after touching the schema
 
@@ -115,14 +117,17 @@ cd ts && npm install && npm run dev
 
 ## `auth.Plain` is not for production
 
-It believes what the caller writes. It is right for tests and a sandbox, and
-`serve.go` wires it because the alternative is an app that cannot be run until
-there is a certificate authority. For a browser there is `auth/authsession`,
+It believes what the caller writes. It is right for tests and the sandbox, and
+`cmd/serve.go` falls back to it when `Server.Auth` is nil. `cr serve` never
+leaves it nil: `cli/serve.go` sets the bearer handler `cli/auth.go` builds from
+`management.tokens` and roster, so a listener anyone can reach takes nobody's
+word for who they are. Keep it that way for anything new that serves the
+management API. For a browser there is `auth/authsession`,
 which serves the sign-in endpoint and mints the cookie; what it takes from this
 app is a `Verify`, since only this app knows what checking a secret means.
 
 ## Reference
 
-- `README.md` — the same ground at length, including upgrading payday
+- `docs/development.md` — the same ground at length, including upgrading payday
 - <https://github.com/lesomnus/payday/tree/main/docs> — the guides and the
   references behind them
