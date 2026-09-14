@@ -67,10 +67,11 @@ stores it is a copy.
 
 ## Pulling
 
-A manifest is answered with the media type it was pushed with. `Accept`
-refuses only a request that names manifest types and not the stored one, and
-cr never converts between formats. Manifests and `HEAD` requests are always
-answered by cr; only a blob `GET` is redirected to a bucket.
+A manifest is answered as it was pushed, with its media type in `Content-Type`,
+whatever `Accept` names: cr never converts between formats, so there is nothing
+to choose, and a client that cannot use the type learns it from the header.
+Manifests and `HEAD` requests are always answered by cr; only a blob `GET` is
+redirected to a bucket.
 
 ## Deleting
 

@@ -204,6 +204,32 @@ func TestProxyTagMoves(t *testing.T) {
 	require.Equal(t, "MANIFEST_UNKNOWN", code(t, res))
 }
 
+// TestProxyAnswersWhatItFetchedWhateverTheAccept is #10: a tag upstream that
+// names one platform's image manifest, asked for by a client that listed only
+// the index types. The cache fetched and indexed it, and it is answered as it
+// is -- by the tag and by the digest -- rather than as a manifest nobody has.
+func TestProxyAnswersWhatItFetchedWhateverTheAccept(t *testing.T) {
+	up := newUpstream(t, nil)
+	body, _ := up.image("holiday-system", "arm64 layer")
+	require.Equal(t, http.StatusCreated, up.pushManifest("holiday-system", "dev-arm64", body, v1.MediaTypeImageManifest).StatusCode)
+	d := digest.FromBytes(body)
+
+	c := newCache(t, up, "", "")
+	const repo = "docker.io/holiday-system"
+	for _, accept := range []string{
+		v1.MediaTypeImageIndex,
+		"application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json",
+	} {
+		for _, ref := range []string{"dev-arm64", d.String()} {
+			res := c.do("GET", "/v2/"+repo+"/manifests/"+ref, nil, "Accept", accept)
+			require.Equal(t, http.StatusOK, res.StatusCode, "%s by %s", accept, ref)
+			require.Equal(t, v1.MediaTypeImageManifest, res.Header.Get("Content-Type"))
+			require.Equal(t, d.String(), res.Header.Get("Docker-Content-Digest"))
+			require.Equal(t, body, read(t, res))
+		}
+	}
+}
+
 func TestProxyUpstreamAuth(t *testing.T) {
 	st := auth.NewPolicyStore(time.Hour, auth.Static{Bindings: []auth.Binding{
 		{Subject: "ci", Repo: "*", Actions: []auth.Action{auth.ActionAll}},

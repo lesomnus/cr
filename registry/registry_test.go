@@ -236,9 +236,17 @@ func TestManifest(t *testing.T) {
 		require.Equal(t, http.StatusOK, res.StatusCode)
 	}
 
-	res = x.do("GET", "/v2/acme/app/manifests/latest", nil, "Accept", "application/vnd.docker.distribution.manifest.v2+json")
-	require.Equal(t, http.StatusNotFound, res.StatusCode)
-	require.Equal(t, "MANIFEST_UNKNOWN", code(t, res))
+	// What was pushed is what is answered, whatever the request accepts: an
+	// existing manifest is `200`, with its own type in `Content-Type`.
+	for _, accept := range []string{
+		v1.MediaTypeImageIndex,
+		"application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json",
+	} {
+		res = x.do("GET", "/v2/acme/app/manifests/latest", nil, "Accept", accept)
+		require.Equal(t, http.StatusOK, res.StatusCode, accept)
+		require.Equal(t, v1.MediaTypeImageManifest, res.Header.Get("Content-Type"))
+		require.Equal(t, b, read(t, res))
+	}
 
 	res = x.do("GET", "/v2/acme/app/manifests/nope", nil)
 	require.Equal(t, http.StatusNotFound, res.StatusCode)

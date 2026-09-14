@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"mime"
 	"net/http"
 	"slices"
 	"strconv"
@@ -36,28 +35,6 @@ func referenceOf(arg string, missing func(any) *oci.Error) (oci.Reference, error
 		return ref, oci.ErrDigestInvalid(err.Error())
 	}
 	return ref, missing(err.Error())
-}
-
-// accepts reports whether a request's `Accept` admits a manifest of type t.
-// Only a request that names manifest types, and not t, is refused: one that
-// names none, or only `application/json`, gets what is there.
-func accepts(values []string, t string) bool {
-	named := false
-	for _, v := range values {
-		for part := range strings.SplitSeq(v, ",") {
-			mt, _, err := mime.ParseMediaType(strings.TrimSpace(part))
-			if err != nil {
-				continue
-			}
-			if mt == t || mt == "*/*" {
-				return true
-			}
-			if oci.IsManifestMediaType(mt) {
-				named = true
-			}
-		}
-	}
-	return !named
 }
 
 func (g *Registry) getManifest(w http.ResponseWriter, r *http.Request, name, arg string) {
@@ -98,11 +75,11 @@ func (g *Registry) getManifest(w http.ResponseWriter, r *http.Request, name, arg
 		g.fail(w, r, err)
 		return
 	}
-	if !accepts(r.Header.Values("Accept"), m.MediaType) {
-		g.fail(w, r, oci.ErrManifestUnknown("the manifest is "+m.MediaType+", which the request does not accept"))
-		return
-	}
-
+	// Whatever `Accept` names, what was pushed is what is answered, with its
+	// type in `Content-Type`. cr converts between no formats, so there is
+	// nothing to choose between, and the specification has an existing
+	// manifest answered `200`: a client that cannot use the type learns it
+	// from the header, rather than being told the manifest does not exist.
 	h := w.Header()
 	h.Set("Content-Type", m.MediaType)
 	h.Set("Docker-Content-Digest", d.String())
