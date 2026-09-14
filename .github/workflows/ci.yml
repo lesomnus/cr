@@ -1,4 +1,5 @@
-# Every gate cr has, on every push to main and every pull request.
+# Every gate cr has, on every push to main and every pull request, and the
+# image last.
 #
 # `go` is what a desk runs: gofmt, build, vet, tests, and `pd gen --check`,
 # which is the only thing that notices a generated file that was not
@@ -7,8 +8,13 @@
 # `conformance` is the OCI distribution-spec suite against the built binary,
 # through `scripts/conformance.sh`, so what CI runs and what a desk runs are
 # the same command.
+#
+# `image` needs every other job, so what reaches the registry is what the gates
+# passed.
 name: ci
 
+# `workflow_dispatch` because the image job is here: a rebuild of what `main`
+# already is should not need an empty commit.
 on:
   workflow_dispatch:
   push:
@@ -104,20 +110,67 @@ jobs:
       - run: npm run build
         working-directory: ts
 
-  # The image, built and not pushed: what reaches a registry is a decision for
-  # a release, not for every commit.
+  # The image, for linux/amd64 and linux/arm64. A pull request builds it and
+  # pushes nothing; main pushes `ghcr.io/lesomnus/cr` under the four tags
+  # `docker-bake.hcl` names, `:edge` among them.
   image:
-    needs: [go, conformance]
+    needs: [go, postgres, conformance, sandbox]
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write # to push to ghcr.io/lesomnus/cr
+
+    env:
+      TAG: edge
+      BUILD_HASH: ${{ github.sha }}
+      BUILD_ID: r${{ github.run_id }}
+      # A push to main, or a run started by hand on main: never a pull request,
+      # and never another branch.
+      PUBLISH: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+
     steps:
       - uses: actions/checkout@v5
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/bake-action@v6
+      - uses: docker/setup-buildx-action@v4
+
+      # No QEMU. The stage that builds runs on the runner's architecture and
+      # cross-compiles, so `linux/arm64` is a second link rather than a second
+      # run under emulation -- see `Dockerfile`. Setting it up anyway would be
+      # minutes a build, spent on nothing.
+
+      - uses: docker/login-action@v4
+        if: env.PUBLISH == 'true'
         with:
-          source: .
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build
+        id: build
+        uses: docker/bake-action@v7
+        with:
           files: docker-bake.hcl
           targets: app
-          push: false
+          push: ${{ env.PUBLISH == 'true' }}
+          set: |
+            app.cache-from=type=gha,scope=app
+            app.cache-to=type=gha,scope=app,mode=max
+
+      # What was pushed, said once, rather than left for somebody to ask the
+      # registry what a moving tag points at now. `:edge` moves; the digest is
+      # what a deployment that means to stay put is told.
+      - name: Summarise
+        if: env.PUBLISH == 'true'
         env:
-          BUILD_HASH: ${{ github.sha }}
-          BUILD_ID: r${{ github.run_id }}
+          METADATA: ${{ steps.build.outputs.metadata }}
+        run: |
+          set -eu
+          {
+            echo "| image | digest |"
+            echo "| ----- | ------ |"
+            printf '%s' "$METADATA" | jq -r '
+              to_entries[]
+              | select(.value["image.name"])
+              | "| \(.value["image.name"] | split(",")[0]) | `\(.value["containerimage.digest"])` |"
+            '
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sync/atomic"
 
 	"github.com/lesomnus/otx/log"
 	"github.com/protobuf-orm/ent/dialect"
@@ -99,6 +100,9 @@ type Server struct {
 	// [Server.Auth] is, and because what they are built from -- a store on a
 	// disk -- is nothing a sandbox has.
 	Routes map[string]http.Handler
+
+	// stopping is set once the server is told to stop; see [Server.Stopping].
+	stopping atomic.Bool
 }
 
 // Build opens the database and stacks the servers.
@@ -267,25 +271,37 @@ func (s *Server) Grpc(ctx context.Context, c Config, opts ...grpc.ServerOption) 
 	return g, nil
 }
 
-// Serve answers on `l` until the context is done.
+// Serve answers on `l` until the context is done, and then stops the way
+// [ShutdownConfig] says.
 func (s *Server) Serve(ctx context.Context, c Config, l net.Listener) error {
 	g, err := s.Grpc(ctx, c)
 	if err != nil {
 		return err
 	}
 
-	stop, err := s.serveHttp(ctx, c, g)
+	srv, err := s.serveHttp(ctx, c, g)
 	if err != nil {
 		return err
 	}
-	defer stop()
 
+	stopped := make(chan struct{})
 	go func() {
+		defer close(stopped)
 		<-ctx.Done()
-		g.GracefulStop()
+		s.shutdown(ctx, c.Shutdown, g, srv)
 	}()
 
-	return g.Serve(l)
+	if err := g.Serve(l); err != nil {
+		if srv != nil {
+			srv.Close()
+		}
+		return err
+	}
+
+	// `Serve` returns as soon as the listener closes, which is the start of a
+	// stop and not its end: what is in flight is still finishing.
+	<-stopped
+	return nil
 }
 
 // serveHttp is the second listener, for whatever cannot speak gRPC -- which is
@@ -294,12 +310,12 @@ func (s *Server) Serve(ctx context.Context, c Config, l net.Listener) error {
 // It is the **same** `g`: a page reaches the handlers a gRPC client reaches,
 // through the interceptors a gRPC client goes through, behind the same wall.
 // There is no second stack here for a rule to be missing from.
-func (s *Server) serveHttp(ctx context.Context, c Config, g *grpc.Server) (func(), error) {
+func (s *Server) serveHttp(ctx context.Context, c Config, g *grpc.Server) (*http.Server, error) {
 	if !c.Server.Http.Serves() {
 		if len(s.Routes) > 0 {
 			return nil, errors.New("server.http.addr is not set, and the registry is served on it")
 		}
-		return func() {}, nil
+		return nil, nil
 	}
 
 	h, err := web.New(c.Server.Http, g)
@@ -329,9 +345,9 @@ func (s *Server) serveHttp(ctx context.Context, c Config, g *grpc.Server) (func(
 	}
 
 	// The requests' contexts carry what `ctx` carries -- the telemetry, the
-	// logger -- and not its cancellation, which is `srv.Close`'s to do.
-	base := context.WithoutCancel(ctx)
-	srv := &http.Server{Handler: h, BaseContext: func(net.Listener) context.Context { return base }}
+	// logger -- and not its cancellation: a push in flight when the server is
+	// told to stop is let finish, see [Server.shutdown].
+	srv := httpServer(context.WithoutCancel(ctx), h)
 	go func() {
 		if err := srv.Serve(l); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.From(ctx).ErrorContext(ctx, "http", slog.String("err", err.Error()))
@@ -340,5 +356,5 @@ func (s *Server) serveHttp(ctx context.Context, c Config, g *grpc.Server) (func(
 
 	log.From(ctx).InfoContext(ctx, "http", slog.String("addr", l.Addr().String()))
 
-	return func() { srv.Close() }, nil
+	return srv, nil
 }

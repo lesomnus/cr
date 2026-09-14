@@ -187,10 +187,18 @@ describe them for people running cr, and a field added here is added there.
 
 ```sh
 docker buildx bake            # the image, for linux/amd64 and linux/arm64
+docker buildx bake test       # vet and the tests, on a machine with no Go toolchain
 go build -tags grpcnotrace -ldflags="-s -w" ./cmd/cr
 ```
 
-Neither flag is required and neither changes what the binary does. `-s -w`
+`docker-bake.hcl` tags one build four ways -- `:$TAG` (`local` unless told
+otherwise), `:r<run>`, `:YYMMDD` and `:YYMMDD-r<run>` -- and labels it with its
+revision and version. CI's `image` job builds it on every pull request and
+pushes nothing; on `main`, once every other job has passed, it pushes to
+`ghcr.io/lesomnus/cr` with `TAG=edge`.
+
+Neither flag of the `go build` is required and neither changes what the binary
+does. `-s -w`
 drops DWARF, which is most of what a Go binary weighs and is worth keeping in a
 build somebody debugs with a profiler. `grpcnotrace` is gRPC's own tag: it drops
 `golang.org/x/net/trace`, a ring buffer of recent RPCs served at

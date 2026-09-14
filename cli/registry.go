@@ -90,7 +90,7 @@ func Registry(ctx context.Context, c *cmd.Config, s *cmd.Server) error {
 		s.Routes["/.well-known/jwks.json"] = instrument(http.HandlerFunc(guard.ServeJWKS))
 	}
 	s.Routes["/healthz"] = httpx.Live()
-	s.Routes["/readyz"] = httpx.Ready(s.Db.PingContext)
+	s.Routes["/readyz"] = httpx.Ready(s.Stopping, s.Db.PingContext)
 
 	s.Spin = append(s.Spin, ix, collector)
 	return nil

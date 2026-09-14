@@ -34,6 +34,9 @@ are redirected to MinIO, so a client pulling has to reach `localhost:9000` as
 well. [docs/operating.md](docs/operating.md#running) starts from the binary
 instead.
 
+Every commit on `main` that passes CI is published as `ghcr.io/lesomnus/cr`:
+`:edge` follows `main`, and `:YYMMDD-r<run>` is the tag that never moves.
+
 ## Documentation
 
 - [How cr works](docs/how-it-works.md) -- the consistency trade, storage, the

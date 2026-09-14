@@ -12,14 +12,23 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"syscall"
 
 	"github.com/lesomnus/cr/cli"
 	"github.com/lesomnus/cr/cmd"
 )
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	// SIGTERM is what `docker stop` and Kubernetes send, and SIGINT is a
+	// terminal's. Either starts the stop `shutdown` configures; a second one
+	// ends the process there and then, the way it would have ended without any
+	// of this.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
 
 	var c cmd.Config
 	if err := cli.Cmd(&c).Run(ctx, os.Args[1:]); err != nil {

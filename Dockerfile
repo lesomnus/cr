@@ -1,10 +1,12 @@
 # cr, as an image: the binary and nothing else.
 #
-# The build runs on the builder's architecture and cross-compiles, so a second
-# platform is a second link rather than a second run under emulation. SQLite is
-# the wazero engine, so nothing here needs cgo.
+# `docker buildx bake` builds `app`; `docker buildx bake test` runs the Go tests
+# on a machine with no toolchain. The stages that do work run on the builder's
+# architecture and cross-compile, so a second platform is a second link rather
+# than a second run under emulation. SQLite is the wazero engine, so nothing
+# here needs cgo.
 
-FROM --platform=$BUILDPLATFORM golang:1.27 AS build
+FROM --platform=$BUILDPLATFORM golang:1.27 AS base
 
 WORKDIR /src
 
@@ -13,6 +15,15 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
+
+# Not part of any image, and not in bake's default group: the gate is CI's `go`
+# job, which also runs gofmt and `pd gen --check`. This is its vet and tests,
+# for `docker buildx bake test`.
+FROM base AS test
+RUN --mount=type=cache,target=/root/.cache/go-build \
+	go vet ./... && go test ./...
+
+FROM base AS build
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -39,5 +50,7 @@ WORKDIR /home/nonroot
 # configuration: `--config`, or `CR_*` variables (`cr config env`).
 EXPOSE 5000
 
+# `docker stop` and Kubernetes send SIGTERM, which `cr serve` stops on the way
+# `shutdown` in its configuration says.
 ENTRYPOINT ["/usr/local/bin/cr"]
 CMD ["serve"]

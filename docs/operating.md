@@ -46,8 +46,19 @@ so at startup; [access.md](access.md) turns the guard on.
 
 `init` puts up the tenant `operator` and the holder `admin` in it (`--tenant`,
 `--holder`). They own what the management plane writes -- bindings and tag
-rules -- and `cr <entity> ...` acts as that holder. The image runs `cr serve`
-and exposes the registry on port 5000.
+rules -- and `cr <entity> ...` acts as that holder.
+
+**The image** is `ghcr.io/lesomnus/cr`, for linux/amd64 and linux/arm64. It
+runs `cr serve` as a non-root user with no shell, exposes the registry on port
+5000, and takes its configuration from `--config` or `CR_*` variables. Every
+commit on `main` that passes CI is pushed under four tags:
+
+| tag | |
+| --- | --- |
+| `:edge` | the latest build of `main`; moves |
+| `:r<run>` | one CI run's build |
+| `:YYMMDD` | the last build of that day; moves |
+| `:YYMMDD-r<run>` | one build, and never moves: the one a deployment pins |
 
 **The database** is `db.driver: sqlite3` for one process, or `pgx` for
 PostgreSQL and any number of them. With `db.migrate: true`, `serve` creates and
@@ -168,10 +179,42 @@ replica at a time, whichever takes the lock for the run. A schema change in an
 upgrade has to suit the replicas still running the older version until they
 are replaced.
 
-**Stopping.** cr stops on `SIGINT`. It does not handle `SIGTERM` yet -- what
-Docker and Kubernetes send -- and ends at once on it. Either way the registry's
-listener closes without waiting for requests in flight, and `/readyz` does not
-turn `503` beforehand, so requests caught by a stop or an update fail.
+### Stopping
+
+```yaml
+shutdown:
+  drain: 5s      # /readyz fails, and both listeners go on answering
+  timeout: 20s   # then requests in flight get this long before they are cut
+```
+
+`SIGTERM`, which Docker and Kubernetes send, and `SIGINT` start the same stop.
+`/readyz` answers `503` at once, and both listeners go on answering for
+`drain`, so whatever routes by readiness takes the server out of rotation while
+it can still take requests. Then the listeners close, a push or a pull in
+flight gets `timeout` to finish, and whatever is still running after that is
+cut. An open Connect stream -- the management page's `Watch` -- does not hold
+the stop: it ends when the listeners close, and its client connects again
+wherever it is sent. A second signal ends the process at once. `drain` is zero
+unless set, which closes the listeners straight away, and `timeout` is twenty
+seconds.
+
+On Kubernetes, give `drain` a little longer than the readiness probe takes to
+notice, and the pod longer than `drain` and `timeout` together:
+
+```yaml
+spec:
+  terminationGracePeriodSeconds: 40   # more than drain + timeout
+  containers:
+    - name: cr
+      readinessProbe:
+        httpGet: {path: /readyz, port: 5000}
+        periodSeconds: 2
+        failureThreshold: 1
+```
+
+With several replicas, a rolling update then moves traffic to the new pods
+without cutting what is in flight, unless it runs longer than `timeout`. With
+one replica, `Recreate` still means an outage while the new pod starts.
 
 ## Garbage collection
 

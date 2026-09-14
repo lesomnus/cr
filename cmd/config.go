@@ -32,6 +32,9 @@ type Config struct {
 	Otel   config.OtelConfig   `yaml:"otel"`
 	Watch  config.WatchConfig  `yaml:"watch"`
 
+	// Shutdown is how `serve` stops when it is told to.
+	Shutdown ShutdownConfig `yaml:"shutdown"`
+
 	Registry   RegistryConfig   `yaml:"registry"`
 	Auth       AuthConfig       `yaml:"auth"`
 	Management ManagementConfig `yaml:"management"`
