@@ -195,7 +195,8 @@ go build -tags grpcnotrace -ldflags="-s -w" ./cmd/cr
 otherwise), `:r<run>`, `:YYMMDD` and `:YYMMDD-r<run>` -- and labels it with its
 revision and version. CI's `image` job builds it on every pull request and
 pushes nothing; on `main`, once every other job has passed, it pushes to
-`ghcr.io/lesomnus/cr` with `TAG=edge`.
+`ghcr.io/lesomnus/cr` with `TAG=edge`, and on a git tag `v*` with `TAG` and
+`APP_VERSION` set to the tag, which is what makes a release.
 
 Neither flag of the `go build` is required and neither changes what the binary
 does. `-s -w`

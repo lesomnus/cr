@@ -22,6 +22,7 @@ auth:
       groups: [ci]
   token:
     service: cr.example.com     # the tokens' audience; `cr` by default
+    issuer: cr.example.com      # their `iss`; `cr` by default
     realm: https://cr.example.com/token
     keys: [/etc/cr/token.pem]   # P-256; the first signs, all verify
     ttl: 5m
@@ -225,6 +226,7 @@ management:
   roster:
     url: https://roster.example.com
     key: rk_...
+    remember: 1m
 ```
 
 cr calls roster where roster's people and apps do, with a key made for cr as a
