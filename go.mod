@@ -40,10 +40,11 @@ require (
 	github.com/protobuf-orm/protobuf-orm v0.0.0-20260906212449-04c0cd58f10a
 	github.com/protobuf-orm/protoc-gen-orm-ent/runtime v0.0.0-20260907034345-a9bdc5357d7d
 	github.com/stretchr/testify v1.12.1
-	go.opentelemetry.io/otel v1.45.0
-	go.opentelemetry.io/otel/metric v1.45.0
-	go.opentelemetry.io/otel/sdk/metric v1.44.0
-	go.opentelemetry.io/otel/trace v1.45.0
+	go.opentelemetry.io/contrib/instrumentation/runtime v0.71.0
+	go.opentelemetry.io/otel v1.46.0
+	go.opentelemetry.io/otel/metric v1.46.0
+	go.opentelemetry.io/otel/sdk/metric v1.46.0
+	go.opentelemetry.io/otel/trace v1.46.0
 	golang.org/x/crypto v0.57.0
 	golang.org/x/sync v0.23.0
 	google.golang.org/grpc v1.83.0
@@ -108,7 +109,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.44.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.44.0 // indirect
 	go.opentelemetry.io/otel/log v0.20.0 // indirect
-	go.opentelemetry.io/otel/sdk v1.44.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.46.0 // indirect
 	go.opentelemetry.io/otel/sdk/log v0.20.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.10.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect

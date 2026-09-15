@@ -53,18 +53,37 @@ func TestInstrument(t *testing.T) {
 	require.Equal(t, map[string]int64{"GET /v2/{name}/blobs/{digest}": 200, "HEAD /v2/{name}/blobs/{digest}": 404}, status)
 
 	found := false
+	names := map[string]bool{}
+	var active int64
 	for _, sm := range h.Collect(ctx).ScopeMetrics {
 		for _, m := range sm.Metrics {
-			if m.Name != "http.server.request.duration" {
-				continue
+			names[m.Name] = true
+			switch m.Name {
+			case "http.server.request.duration":
+				found = true
+				hist, ok := m.Data.(metricdata.Histogram[float64])
+				require.True(t, ok)
+				require.Len(t, hist.DataPoints, 2)
+			case "http.server.response.body.size":
+				hist, ok := m.Data.(metricdata.Histogram[int64])
+				require.True(t, ok)
+				var total int64
+				for _, dp := range hist.DataPoints {
+					total += dp.Sum
+				}
+				require.Equal(t, int64(len("blob")), total, "what the handlers wrote")
+			case "http.server.active_requests":
+				sum, ok := m.Data.(metricdata.Sum[int64])
+				require.True(t, ok)
+				for _, dp := range sum.DataPoints {
+					active += dp.Value
+				}
 			}
-			found = true
-			hist, ok := m.Data.(metricdata.Histogram[float64])
-			require.True(t, ok)
-			require.Len(t, hist.DataPoints, 2)
 		}
 	}
 	require.True(t, found)
+	require.True(t, names["http.server.request.body.size"])
+	require.Zero(t, active, "nothing in flight once the handlers returned")
 }
 
 func TestHealth(t *testing.T) {

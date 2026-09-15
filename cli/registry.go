@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/lesomnus/flob"
+	"github.com/lesomnus/otx"
 
 	"github.com/lesomnus/cr/auth"
 	"github.com/lesomnus/cr/blob"
@@ -72,6 +73,7 @@ func Registry(ctx context.Context, c *cmd.Config, s *cmd.Server) error {
 		RedirectTTL:      c.Registry.Storage.Redirect.Ttl,
 		Collector:        collector,
 		Proxies:          proxies,
+		Meter:            otx.From(ctx).Meter(),
 	})
 
 	instrument := func(h http.Handler) http.Handler {
