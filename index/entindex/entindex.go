@@ -7,11 +7,15 @@
 package entindex
 
 import (
+	"cmp"
 	"context"
 	stdsql "database/sql"
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"maps"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -227,22 +231,44 @@ func (p *pulls) run(ctx context.Context) error {
 	}
 }
 
+// flushChunk is how many rows one flush transaction touches before it
+// commits: enough for the round trips to amortise, few enough that SQLite's
+// writer and PostgreSQL's row locks are not held for long.
+const flushChunk = 500
+
 func (p *pulls) flush(ctx context.Context) error {
 	p.mu.Lock()
 	ms, ts := p.manifests, p.tags
 	p.manifests, p.tags = map[pullKey]time.Time{}, map[pullKey]time.Time{}
 	p.mu.Unlock()
 
+	// A transaction per chunk rather than a commit per row, with the rows in
+	// (repo, name) order -- the order a delete erases a repository's tags in
+	// -- so that the two cannot deadlock on each other's rows. Manifests and
+	// tags go separately, so no transaction holds rows of both tables. A
+	// chunk that fails is lost, which costs a retention decision nothing
+	// noticeable.
 	var errs []error
-	for k, at := range ms {
-		if err := p.ix.touchManifest(ctx, k.repo, k.name, at); err != nil {
-			errs = append(errs, err)
+	write := func(m map[pullKey]time.Time, touch func(*Index, context.Context, string, string, time.Time) error) {
+		keys := slices.SortedFunc(maps.Keys(m), func(a, b pullKey) int {
+			return cmp.Or(strings.Compare(a.repo, b.repo), strings.Compare(a.name, b.name))
+		})
+		for chunk := range slices.Chunk(keys, flushChunk) {
+			err := p.ix.Tx(ctx, "", func(tx index.Index) error {
+				ix := tx.(*Index)
+				for _, k := range chunk {
+					if err := touch(ix, ctx, k.repo, k.name, m[k]); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
+			if err != nil {
+				errs = append(errs, err)
+			}
 		}
 	}
-	for k, at := range ts {
-		if err := p.ix.touchTag(ctx, k.repo, k.name, at); err != nil {
-			errs = append(errs, err)
-		}
-	}
+	write(ms, (*Index).touchManifest)
+	write(ts, (*Index).touchTag)
 	return errors.Join(errs...)
 }
