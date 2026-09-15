@@ -496,28 +496,35 @@ func (c *Collector) deleteManifest(ctx context.Context, repo string, d digest.Di
 }
 
 // Release erases from s what repo's index no longer refers to among ds. It
-// takes the repository's lock and looks at each again under it, so a digest a
-// manifest pushed since holds, or that is itself a manifest again, is kept.
-// A failure part way is a leak for the sweep.
+// holds the repository's lock -- the lock alone, not a transaction, so that
+// on SQLite the store's erases hold up no other repository's writes -- and
+// looks at each again under it, so a digest a manifest pushed since holds,
+// or that is itself a manifest again, is kept. A failure part way is a leak
+// for the sweep.
 func Release(ctx context.Context, ix index.Index, s flob.Store, repo string, ds []digest.Digest) error {
-	return ix.Tx(ctx, repo, func(tx index.Index) error {
-		for _, d := range ds {
-			held, err := tx.Manifest().Holds(ctx, repo, d)
-			if err != nil {
-				return err
-			}
-			if held {
-				continue
-			}
-			if _, err := tx.Manifest().Get(ctx, repo, d); err == nil {
-				continue
-			} else if !errors.Is(err, index.ErrNotFound) {
-				return err
-			}
-			if err := s.Erase(ctx, flob.Digest(d)); err != nil {
-				return err
-			}
+	unlock, err := ix.Lock(ctx, repo)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	ms := ix.Manifest()
+	for _, d := range ds {
+		held, err := ms.Holds(ctx, repo, d)
+		if err != nil {
+			return err
 		}
-		return nil
-	})
+		if held {
+			continue
+		}
+		if _, err := ms.Get(ctx, repo, d); err == nil {
+			continue
+		} else if !errors.Is(err, index.ErrNotFound) {
+			return err
+		}
+		if err := s.Erase(ctx, flob.Digest(d)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
