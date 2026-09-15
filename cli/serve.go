@@ -67,6 +67,9 @@ func NewCmdServe(c *cmd.Config) *xli.Command {
 				return err
 			}
 
+			if err := runtimeMetrics(ctx); err != nil {
+				return err
+			}
 			if err := Registry(ctx, c, s); err != nil {
 				return err
 			}

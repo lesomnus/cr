@@ -3,7 +3,9 @@ package cli
 import (
 	"context"
 
+	"github.com/lesomnus/otx"
 	"github.com/lesomnus/payday/config"
+	"go.opentelemetry.io/contrib/instrumentation/runtime"
 
 	"github.com/lesomnus/cr/cmd"
 )
@@ -58,4 +60,12 @@ func Telemetry(ctx context.Context, c *cmd.Config) (context.Context, func(), err
 	// the last batch, and a process that exits without it loses whatever that
 	// batch held.
 	return ctx, func() { o.Shutdown(ctx) }, nil
+}
+
+// runtimeMetrics starts the Go runtime's own instrumentation -- memory,
+// goroutines, garbage collection -- on the meter provider ctx carries, beside
+// what the registry measures of itself. Here and not in `cmd`, since it is
+// the process that has a runtime worth watching.
+func runtimeMetrics(ctx context.Context) error {
+	return runtime.Start(runtime.WithMeterProvider(otx.From(ctx).Providers().Meter()))
 }

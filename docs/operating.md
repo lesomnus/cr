@@ -371,6 +371,10 @@ What is measured:
 | | |
 | --- | --- |
 | `http.server.request.duration` | a histogram, in seconds, of every request to `/v2/`, `/v1/`, `/admin/`, `/token`, `/token/exchange` and the key set, by `http.request.method`, `http.route` and `http.response.status_code`. The route is the pattern, `/v2/{name}/blobs/{digest}`, so the series do not grow with the repositories |
+| `http.server.request.body.size`, `http.server.response.body.size` | histograms, in bytes, of what those requests read and wrote, by the same attributes. A blob `GET` answered with a redirect wrote a `307` and no bytes; the bucket sent them |
+| `http.server.active_requests` | the requests in flight, by method and route |
+| `cr.registry.errors` | every error envelope the registry answered, by `cr.error.code` -- `MANIFEST_BLOB_UNKNOWN`, `DENIED`, `NAME_UNKNOWN` and the rest -- with the route and the status: what a `400` or a `404` was |
+| `go.memory.*`, `go.goroutine.count`, and the rest of OpenTelemetry's Go runtime instrumentation | the process itself |
 | `rpc.server.call.duration` | the management API's calls, over gRPC and Connect alike, by service, method and status code: the OpenTelemetry gRPC instrumentation's own |
 | spans | one server span per registry request, named for its route, and one per management call, continuing a trace the client started |
 

@@ -15,6 +15,9 @@ import (
 	"github.com/lesomnus/flob"
 	"github.com/lesomnus/otx/log"
 	"github.com/opencontainers/go-digest"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/noop"
 
 	"github.com/lesomnus/cr/auth"
 	"github.com/lesomnus/cr/index"
@@ -56,6 +59,10 @@ type Config struct {
 
 	// Now is the clock; nil is time.Now.
 	Now func() time.Time
+
+	// Meter is what the registry's own metrics are made with; nil measures
+	// nothing.
+	Meter metric.Meter
 }
 
 // Registry answers the distribution API.
@@ -63,6 +70,9 @@ type Registry struct {
 	c Config
 
 	proxies proxies
+
+	// errors counts every error envelope answered, by its code.
+	errors metric.Int64Counter
 }
 
 func New(c Config) *Registry {
@@ -76,6 +86,18 @@ func New(c Config) *Registry {
 		c.RedirectTTL = flob.DefaultRedirectTTL
 	}
 	g := &Registry{c: c}
+	meter := c.Meter
+	if meter == nil {
+		meter = noop.Meter{}
+	}
+	var err error
+	g.errors, err = meter.Int64Counter("cr.registry.errors",
+		metric.WithUnit("{error}"),
+		metric.WithDescription("Errors the registry answered, by their code."),
+	)
+	if err != nil {
+		g.errors = noop.Int64Counter{}
+	}
 	g.proxies.list = slices.Clone(c.Proxies)
 	slices.SortStableFunc(g.proxies.list, func(a, b *Proxy) int { return len(b.Prefix) - len(a.Prefix) })
 	return g
@@ -295,6 +317,7 @@ func (g *Registry) fail(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.As(err, &e):
 	case errors.Is(err, index.ErrBusy):
 		err = oci.ErrUnavailable(1, "the repository is being written to; retry")
+		errors.As(err, &e)
 	case errors.Is(err, context.Canceled):
 		// The client went away; there is nobody to answer.
 		return
@@ -306,6 +329,18 @@ func (g *Registry) fail(w http.ResponseWriter, r *http.Request, err error) {
 			slog.String("err", err.Error()),
 		)
 	}
+
+	// The code beside the status, which is what tells a 400 that was a
+	// MANIFEST_BLOB_UNKNOWN from one that was a DENIED.
+	code, status := string(oci.CodeUnknown), http.StatusInternalServerError
+	if e != nil {
+		code, status = string(e.Code), e.Status
+	}
+	g.errors.Add(r.Context(), 1, metric.WithAttributes(
+		attribute.String("cr.error.code", code),
+		attribute.String("http.route", RouteOf(r)),
+		attribute.Int("http.response.status_code", status),
+	))
 	oci.WriteError(w, err)
 }
 
