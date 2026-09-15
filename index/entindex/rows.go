@@ -299,6 +299,57 @@ func (r manifests) List(ctx context.Context, repo string, p index.Page) ([]index
 	return out, nil
 }
 
+func (r manifests) Unneeded(ctx context.Context, repo string, cutoff time.Time, p index.Page) ([]index.Manifest, error) {
+	cutoff = cutoff.UTC()
+	q := r.ix.client.Manifest.Query().
+		Where(
+			manifest.Repo(repo),
+			manifest.DigestGT(p.Last),
+			manifest.DateCreatedLT(cutoff),
+			manifest.Or(manifest.DatePulledIsNil(), manifest.DatePulledLT(cutoff)),
+			// No tag points at it.
+			func(s *sql.Selector) {
+				t := sql.Table(tag.Table)
+				s.Where(sql.NotExists(sql.Select().From(t).Where(sql.And(
+					sql.ColumnsEQ(t.C(tag.FieldRepo), s.C(manifest.FieldRepo)),
+					sql.ColumnsEQ(t.C(tag.FieldDigest), s.C(manifest.FieldDigest)),
+				))))
+			},
+			// No manifest holds it.
+			func(s *sql.Selector) {
+				h := sql.Table(manifestblob.Table)
+				s.Where(sql.NotExists(sql.Select().From(h).Where(sql.And(
+					sql.ColumnsEQ(h.C(manifestblob.FieldRepo), s.C(manifest.FieldRepo)),
+					sql.ColumnsEQ(h.C(manifestblob.FieldBlob), s.C(manifest.FieldDigest)),
+				))))
+			},
+			// Its subject, if it has one, is not here.
+			func(s *sql.Selector) {
+				o := sql.Table(manifest.Table).As("subject_of")
+				s.Where(sql.Or(
+					sql.EQ(s.C(manifest.FieldSubject), ""),
+					sql.NotExists(sql.Select().From(o).Where(sql.And(
+						sql.ColumnsEQ(o.C(manifest.FieldRepo), s.C(manifest.FieldRepo)),
+						sql.ColumnsEQ(o.C(manifest.FieldDigest), s.C(manifest.FieldSubject)),
+					))),
+				))
+			},
+		).
+		Order(manifest.ByDigest())
+	if p.N > 0 {
+		q = q.Limit(p.N)
+	}
+	vs, err := q.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]index.Manifest, 0, len(vs))
+	for _, v := range vs {
+		out = append(out, toManifest(v))
+	}
+	return out, nil
+}
+
 func (r manifests) Marks(ctx context.Context, repo string) iter.Seq2[digest.Digest, error] {
 	return func(yield func(digest.Digest, error) bool) {
 		c := r.ix.client

@@ -134,6 +134,13 @@ type Manifests interface {
 	// Marks is everything the index believes repo holds: its manifests and
 	// every digest they hold. The mark phase of the sweep.
 	Marks(ctx context.Context, repo string) iter.Seq2[digest.Digest, error]
+
+	// Unneeded is the manifests of repo the untagged collection may delete,
+	// in digest order after p.Last: created before cutoff and not pulled
+	// since, that no tag points at, that no manifest holds, and whose
+	// subject is empty or not in the repository. It is read without the
+	// lock, and the caller looks at each again under it.
+	Unneeded(ctx context.Context, repo string, cutoff time.Time, p Page) ([]Manifest, error)
 }
 
 type Tag struct {

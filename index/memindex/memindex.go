@@ -391,6 +391,45 @@ func (r manifests) List(ctx context.Context, repo string, p index.Page) ([]index
 	return out, err
 }
 
+func (r manifests) Unneeded(ctx context.Context, repo string, cutoff time.Time, p index.Page) ([]index.Manifest, error) {
+	var out []index.Manifest
+	err := view(r).do(ctx, func(s *state) error {
+		tagged := map[digest.Digest]struct{}{}
+		for _, t := range s.tags[repo] {
+			tagged[t.Digest] = struct{}{}
+		}
+		held := map[digest.Digest]struct{}{}
+		for _, e := range s.manifests[repo] {
+			for _, b := range e.holds {
+				held[b] = struct{}{}
+			}
+		}
+		vs := []index.Manifest{}
+		for d, e := range s.manifests[repo] {
+			m := e.m
+			if !m.CreatedAt.Before(cutoff) || !(m.PulledAt.IsZero() || m.PulledAt.Before(cutoff)) {
+				continue
+			}
+			if _, ok := tagged[d]; ok {
+				continue
+			}
+			if _, ok := held[d]; ok {
+				continue
+			}
+			if m.Subject != "" {
+				if _, ok := s.manifests[repo][m.Subject]; ok {
+					continue
+				}
+			}
+			vs = append(vs, m)
+		}
+		slices.SortFunc(vs, func(a, b index.Manifest) int { return strings.Compare(a.Digest.String(), b.Digest.String()) })
+		out = page(vs, func(v index.Manifest) string { return v.Digest.String() }, p)
+		return nil
+	})
+	return out, err
+}
+
 func (r manifests) Marks(ctx context.Context, repo string) iter.Seq2[digest.Digest, error] {
 	return func(yield func(digest.Digest, error) bool) {
 		seen := map[digest.Digest]struct{}{}

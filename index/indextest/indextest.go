@@ -31,6 +31,7 @@ func Run(t *testing.T, open Open) {
 	t.Run("tx busy", func(t *testing.T) { testBusy(t, open(t, 100*time.Millisecond)) })
 	t.Run("lock", func(t *testing.T) { testLock(t, open(t, 100*time.Millisecond)) })
 	t.Run("marks", func(t *testing.T) { testMarks(t, open(t, 0)) })
+	t.Run("unneeded", func(t *testing.T) { testUnneeded(t, open(t, 0)) })
 	t.Run("pulled", func(t *testing.T) { testPulled(t, open(t, 0)) })
 }
 
@@ -310,6 +311,72 @@ func testMarks(t *testing.T, ix index.Index) {
 // Flusher is an index whose pull bookkeeping is written later.
 type Flusher interface {
 	Flush(context.Context) error
+}
+
+// testUnneeded is what the untagged collection may delete: old, and needed
+// by nothing the repository has.
+func testUnneeded(t *testing.T, ix index.Index) {
+	ctx := context.Background()
+	m := ix.Manifest()
+	const repo = "acme/app"
+	now := time.Now().UTC().Truncate(time.Second)
+	cutoff := now.Add(-time.Hour)
+	old := func(name string) index.Manifest {
+		v := manifest(name)
+		v.CreatedAt = now.Add(-2 * time.Hour)
+		return v
+	}
+
+	unneeded := old("unneeded")
+	tagged := old("tagged")
+	held := old("held")
+	holder := old("holder")
+	subject := old("subject")
+	referrer := old("referrer")
+	referrer.Subject = subject.Digest
+	orphan := old("orphan")
+	orphan.Subject = d("elsewhere")
+	fresh := manifest("fresh")
+	pulled := old("pulled")
+
+	require.NoError(t, m.Put(ctx, repo, unneeded, nil))
+	require.NoError(t, m.Put(ctx, repo, tagged, nil))
+	require.NoError(t, ix.Tag().Set(ctx, repo, "latest", tagged.Digest, ""))
+	require.NoError(t, m.Put(ctx, repo, held, nil))
+	require.NoError(t, m.Put(ctx, repo, holder, []digest.Digest{held.Digest}))
+	require.NoError(t, m.Put(ctx, repo, subject, nil))
+	require.NoError(t, m.Put(ctx, repo, referrer, nil))
+	require.NoError(t, m.Put(ctx, repo, orphan, nil))
+	require.NoError(t, m.Put(ctx, repo, fresh, nil))
+	require.NoError(t, m.Put(ctx, repo, pulled, nil))
+	ix.Pulled().Touch(repo, "", pulled.Digest, now.Add(-time.Minute))
+	if f, ok := ix.(Flusher); ok {
+		require.NoError(t, f.Flush(ctx))
+	}
+	// Another repository's rows are not this one's, tags included.
+	require.NoError(t, m.Put(ctx, "acme/other", old("unneeded"), nil))
+	require.NoError(t, m.Put(ctx, "acme/other", old("tagged"), nil))
+	require.NoError(t, ix.Tag().Set(ctx, "acme/other", "v1", d("unneeded"), ""))
+
+	vs, err := m.Unneeded(ctx, repo, cutoff, index.Page{})
+	require.NoError(t, err)
+	names := make([]string, 0, len(vs))
+	for i, v := range vs {
+		names = append(names, v.Annotations["name"])
+		if i > 0 {
+			require.Less(t, vs[i-1].Digest.String(), v.Digest.String())
+		}
+	}
+	// A subject may go while it has referrers; they are orphans after it.
+	require.ElementsMatch(t, []string{"unneeded", "holder", "subject", "orphan"}, names)
+
+	first, err := m.Unneeded(ctx, repo, cutoff, index.Page{N: 3})
+	require.NoError(t, err)
+	require.Len(t, first, 3)
+	rest, err := m.Unneeded(ctx, repo, cutoff, index.Page{Last: first[2].Digest.String(), N: 3})
+	require.NoError(t, err)
+	require.Len(t, rest, 1)
+	require.Equal(t, vs, append(first, rest...))
 }
 
 func testPulled(t *testing.T, ix index.Index) {
