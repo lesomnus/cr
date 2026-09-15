@@ -1,5 +1,5 @@
-# Every gate cr has, on every push to main and every pull request, and the
-# image last.
+# Every gate cr has, on every push to main, every tag `v*` and every pull
+# request, and the image last.
 #
 # `go` is what a desk runs: gofmt, build, vet, tests, and `pd gen --check`,
 # which is the only thing that notices a generated file that was not
@@ -19,6 +19,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
 
 jobs:
@@ -112,7 +113,8 @@ jobs:
 
   # The image, for linux/amd64 and linux/arm64. A pull request builds it and
   # pushes nothing; main pushes `ghcr.io/lesomnus/cr` under the four tags
-  # `docker-bake.hcl` names, `:edge` among them.
+  # `docker-bake.hcl` names, `:edge` among them; a tag `v*` pushes them with
+  # the tag in place of `:edge`, and stamps the binary with it.
   image:
     needs: [go, postgres, conformance, sandbox]
     runs-on: ubuntu-latest
@@ -125,12 +127,20 @@ jobs:
       TAG: edge
       BUILD_HASH: ${{ github.sha }}
       BUILD_ID: r${{ github.run_id }}
-      # A push to main, or a run started by hand on main: never a pull request,
-      # and never another branch.
-      PUBLISH: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+      # A push to main or to a tag `v*`, or a run started by hand on main:
+      # never a pull request, and never another branch.
+      PUBLISH: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
 
     steps:
       - uses: actions/checkout@v5
+
+      # A release: the image's tag is the git tag, and so is what `cr version`
+      # answers.
+      - if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          echo "TAG=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+          echo "APP_VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+
       - uses: docker/setup-buildx-action@v4
 
       # No QEMU. The stage that builds runs on the runner's architecture and

@@ -35,7 +35,8 @@ well. [docs/operating.md](docs/operating.md#running) starts from the binary
 instead.
 
 Every commit on `main` that passes CI is published as `ghcr.io/lesomnus/cr`:
-`:edge` follows `main`, and `:YYMMDD-r<run>` is the tag that never moves.
+`:edge` follows `main`, a release is its git tag (`:v0.1.0`), and
+`:YYMMDD-r<run>` is the build that never moves.
 
 ## Documentation
 

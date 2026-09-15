@@ -51,11 +51,13 @@ rules -- and `cr <entity> ...` acts as that holder.
 **The image** is `ghcr.io/lesomnus/cr`, for linux/amd64 and linux/arm64. It
 runs `cr serve` as a non-root user with no shell, exposes the registry on port
 5000, and takes its configuration from `--config` or `CR_*` variables. Every
-commit on `main` that passes CI is pushed under four tags:
+commit on `main` that passes CI is pushed under four tags, and a release --
+a git tag `vX.Y.Z` -- under a fifth:
 
 | tag | |
 | --- | --- |
 | `:edge` | the latest build of `main`; moves |
+| `:vX.Y.Z` | a release, the build of that git tag; never moves, and `cr version` says it |
 | `:r<run>` | one CI run's build |
 | `:YYMMDD` | the last build of that day; moves |
 | `:YYMMDD-r<run>` | one build, and never moves: the one a deployment pins |
