@@ -99,6 +99,7 @@ func NewCmdGc(c *cmd.Config) *xli.Command {
 				Index:    ix,
 				Policy:   policy.Current,
 				Untagged: c.Registry.Gc.Untagged,
+				Delay:    c.Registry.Gc.Delay,
 				Leader:   ix,
 				Runs:     entruns.New(s.Ent),
 				Cache:    cache,

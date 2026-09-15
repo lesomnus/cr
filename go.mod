@@ -26,7 +26,7 @@ tool (
 
 require (
 	github.com/go-jose/go-jose/v4 v4.1.5
-	github.com/lesomnus/flob v0.0.0-20260913135814-69f0a5a73405
+	github.com/lesomnus/flob v0.0.0-20260915020638-1e436cd6fce1
 	github.com/lesomnus/grpc-dgram v0.0.0-20260912133542-a7366077bf6f
 	github.com/lesomnus/otx v0.0.0-20260807173743-977a5687d6ba
 	github.com/lesomnus/payday v0.0.0-20260913095904-5fb4c999fe2b

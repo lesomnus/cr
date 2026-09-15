@@ -40,6 +40,11 @@ type Config struct {
 	// must be before it goes; zero keeps them.
 	Untagged time.Duration
 
+	// Delay is how long a blob must have been in a repository before a sweep
+	// erases it, which keeps the blobs of a push whose manifest has not
+	// arrived; zero is an hour, and a negative duration erases at once.
+	Delay time.Duration
+
 	// Every is how often Spin runs; zero is an hour and negative is never.
 	Every time.Duration
 

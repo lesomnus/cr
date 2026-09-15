@@ -331,7 +331,7 @@ func (s *upstreamStore) Stat(ctx context.Context, d flob.Digest) (flob.Info, err
 	if size < 0 {
 		size, _ = strconv.ParseInt(res.Header.Get("Content-Length"), 10, 64)
 	}
-	return flob.NewInfo(d, size, noLabels), nil
+	return flob.NewInfo(d, size, time.Time{}, noLabels), nil
 }
 
 func (s *upstreamStore) Open(ctx context.Context, d flob.Digest) (io.ReadSeekCloser, flob.Info, error) {
@@ -344,7 +344,7 @@ func (s *upstreamStore) Open(ctx context.Context, d flob.Digest) (io.ReadSeekClo
 		return nil, nil, upstreamErr("blob GET", res)
 	}
 	r := &upstreamReader{ctx: ctx, s: s, path: s.path(d), body: res.Body, size: res.ContentLength}
-	return r, flob.NewInfo(d, res.ContentLength, noLabels), nil
+	return r, flob.NewInfo(d, res.ContentLength, time.Time{}, noLabels), nil
 }
 
 // upstreamReader reads a blob from the upstream, and seeks by asking again

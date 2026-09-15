@@ -27,6 +27,8 @@ func TestSweep(t *testing.T) {
 	stray := e.blob(repo, []byte("stray"))
 	elsewhere := e.blob("acme/other", []byte("stray elsewhere"))
 
+	// Past the sweep's delay for what was just added.
+	e.clock.Add(2 * time.Hour)
 	col := gc.New(gc.Config{Stores: e.stores, Index: e.ix, Now: e.clock.Now})
 	r, err := col.Sweep(ctx, repo)
 	require.NoError(t, err)
@@ -54,6 +56,7 @@ func TestFull(t *testing.T) {
 	e.blob("acme/app", []byte("stray a"))
 	// A namespace the index has no repository for is the store's, and swept.
 	e.blob("acme/web", []byte("stray b"))
+	e.clock.Add(2 * time.Hour)
 
 	runs := &gc.MemRuns{}
 	col := gc.New(gc.Config{Stores: e.stores, Index: e.ix, Runs: runs, Now: e.clock.Now})
@@ -109,6 +112,7 @@ func TestTrigger(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t)
 	stray := e.blob("acme/app", []byte("stray"))
+	e.clock.Add(2 * time.Hour)
 
 	runs := &gc.MemRuns{}
 	col := gc.New(gc.Config{Stores: e.stores, Index: e.ix, Runs: runs, Now: e.clock.Now})
@@ -140,4 +144,55 @@ func TestTrigger(t *testing.T) {
 		r, err := runs.Get(ctx, next.ID)
 		return err == nil && r.State == gc.StateDone
 	}, 5*time.Second, 10*time.Millisecond)
+}
+
+// TestSweepLeavesWhatJustArrived is the delay: a blob younger than it may be
+// a push whose manifest is on its way, and is left for a later sweep.
+func TestSweepLeavesWhatJustArrived(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	const repo = "acme/app"
+	stray := e.blob(repo, []byte("stray"))
+
+	col := gc.New(gc.Config{Stores: e.stores, Index: e.ix, Now: e.clock.Now})
+	r, err := col.Sweep(ctx, repo)
+	require.NoError(t, err)
+	require.Zero(t, r.Blobs)
+	require.True(t, e.has(repo, stray.Digest))
+
+	e.clock.Add(2 * time.Hour)
+	r, err = col.Sweep(ctx, repo)
+	require.NoError(t, err)
+	require.Equal(t, 1, r.Blobs)
+	require.False(t, e.has(repo, stray.Digest))
+
+	// A negative delay asks nothing about age.
+	again := e.blob(repo, []byte("stray again"))
+	at := gc.New(gc.Config{Stores: e.stores, Index: e.ix, Delay: -1, Now: e.clock.Now})
+	r, err = at.Sweep(ctx, repo)
+	require.NoError(t, err)
+	require.Equal(t, 1, r.Blobs)
+	require.False(t, e.has(repo, again.Digest))
+}
+
+// TestSweepMissing: a manifest the store lost is reported, unless it was
+// pushed as the walk began, when its blobs may have arrived after the walk
+// passed them.
+func TestSweepMissing(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	const repo = "acme/app"
+
+	m, _ := e.image(repo, "latest", "lost")
+	require.NoError(t, e.stores.Use(repo).Erase(ctx, flob.Digest(m.Digest)))
+
+	col := gc.New(gc.Config{Stores: e.stores, Index: e.ix, Now: e.clock.Now})
+	r, err := col.Sweep(ctx, repo)
+	require.NoError(t, err)
+	require.Empty(t, r.Missing)
+
+	e.clock.Add(2 * time.Minute)
+	r, err = col.Sweep(ctx, repo)
+	require.NoError(t, err)
+	require.Equal(t, []digest.Digest{m.Digest}, r.Missing)
 }

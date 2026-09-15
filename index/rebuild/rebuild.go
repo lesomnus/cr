@@ -74,10 +74,17 @@ func (r *Report) repository(ctx context.Context, s flob.Store, repo string, ix i
 		if err != nil {
 			return err
 		}
-		if info.Size() < 2 || info.Size() > maxManifest {
+		size, err := info.Size(ctx)
+		if errors.Is(err, flob.ErrNotExist) {
+			continue // erased since it was listed
+		}
+		if err != nil {
+			return err
+		}
+		if size < 2 || size > maxManifest {
 			continue
 		}
-		f, ok, err := read(ctx, s, info)
+		f, ok, err := read(ctx, s, digest.Digest(info.Digest()), size)
 		if err != nil {
 			return err
 		}
@@ -108,15 +115,15 @@ func (r *Report) repository(ctx context.Context, s flob.Store, repo string, ix i
 }
 
 // read answers the manifest a blob is, if it is one.
-func read(ctx context.Context, s flob.Store, info flob.Info) (found, bool, error) {
-	rc, _, err := s.Open(ctx, info.Digest())
+func read(ctx context.Context, s flob.Store, d digest.Digest, size int64) (found, bool, error) {
+	rc, _, err := s.Open(ctx, flob.Digest(d))
 	if errors.Is(err, flob.ErrNotExist) {
 		return found{}, false, nil
 	}
 	if err != nil {
 		return found{}, false, err
 	}
-	b, err := io.ReadAll(io.LimitReader(rc, info.Size()+1))
+	b, err := io.ReadAll(io.LimitReader(rc, size+1))
 	rc.Close()
 	if err != nil {
 		return found{}, false, err
@@ -130,7 +137,7 @@ func read(ctx context.Context, s flob.Store, info flob.Info) (found, bool, error
 	}
 
 	m := index.Manifest{
-		Digest:       digest.Digest(info.Digest()),
+		Digest:       d,
 		MediaType:    p.MediaType,
 		ArtifactType: p.ArtifactType,
 		Size:         int64(len(b)),

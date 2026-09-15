@@ -144,6 +144,11 @@ type GcConfig struct {
 	// before it is deleted; zero keeps them.
 	Untagged time.Duration `yaml:"untagged"`
 
+	// Delay is how long a blob must have been in a repository before a full
+	// collection's sweep erases it, so that a push in flight keeps its blobs;
+	// zero is an hour, and a negative duration erases at once.
+	Delay time.Duration `yaml:"delay"`
+
 	// FullEvery is how often a full collection, which also sweeps every
 	// repository's store, runs on its own; zero never. `POST /admin/gc` and
 	// `cr gc --full` run one when asked.

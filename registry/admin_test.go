@@ -17,7 +17,8 @@ import (
 func TestAdminGc(t *testing.T) {
 	stores := flob.NewMemStores()
 	ix := memindex.New()
-	col := gc.New(gc.Config{Stores: stores, Index: ix, Runs: &gc.MemRuns{}})
+	// Erased at once: the stray is pushed a moment before the run.
+	col := gc.New(gc.Config{Stores: stores, Index: ix, Runs: &gc.MemRuns{}, Delay: -1})
 	reg := registry.New(registry.Config{Stores: stores, Index: ix, Collector: col})
 
 	x := &harness{t: t, h: reg}

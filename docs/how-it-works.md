@@ -42,7 +42,7 @@ mounted into it, while identical layers take the space of one.
   digest are serialized with a file lock, which is why it wants a local
   filesystem.
 - **`s3`** keeps one object per digest, `blob/<algo>/<hex>`, and a small marker
-  per repository, `refs/<algo>/<hex>/<repository>`. Deleting removes the
+  per repository, `refs/<repository>/<algo>/<hex>`. Deleting removes the
   marker and leaves the shared object, and nothing yet removes shared objects
   that no marker refers to: on S3, deleting images and collecting garbage stop
   them being served, and do not shrink the bucket. An upload in progress is a
@@ -85,13 +85,16 @@ Two tiers, and neither stops the registry.
   holds it, and while it refers to a subject still in the repository, which is
   what keeps signatures, attestations and SBOMs.
 - **Full**, when scheduled or asked for: the online collection, then a
-  mark-and-sweep of each repository in turn under that repository's lock. It
-  reclaims what the online collection leaked, while pulls, uploads and every
-  other repository carry on. The one cost: a blob uploaded to a repository
-  during its sweep, before the manifest naming it arrives, can be erased, and
-  that push fails with `MANIFEST_BLOB_UNKNOWN` and uploads again. The store
-  records no time for a blob, so without a read-only window a fresh upload
-  cannot be told from a leak.
+  mark-and-sweep of each repository in turn. The walk of the repository's
+  store and the marks -- what the index says the repository holds -- are taken
+  without the lock, and the repository's lock is held only while a batch of
+  the unmarked is looked at again and erased, so a manifest push waits for a
+  batch, not for the walk. It reclaims what the online collection leaked,
+  while pulls, uploads and every other repository carry on. A blob that
+  entered the repository within `gc.delay` (an hour) is left for a later
+  sweep: that is what keeps the blobs of a push whose manifest has not
+  arrived, and a push that takes longer than that to put its manifest can
+  find them gone, fails with `MANIFEST_BLOB_UNKNOWN`, and uploads again.
 
 ## Who may do what
 

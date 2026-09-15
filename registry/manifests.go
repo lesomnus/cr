@@ -105,7 +105,12 @@ func (g *Registry) getManifest(w http.ResponseWriter, r *http.Request, name, arg
 	}
 	defer rc.Close()
 
-	h.Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+	size, err := info.Size(ctx)
+	if err != nil {
+		g.fail(w, r, err)
+		return
+	}
+	h.Set("Content-Length", strconv.FormatInt(size, 10))
 	w.WriteHeader(http.StatusOK)
 	io.Copy(w, rc)
 

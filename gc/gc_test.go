@@ -50,7 +50,9 @@ type env struct {
 }
 
 func newEnv(t *testing.T) *env {
-	c := &clock{now: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+	// The wall clock to start with: the store dates what it holds by it, and
+	// a sweep compares the two.
+	c := &clock{now: time.Now()}
 	stores := flob.NewMemStores(flob.StageConfig{TTL: time.Millisecond, Retention: time.Millisecond})
 	ix := memindex.New()
 	ix.Now = c.Now

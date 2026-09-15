@@ -49,7 +49,12 @@ func (g *Registry) getBlob(w http.ResponseWriter, r *http.Request, name, arg str
 			g.fail(w, r, blobErr(d, err))
 			return
 		}
-		h.Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+		size, err := info.Size(ctx)
+		if err != nil {
+			g.fail(w, r, blobErr(d, err))
+			return
+		}
+		h.Set("Content-Length", strconv.FormatInt(size, 10))
 		h.Set("Accept-Ranges", "bytes")
 		w.WriteHeader(http.StatusOK)
 		return

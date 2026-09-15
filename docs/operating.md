@@ -223,6 +223,7 @@ registry:
   gc:
     every: 1h          # the online collection; negative never runs it
     untagged: 168h     # zero keeps untagged manifests
+    delay: 1h          # a blob younger than this is left by a sweep
     full_every: 168h   # the full collection; zero never
 ```
 
@@ -241,19 +242,25 @@ Every step removes a reference the index no longer has, so a push racing it can
 leave a blob behind and cannot lose one.
 
 **Full** is the online collection and then a mark-and-sweep of every
-repository, one at a time: holding that repository's lock, it marks everything
-the index says the repository holds, walks the repository's store, and erases
-the rest. It reclaims what the online collection leaks, including a repository
-the store has and the index does not. There is no read-only window. Pulls, blob
-uploads and every other repository carry on; a manifest push to the repository
-being swept waits for the lock, and past `lock_wait` is answered `503` with
-`Retry-After`. A blob uploaded to that repository during its sweep may be
-erased before its manifest arrives, and that push fails with
-`MANIFEST_BLOB_UNKNOWN` and uploads again. A repository still busy after
-`lock_wait` is tried once more at the end.
+repository, one at a time. It walks the repository's store and marks
+everything the index says the repository holds, both without the lock, and
+then holds the repository's lock for a batch of the rest at a time, looking at
+each again and erasing what nothing refers to. It reclaims what the online
+collection leaks, including a repository the store has and the index does not.
+There is no read-only window. Pulls, blob uploads and every other repository
+carry on; a manifest push to the repository being swept waits for a batch, not
+for the walk, and past `lock_wait` is answered `503` with `Retry-After`. A blob
+that entered the repository within `delay` is left for a later sweep, which
+keeps the blobs of a push whose manifest has not arrived; a push that takes
+longer than `delay` to put its manifest can find its blobs gone, fails with
+`MANIFEST_BLOB_UNKNOWN`, and uploads again. A repository still busy after
+`lock_wait` is tried once more at the end. On S3 a sweep lists the
+repository's markers, a request per thousand, and sends a `HEAD` for each blob
+it erases.
 
 A sweep also reports the manifests the index has and the store does not, as
-`repo@digest` in the run's `missing`; nothing repairs those.
+`repo@digest` in the run's `missing`, leaving out what was pushed in the
+minute before the walk; nothing repairs those.
 
 Run one when you like:
 
