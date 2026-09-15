@@ -17,4 +17,9 @@ import (
 	// needs across them, `watch.broker: postgres`.
 	_ "github.com/lesomnus/payday/config/brokerpg"
 	_ "github.com/lesomnus/payday/config/dbpgx"
+
+	// The OTLP exporter, `otel.exporters.otlp`, which is how what a process
+	// measures leaves it. Without it the only exporter is the one payday adds
+	// when the configuration names none, which prints to the log.
+	_ "github.com/lesomnus/mkot/otlp"
 )
