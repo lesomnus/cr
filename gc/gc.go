@@ -370,13 +370,30 @@ func (c *Collector) evict(ctx context.Context, repo string, keep time.Duration) 
 		return 0, 0, err
 	}
 
+	// When each manifest was last pulled, read once for the repository
+	// rather than once per tag.
+	pulled := map[digest.Digest]time.Time{}
+	if len(tags) > 0 {
+		last := ""
+		for {
+			ms, err := c.c.Index.Manifest().List(ctx, repo, index.Page{Last: last, N: 500})
+			if err != nil {
+				return 0, 0, err
+			}
+			for _, m := range ms {
+				pulled[m.Digest] = m.PulledAt
+			}
+			if len(ms) < 500 {
+				break
+			}
+			last = ms[len(ms)-1].Digest.String()
+		}
+	}
+
 	n := 0
 	var errs []error
 	for _, t := range tags {
-		used := latest(t.PulledAt, t.MovedAt)
-		if m, err := c.c.Index.Manifest().Get(ctx, repo, t.Digest); err == nil {
-			used = latest(used, m.PulledAt)
-		}
+		used := latest(t.PulledAt, t.MovedAt, pulled[t.Digest])
 		if used.After(cutoff) {
 			continue
 		}
