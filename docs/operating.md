@@ -331,11 +331,13 @@ and a tag never cached fails.
 
 A cache takes no pushes (`405 UNSUPPORTED`); deletes are allowed and evict. Tag
 lists and referrers are what the cache holds, not what the upstream has. The
-collection keeps a cache to `retention`: tags nobody used within it -- a pull,
-a `HEAD`, a pull of the manifest a tag points at, or the tag moving -- and then
-the manifests nothing needs any more, whether they were tagged or not. With a
-zero `retention` the cache keeps everything a full collection does not find
-unreferenced.
+collection keeps a cache to `retention` by two rules that do not look at each
+other: a tag goes when nobody pulled it by name within `retention` and it did
+not move, and a manifest goes when nothing holds or tags it and nobody pulled
+it, by name or by digest, within `retention`. A manifest still pulled by
+digest outlives its tag, and a tag pulled again is fetched again from the
+upstream. With a zero `retention` the cache keeps everything a full collection
+does not find unreferenced.
 
 An empty `prefix` makes every repository a cache, which is what a daemon's
 `registry-mirrors` expects of a mirror: it asks for `library/ubuntu` and not

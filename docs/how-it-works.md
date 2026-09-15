@@ -83,7 +83,10 @@ Two tiers, and neither stops the registry.
   untagged manifests past a grace period. Untagged is not unused: a manifest is
   kept while a pull has touched it within the grace period, while an index
   holds it, and while it refers to a subject still in the repository, which is
-  what keeps signatures, attestations and SBOMs.
+  what keeps signatures, attestations and SBOMs. A pull-through cache goes by
+  the same two rules with its own `retention`, each on its own: a tag nobody
+  pulled by name goes, and a manifest nobody pulled by name or digest goes,
+  so a manifest still pulled by digest outlives its tag.
 - **Full**, when scheduled or asked for: the online collection, then a
   mark-and-sweep of each repository in turn. The walk of the repository's
   store and the marks -- what the index says the repository holds -- are taken
