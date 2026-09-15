@@ -359,9 +359,11 @@ func latest(ts ...time.Time) time.Time {
 	return out
 }
 
-// evict empties a pull-through cache of what nobody used within keep: tags
-// whose last pull, move, or pull of the manifest they point at is older, and
-// then the manifests nothing needs any more. A tag a client pulls again is
+// evict empties a pull-through cache of what nobody used within keep, by two
+// rules that do not look at each other: a tag goes when nobody pulled it by
+// name within keep and it did not move, and then a manifest goes when nothing
+// needs it and nobody pulled it, by name or by digest, within keep. A manifest
+// still pulled by digest outlives its tag, and a tag a client pulls again is
 // fetched again.
 func (c *Collector) evict(ctx context.Context, repo string, keep time.Duration) (int, int, error) {
 	cutoff := c.c.Now().Add(-keep)
@@ -370,31 +372,10 @@ func (c *Collector) evict(ctx context.Context, repo string, keep time.Duration) 
 		return 0, 0, err
 	}
 
-	// When each manifest was last pulled, read once for the repository
-	// rather than once per tag.
-	pulled := map[digest.Digest]time.Time{}
-	if len(tags) > 0 {
-		last := ""
-		for {
-			ms, err := c.c.Index.Manifest().List(ctx, repo, index.Page{Last: last, N: 500})
-			if err != nil {
-				return 0, 0, err
-			}
-			for _, m := range ms {
-				pulled[m.Digest] = m.PulledAt
-			}
-			if len(ms) < 500 {
-				break
-			}
-			last = ms[len(ms)-1].Digest.String()
-		}
-	}
-
 	n := 0
 	var errs []error
 	for _, t := range tags {
-		used := latest(t.PulledAt, t.MovedAt, pulled[t.Digest])
-		if used.After(cutoff) {
+		if latest(t.PulledAt, t.MovedAt).After(cutoff) {
 			continue
 		}
 		erased := false

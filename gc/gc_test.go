@@ -222,13 +222,15 @@ func TestCacheEviction(t *testing.T) {
 	}
 	r, err := gc.New(gc.Config{Stores: e.stores, Index: e.ix, Cache: cache, Now: e.clock.Now}).Run(ctx)
 	require.NoError(t, err)
-	require.Equal(t, 1, r.Tags)
+	require.Equal(t, 2, r.Tags, "neither tag was pulled by name")
 	require.Equal(t, 1, r.Manifests)
 
 	require.False(t, e.indexed("mirror/stale", stale.Digest))
 	require.False(t, e.has("mirror/stale", staleLayer.Digest))
-	require.True(t, e.indexed("mirror/used", used.Digest), "pulled by digest within the window")
+	// Pulled by digest within the window: the manifest stays, its name does
+	// not.
+	require.True(t, e.indexed("mirror/used", used.Digest))
 	_, err = e.ix.Tag().Get(ctx, "mirror/used", "latest")
-	require.NoError(t, err)
+	require.ErrorIs(t, err, index.ErrNotFound)
 	require.True(t, e.indexed("acme/app", mine.Digest), "not a cache")
 }
