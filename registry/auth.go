@@ -92,6 +92,7 @@ func (g *Registry) guard(w http.ResponseWriter, r *http.Request, repo string, wa
 	case c.Subject.IsAnonymous():
 		g.fail(w, r, gd.Challenge(r, challengeScopes(repo, want), false))
 	default:
+		gd.Denied(r.Context(), "request", missing)
 		g.fail(w, r, oci.ErrDenied("missing "+strings.Join(auth.Strings(missing), ",")))
 	}
 	return nil

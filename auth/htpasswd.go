@@ -177,3 +177,9 @@ func (t *Tokens) Authenticate(ctx context.Context, username, password string) (S
 	}
 	return Subject{}, ErrNotMine
 }
+
+// Kind is what the count of logins calls this authenticator.
+func (h *Htpasswd) Kind() string { return "htpasswd" }
+
+// Kind is what the count of logins calls this authenticator.
+func (t *Tokens) Kind() string { return "static" }

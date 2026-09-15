@@ -158,3 +158,6 @@ func (g *Guard) ServeExchange(w http.ResponseWriter, r *http.Request) {
 	h.Set("Cache-Control", "no-store")
 	w.Write(b)
 }
+
+// Kind is what the count of logins calls this authenticator.
+func (l LoginTokens) Kind() string { return "exchange" }

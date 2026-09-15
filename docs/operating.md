@@ -378,13 +378,24 @@ What is measured:
 | `cr.store.operation.duration` | each call to a blob store, by `cr.store.driver` (`os`, `s3`, `memory`), `cr.store.operation` (`add`, `stat`, `open`, `label`, `erase`) and `cr.store.outcome` (`ok`, `not_found`, `exists`, `error`). `add` includes reading what it stores, so an upload's `add` is as long as the upload; mounts, presigned URLs and the collection's walk reach the store beneath and are not measured |
 | `cr.cache.requests` | manifest requests to a pull-through cache, by `cr.cache.proxy` (the prefix, `*` for the empty one) and `cr.cache.outcome`: `hit` from the cache alone, `revalidated` after the upstream said the tag had not moved, `refreshed` after it had, `miss` for what was not cached, `stale` for a cached tag served because the upstream failed, `unknown` for what the upstream does not have, `error` for the rest. `hit` over everything is the hit ratio |
 | `cr.cache.upstream.duration`, `cr.cache.upstream.bytes` | every request a cache made to its upstream, by `cr.cache.upstream` (its host), `cr.cache.operation` (`manifest head`, `manifest get`, `blob head`, `blob get`) and the status, a challenge answered on the way included; and the bytes it read, manifests and blobs apart |
+| `cr.gc.runs`, `cr.gc.run.duration` | every collection, by `cr.gc.kind` (`online`, `full`), `cr.gc.trigger` (`schedule`, `admin`, `cli`) and `cr.gc.state` (`done`, `failed`), and how long each took |
+| `cr.gc.reclaimed`, `cr.gc.reclaimed.bytes` | what collections removed, by kind and `cr.gc.what`: `uploads` that expired, `tags` past retention, `manifests` nothing needed, `blobs` a sweep erased; and the bytes of those blobs |
+| `cr.gc.missing` | after a full collection, the manifests the index has and the store does not |
+| `cr.repositories`, `cr.manifests`, `cr.tags` | how much the index holds, counted after every collection |
+| `cr.index.pulls.pending`, `cr.index.pulls.dropped`, `cr.index.pulls.flush.duration` | the pull bookkeeping: rows waiting when a flush began, touches dropped for there being more than 100,000 waiting, and how long a flush took |
+| `cr.uploads` | blob uploads that ended, by `cr.upload.outcome`: `completed`, `exists` for a digest the repository already had, `mounted` from another repository, `cancelled`. The ones that expired are `cr.gc.reclaimed` with `cr.gc.what=uploads` |
+| `cr.auth.logins` | credentials checked, by `cr.auth.authenticator` (`htpasswd`, `static`, `oidc`, `roster`, `exchange`, or `none` when nobody accepted) and `cr.auth.outcome` (`ok`, `refused`); a burst of refusals is a leaked key or a broken configuration |
+| `cr.auth.denied` | actions refused, by `cr.auth.action` and `cr.auth.at`: `token` when a token was issued without them, `request` when a request asked for them without a token |
+| `cr.auth.policy.age`, `cr.auth.policy.refresh.errors` | seconds since the bindings and tag rules were last loaded, and the loads that failed; a load that fails keeps the policy in force, and the age is how that shows |
 | `go.memory.*`, `go.goroutine.count`, and the rest of OpenTelemetry's Go runtime instrumentation | the process itself |
 | `rpc.server.call.duration` | the management API's calls, over gRPC and Connect alike, by service, method and status code: the OpenTelemetry gRPC instrumentation's own |
 | spans | one server span per registry request, named for its route, and one per management call, continuing a trace the client started |
 
-Nothing counts what a collection did, what a store holds, or what the database
-is doing. A collection's outcome is its run, at `/admin/gc` and in
-`cr gc-run ls`; the database and the bucket have telemetry of their own.
+What is not measured: the database's own health and the bucket's, which have
+telemetry of their own, and what a store holds beyond what a sweep erased.
+Every attribute above is bounded by the configuration or by the code -- a
+route pattern, a driver, a proxy's prefix, an error code -- and never a
+repository's name or a digest, so the series do not grow with the registry.
 
 ## Export
 

@@ -209,3 +209,15 @@ func WaitingFor(ctx context.Context) string {
 	}
 	return "other"
 }
+
+// Counts is how much an index holds.
+type Counts struct {
+	Repositories, Manifests, Tags int64
+}
+
+// Counter is an index that can say how much it holds. The collection asks
+// after every run, for the gauges `cr.repositories`, `cr.manifests` and
+// `cr.tags`.
+type Counter interface {
+	Counts(ctx context.Context) (Counts, error)
+}

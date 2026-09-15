@@ -8,6 +8,7 @@ import (
 
 	"github.com/lesomnus/otx"
 	"github.com/lesomnus/otx/otxtest"
+	"github.com/opencontainers/go-digest"
 	entsql "github.com/protobuf-orm/ent/dialect/sql"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -67,4 +68,30 @@ func TestLockWaitIsMeasured(t *testing.T) {
 	}
 	require.Equal(t, map[string]uint64{"sweep": 1, "manifest push": 1, "other": 1}, waits)
 	require.Equal(t, map[string]int64{"manifest push": 1}, gaveUp)
+
+	// The pull bookkeeping: what a flush found waiting, and how long it took.
+	for _, name := range []string{"a", "b"} {
+		d := digest.FromString(name)
+		require.NoError(t, ix.Manifest().Put(ctx, "r", index.Manifest{Digest: d, MediaType: "application/vnd.oci.image.manifest.v1+json", Size: 1}, nil))
+		require.NoError(t, ix.Tag().Set(ctx, "r", name, d, ""))
+		ix.Pulled().Touch("r", name, d, time.Now())
+	}
+	require.NoError(t, ix.Flush(ctx))
+	pending, flushes := int64(-1), uint64(0)
+	for _, sm := range h.Collect(ctx).ScopeMetrics {
+		for _, m := range sm.Metrics {
+			switch m.Name {
+			case "cr.index.pulls.pending":
+				for _, dp := range m.Data.(metricdata.Gauge[int64]).DataPoints {
+					pending = dp.Value
+				}
+			case "cr.index.pulls.flush.duration":
+				for _, dp := range m.Data.(metricdata.Histogram[float64]).DataPoints {
+					flushes += dp.Count
+				}
+			}
+		}
+	}
+	require.Equal(t, int64(4), pending, "two manifests and two tags")
+	require.Equal(t, uint64(1), flushes)
 }

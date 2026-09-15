@@ -195,3 +195,6 @@ func (o *OIDC) fetch(ctx context.Context) error {
 	o.keys = ks
 	return nil
 }
+
+// Kind is what the count of logins calls this authenticator.
+func (o *OIDC) Kind() string { return "oidc" }

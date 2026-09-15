@@ -103,6 +103,7 @@ func NewCmdGc(c *cmd.Config) *xli.Command {
 				Leader:   ix,
 				Runs:     entruns.New(s.Ent),
 				Cache:    cache,
+				Meter:    meterOf(ctx),
 			})
 			kind := gc.KindOnline
 			if full {
