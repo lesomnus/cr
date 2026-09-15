@@ -161,6 +161,10 @@ type Tags interface {
 
 	// All is every tag in repo.
 	All(ctx context.Context, repo string) ([]Tag, error)
+
+	// Newest is the tag of repo that moved most recently, or [ErrNotFound]
+	// when it has none.
+	Newest(ctx context.Context, repo string) (Tag, error)
 }
 
 // Pulled is the one write a read makes, and it is not on the request: Touch

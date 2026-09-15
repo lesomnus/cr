@@ -1,9 +1,7 @@
 package registry
 
 import (
-	"errors"
 	"net/http"
-	"slices"
 	"strconv"
 
 	"github.com/lesomnus/cr/auth"
@@ -111,13 +109,12 @@ func (g *Registry) search(w http.ResponseWriter, r *http.Request) {
 // moved tag points at, or nothing.
 func (g *Registry) describe(r *http.Request, repo string) string {
 	ctx := r.Context()
-	ts, err := g.c.Index.Tag().All(ctx, repo)
-	if err != nil || len(ts) == 0 {
+	newest, err := g.c.Index.Tag().Newest(ctx, repo)
+	if err != nil {
 		return ""
 	}
-	newest := slices.MaxFunc(ts, func(a, b index.Tag) int { return a.MovedAt.Compare(b.MovedAt) })
 	m, err := g.c.Index.Manifest().Get(ctx, repo, newest.Digest)
-	if errors.Is(err, index.ErrNotFound) || err != nil {
+	if err != nil {
 		return ""
 	}
 	return m.Annotations[annotationDescription]

@@ -503,6 +503,30 @@ func (r tags) All(ctx context.Context, repo string) ([]index.Tag, error) {
 	return out, err
 }
 
+func (r tags) Newest(ctx context.Context, repo string) (index.Tag, error) {
+	var (
+		out   index.Tag
+		found bool
+	)
+	err := view(r).do(ctx, func(s *state) error {
+		// In name order, and strictly later wins: the first name on a tie,
+		// as the database answers it.
+		for _, v := range r.sorted(s, repo) {
+			if !found || v.MovedAt.After(out.MovedAt) {
+				out, found = v, true
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return index.Tag{}, err
+	}
+	if !found {
+		return index.Tag{}, index.ErrNotFound
+	}
+	return out, nil
+}
+
 type pulled view
 
 func (r pulled) Touch(repo, tag string, d digest.Digest, at time.Time) {

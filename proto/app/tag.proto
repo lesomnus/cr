@@ -59,10 +59,30 @@ message Tag {
         unique: true
       },
       {
+        // With the name, so that "the tags of a digest, by name" is one
+        // index, whichever the planner reaches for.
         name: "by_digest"
         refs: [
           {name: "repo", number: 8},
-          {name: "digest", number: 9}
+          {name: "digest", number: 9},
+          {name: "name", number: 5}
+        ]
+      },
+      {
+        // The list of one repository's tags, in the list's order.
+        name: "page_in_repo"
+        refs: [
+          {name: "repo", number: 8},
+          {name: "date_created", number: 15},
+          {name: "id", number: 1}
+        ]
+      },
+      {
+        // The most recently moved tag of a repository.
+        name: "by_moved"
+        refs: [
+          {name: "repo", number: 8},
+          {name: "date_moved", number: 10}
         ]
       }
     ]
