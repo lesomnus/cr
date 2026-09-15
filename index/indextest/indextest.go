@@ -5,6 +5,7 @@ package indextest
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"sync"
 	"testing"
@@ -398,6 +399,36 @@ func testPulled(t *testing.T, ix index.Index) {
 	tag, err := ix.Tag().Get(ctx, "r", "latest")
 	require.NoError(t, err)
 	require.True(t, at.Equal(tag.PulledAt))
+
+	// A burst larger than one flush writes: every row is written.
+	const burst = 1100
+	name := func(i int) string { return fmt.Sprintf("b%d", i) }
+	require.NoError(t, ix.Tx(ctx, "r", func(tx index.Index) error {
+		for i := range burst {
+			if err := tx.Manifest().Put(ctx, "r", manifest(name(i)), nil); err != nil {
+				return err
+			}
+			if err := tx.Tag().Set(ctx, "r", name(i), d(name(i)), ""); err != nil {
+				return err
+			}
+		}
+		return nil
+	}))
+	later := at.Add(time.Hour)
+	for i := range burst {
+		ix.Pulled().Touch("r", name(i), d(name(i)), later)
+	}
+	if f, ok := ix.(Flusher); ok {
+		require.NoError(t, f.Flush(ctx))
+	}
+	for _, i := range []int{0, burst / 2, burst - 1} {
+		got, err := ix.Manifest().Get(ctx, "r", d(name(i)))
+		require.NoError(t, err)
+		require.True(t, later.Equal(got.PulledAt), "manifest %d: %v != %v", i, later, got.PulledAt)
+		tag, err := ix.Tag().Get(ctx, "r", name(i))
+		require.NoError(t, err)
+		require.True(t, later.Equal(tag.PulledAt), "tag %d", i)
+	}
 }
 
 // testLock is the lock held outside a transaction keeping out a transaction
