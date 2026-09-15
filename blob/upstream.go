@@ -18,6 +18,10 @@ import (
 
 	"github.com/lesomnus/flob"
 	"github.com/opencontainers/go-digest"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+
+	"github.com/lesomnus/cr/telemetry"
 )
 
 // ManifestAccept is every manifest type cr stores, as an `Accept` header: a
@@ -40,6 +44,24 @@ type Upstream struct {
 	tokens map[string]upstreamToken
 
 	now func() time.Time
+
+	// What every request to it costs, and what comes back: the histogram
+	// `cr.cache.upstream.duration` and the counter `cr.cache.upstream.bytes`,
+	// by the upstream's host and the operation. See [WithMeter].
+	host     attribute.KeyValue
+	duration metric.Float64Histogram
+	bytes    metric.Int64Counter
+}
+
+// UpstreamOption is what [NewUpstream] takes besides its address.
+type UpstreamOption func(*Upstream)
+
+// WithMeter measures the requests to the upstream with m.
+func WithMeter(m metric.Meter) UpstreamOption {
+	return func(u *Upstream) {
+		u.duration = telemetry.Seconds(m, "cr.cache.upstream.duration", "Duration of requests a pull-through cache made to its upstream.")
+		u.bytes = telemetry.Counter(m, "cr.cache.upstream.bytes", "By", "Bytes a pull-through cache read from its upstream.")
+	}
 }
 
 type upstreamToken struct {
@@ -49,7 +71,7 @@ type upstreamToken struct {
 
 // NewUpstream is the registry at rawURL, `https://registry-1.docker.io`,
 // read with username and password when it asks for them, or anonymously.
-func NewUpstream(rawURL, username, password string) (*Upstream, error) {
+func NewUpstream(rawURL, username, password string, opts ...UpstreamOption) (*Upstream, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, err
@@ -58,7 +80,7 @@ func NewUpstream(rawURL, username, password string) (*Upstream, error) {
 		return nil, fmt.Errorf("upstream %q: want an http or https URL", rawURL)
 	}
 	u.Path = strings.TrimSuffix(u.Path, "/")
-	return &Upstream{
+	up := &Upstream{
 		base:     u,
 		username: username,
 		password: password,
@@ -71,14 +93,46 @@ func NewUpstream(rawURL, username, password string) (*Upstream, error) {
 		}},
 		tokens: map[string]upstreamToken{},
 		now:    time.Now,
-	}, nil
+		host:   attribute.String("cr.cache.upstream", u.Host),
+	}
+	WithMeter(nil)(up)
+	for _, opt := range opts {
+		opt(up)
+	}
+	return up, nil
 }
 
 func (u *Upstream) String() string { return u.base.String() }
 
-// do sends a request about repo, answering a challenge once: a bearer token
-// from the realm the upstream names, kept until it expires, or Basic.
+// do is request, timed: under the upstream's host, the operation -- `manifest
+// head`, `manifest get`, `blob head`, `blob get` -- and the status, or 0 when
+// nothing answered. A challenge answered on the way is part of the time.
 func (u *Upstream) do(ctx context.Context, method, repo, path string, header http.Header) (*http.Response, error) {
+	start := time.Now()
+	res, err := u.request(ctx, method, repo, path, header)
+	status := 0
+	if err == nil {
+		status = res.StatusCode
+	}
+	u.duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
+		u.host,
+		attribute.String("cr.cache.operation", operationOf(method, path)),
+		attribute.Int("http.response.status_code", status),
+	))
+	return res, err
+}
+
+func operationOf(method, path string) string {
+	kind := "blob"
+	if strings.Contains(path, "/manifests/") {
+		kind = "manifest"
+	}
+	return kind + " " + strings.ToLower(method)
+}
+
+// request sends a request about repo, answering a challenge once: a bearer
+// token from the realm the upstream names, kept until it expires, or Basic.
+func (u *Upstream) request(ctx context.Context, method, repo, path string, header http.Header) (*http.Response, error) {
 	scope := "repository:" + repo + ":pull"
 	send := func(auth string) (*http.Response, error) {
 		req, err := http.NewRequestWithContext(ctx, method, u.base.String()+path, nil)
@@ -258,6 +312,7 @@ func (u *Upstream) GetManifest(ctx context.Context, repo, reference string, max 
 	if err != nil {
 		return nil, "", "", err
 	}
+	u.bytes.Add(ctx, int64(len(b)), metric.WithAttributes(u.host, attribute.String("cr.cache.operation", "manifest get")))
 	if int64(len(b)) > max {
 		return nil, "", "", fmt.Errorf("upstream: the manifest is larger than %d bytes", max)
 	}
@@ -383,6 +438,7 @@ func (r *upstreamReader) Read(p []byte) (int, error) {
 	}
 	n, err := r.body.Read(p)
 	r.pos += int64(n)
+	r.s.u.bytes.Add(r.ctx, int64(n), metric.WithAttributes(r.s.u.host, attribute.String("cr.cache.operation", "blob get")))
 	return n, err
 }
 

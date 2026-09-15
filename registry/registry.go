@@ -71,8 +71,11 @@ type Registry struct {
 
 	proxies proxies
 
-	// errors counts every error envelope answered, by its code.
-	errors metric.Int64Counter
+	// errors counts every error envelope answered, by its code, and
+	// cacheRequests every manifest request to a pull-through cache, by how
+	// it was answered.
+	errors        metric.Int64Counter
+	cacheRequests metric.Int64Counter
 }
 
 func New(c Config) *Registry {
@@ -87,6 +90,7 @@ func New(c Config) *Registry {
 	}
 	g := &Registry{c: c}
 	g.errors = telemetry.Counter(c.Meter, "cr.registry.errors", "{error}", "Errors the registry answered, by their code.")
+	g.cacheRequests = telemetry.Counter(c.Meter, "cr.cache.requests", "{request}", "Manifest requests to a pull-through cache, by how they were answered.")
 	g.proxies.list = slices.Clone(c.Proxies)
 	slices.SortStableFunc(g.proxies.list, func(a, b *Proxy) int { return len(b.Prefix) - len(a.Prefix) })
 	return g

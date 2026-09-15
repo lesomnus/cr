@@ -31,7 +31,7 @@ func Registry(ctx context.Context, c *cmd.Config, s *cmd.Server) error {
 	if err != nil {
 		return err
 	}
-	stores, proxies, cache, err := Proxies(c.Registry, stores)
+	stores, proxies, cache, err := Proxies(c.Registry, stores, meterOf(ctx))
 	if err != nil {
 		return err
 	}
@@ -186,7 +186,7 @@ func s3Client() *http.Client {
 // Proxies makes the repositories each `registry.proxies` entry covers read
 // through to its upstream, and answers the stores to use, the registry's
 // proxies, and how long each cache keeps what nobody pulls.
-func Proxies(c cmd.RegistryConfig, base flob.Stores) (flob.Stores, []*registry.Proxy, func(string) time.Duration, error) {
+func Proxies(c cmd.RegistryConfig, base flob.Stores, meter metric.Meter) (flob.Stores, []*registry.Proxy, func(string) time.Duration, error) {
 	if len(c.Proxies) == 0 {
 		return base, nil, nil, nil
 	}
@@ -196,7 +196,7 @@ func Proxies(c cmd.RegistryConfig, base flob.Stores) (flob.Stores, []*registry.P
 		keep   = map[string]time.Duration{}
 	)
 	for i, pc := range c.Proxies {
-		up, err := blob.NewUpstream(pc.Upstream, pc.Username, pc.Password)
+		up, err := blob.NewUpstream(pc.Upstream, pc.Username, pc.Password, blob.WithMeter(meter))
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("registry.proxies[%d].upstream: %w", i, err)
 		}

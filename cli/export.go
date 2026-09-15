@@ -54,7 +54,7 @@ func NewCmdExport(c *cmd.Config) *xli.Command {
 			if err != nil {
 				return err
 			}
-			stores, _, _, err = Proxies(c.Registry, stores)
+			stores, _, _, err = Proxies(c.Registry, stores, meterOf(ctx))
 			if err != nil {
 				return err
 			}

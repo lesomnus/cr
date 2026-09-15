@@ -85,7 +85,7 @@ func NewCmdGc(c *cmd.Config) *xli.Command {
 			if err != nil {
 				return err
 			}
-			stores, _, cache, err := Proxies(c.Registry, stores)
+			stores, _, cache, err := Proxies(c.Registry, stores, meterOf(ctx))
 			if err != nil {
 				return err
 			}
