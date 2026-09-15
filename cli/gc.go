@@ -81,7 +81,7 @@ func NewCmdGc(c *cmd.Config) *xli.Command {
 				return errors.New("on SQLite the repository lock is the serving process's: stop it and pass --offline, or ask it with POST /admin/gc")
 			}
 
-			stores, err := Stores(c.Registry.Storage)
+			stores, err := Stores(c.Registry.Storage, meterOf(ctx))
 			if err != nil {
 				return err
 			}
@@ -139,7 +139,7 @@ func NewCmdIndex(c *cmd.Config) *xli.Command {
 					}
 					defer closeAll()
 
-					stores, err := Stores(c.Registry.Storage)
+					stores, err := Stores(c.Registry.Storage, meterOf(ctx))
 					if err != nil {
 						return err
 					}

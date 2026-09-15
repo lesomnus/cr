@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/protobuf-orm/ent/dialect"
 
@@ -34,8 +35,11 @@ func (ix *Index) db() (*sql.DB, error) {
 // connection of its own. Elsewhere it is the process's lock, and it does not
 // stop other repositories' writers, only this one's.
 func (ix *Index) Lock(ctx context.Context, repo string) (func(), error) {
+	start := time.Now()
 	if ix.dialect != dialect.Postgres {
-		return ix.acquire(ctx, ix.o.stripes[key(repo)%uint64(len(ix.o.stripes))])
+		unlock, err := ix.acquire(ctx, ix.o.stripes[key(repo)%uint64(len(ix.o.stripes))])
+		ix.waited(ctx, start, err)
+		return unlock, err
 	}
 
 	db, err := ix.db()
@@ -55,10 +59,12 @@ func (ix *Index) Lock(ctx context.Context, repo string) (func(), error) {
 	if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", int64(key(repo))); err != nil {
 		conn.Close()
 		if strings.Contains(err.Error(), "55P03") || strings.Contains(err.Error(), "lock timeout") {
-			return nil, index.ErrBusy
+			err = index.ErrBusy
 		}
+		ix.waited(ctx, start, err)
 		return nil, err
 	}
+	ix.waited(ctx, start, nil)
 	return func() {
 		ctx := context.WithoutCancel(ctx)
 		conn.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", int64(key(repo)))

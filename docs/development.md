@@ -17,6 +17,7 @@ the short version of this page; the rest of `docs/` is for people running cr.
 | `gc/` | the online collection and the sweep; `entruns` records the runs |
 | `export/` | `cr export` |
 | `httpx/` | instrumentation and the health handlers |
+| `telemetry/` | the histogram boundaries and the instruments the packages share |
 | `cmd/`, `cli/` | the configuration, the server's wiring, the command line |
 | `wasm/` | the sandbox build |
 | `proto/app/` | the entities: `Repository`, `Manifest`, `ManifestBlob`, `Tag`, `Binding`, `TagRule`, `GcRun` |

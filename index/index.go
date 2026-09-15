@@ -191,3 +191,21 @@ func Resolve(ctx context.Context, ix Index, repo, tag string) (digest.Digest, er
 	}
 	return t.Digest, nil
 }
+
+type waitingKey struct{}
+
+// Waiting marks ctx with what is about to wait for a repository's lock --
+// "manifest push", "collection", "sweep" -- so that an implementation can
+// measure the wait under that name. It is the one thing cr serializes, and
+// the name says whose time it took.
+func Waiting(ctx context.Context, what string) context.Context {
+	return context.WithValue(ctx, waitingKey{}, what)
+}
+
+// WaitingFor is what [Waiting] marked ctx with, or "other".
+func WaitingFor(ctx context.Context) string {
+	if what, ok := ctx.Value(waitingKey{}).(string); ok {
+		return what
+	}
+	return "other"
+}

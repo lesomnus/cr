@@ -159,6 +159,7 @@ func (g *Registry) pullThrough(ctx context.Context, p *Proxy, name string, ref o
 // it when tag is not empty. What the manifest holds is recorded without being
 // fetched: the blobs come when a client asks for them.
 func (g *Registry) fetch(ctx context.Context, p *Proxy, name, remote, reference, tag string) error {
+	ctx = index.Waiting(ctx, "cache fetch")
 	body, mt, d, err := p.Upstream.GetManifest(ctx, remote, reference, g.c.MaxManifestSize)
 	if errors.Is(err, flob.ErrNotExist) {
 		return oci.ErrManifestUnknown(reference)

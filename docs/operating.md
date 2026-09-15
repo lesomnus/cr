@@ -374,6 +374,8 @@ What is measured:
 | `http.server.request.body.size`, `http.server.response.body.size` | histograms, in bytes, of what those requests read and wrote, by the same attributes. A blob `GET` answered with a redirect wrote a `307` and no bytes; the bucket sent them |
 | `http.server.active_requests` | the requests in flight, by method and route |
 | `cr.registry.errors` | every error envelope the registry answered, by `cr.error.code` -- `MANIFEST_BLOB_UNKNOWN`, `DENIED`, `NAME_UNKNOWN` and the rest -- with the route and the status: what a `400` or a `404` was |
+| `cr.repository.lock.wait`, `cr.repository.lock.timeouts` | how long a write waited for its repository's lock, and how often it gave up after `lock_wait`, by `cr.lock.for`: `manifest push`, `manifest delete`, `blob delete`, `cache fetch`, `release`, `collection`, `sweep`, `bookkeeping`. The one thing cr serializes, measured |
+| `cr.store.operation.duration` | each call to a blob store, by `cr.store.driver` (`os`, `s3`, `memory`), `cr.store.operation` (`add`, `stat`, `open`, `label`, `erase`) and `cr.store.outcome` (`ok`, `not_found`, `exists`, `error`). `add` includes reading what it stores, so an upload's `add` is as long as the upload; mounts, presigned URLs and the collection's walk reach the store beneath and are not measured |
 | `go.memory.*`, `go.goroutine.count`, and the rest of OpenTelemetry's Go runtime instrumentation | the process itself |
 | `rpc.server.call.duration` | the management API's calls, over gRPC and Connect alike, by service, method and status code: the OpenTelemetry gRPC instrumentation's own |
 | spans | one server span per registry request, named for its route, and one per management call, continuing a trace the client started |
