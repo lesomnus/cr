@@ -99,6 +99,11 @@ type Subject struct {
 	// for, whatever the bindings grant the subject: a key made for less than
 	// its holder may do. Nil narrows nothing, and empty allows nothing.
 	Only []Action
+
+	// Via is the authenticator that accepted the credential -- `htpasswd`,
+	// `static`, `oidc`, `roster`, `exchange` -- for the count of logins.
+	// Empty for the anonymous caller, and for a token.
+	Via string
 }
 
 func (s Subject) IsAnonymous() bool { return s.ID == "" || s.ID == Anonymous }
@@ -151,6 +156,9 @@ func (c Chain) Authenticate(ctx context.Context, username, password string) (Sub
 	for _, a := range c {
 		s, err := a.Authenticate(ctx, username, password)
 		if err == nil {
+			if k, ok := a.(interface{ Kind() string }); ok && s.Via == "" {
+				s.Via = k.Kind()
+			}
 			return s, nil
 		}
 		if errors.Is(err, ErrNotMine) {

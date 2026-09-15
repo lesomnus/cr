@@ -541,3 +541,23 @@ func (ix *Index) touchTag(ctx context.Context, repo, name string, at time.Time) 
 		SetDatePulled(at.UTC()).
 		Exec(ctx)
 }
+
+// Counts is [index.Counter]: three counts, which on PostgreSQL are three
+// scans, so the collection asks once a run and nothing asks on a request.
+func (ix *Index) Counts(ctx context.Context) (index.Counts, error) {
+	var n index.Counts
+	c := ix.client
+	r, err := c.Repository.Query().Count(ctx)
+	if err != nil {
+		return n, err
+	}
+	m, err := c.Manifest.Query().Count(ctx)
+	if err != nil {
+		return n, err
+	}
+	t, err := c.Tag.Query().Count(ctx)
+	if err != nil {
+		return n, err
+	}
+	return index.Counts{Repositories: int64(r), Manifests: int64(m), Tags: int64(t)}, nil
+}

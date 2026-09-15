@@ -204,10 +204,12 @@ func (g *Registry) putBlob(w http.ResponseWriter, r *http.Request, name, arg str
 	_, err = g.store(name).Add(ctx, flob.Meta{Digest: flob.Digest(d)}, r.Body)
 	switch {
 	case err == nil:
+		g.upload(ctx, "completed")
 	case errors.Is(err, flob.ErrAlreadyExists):
 		// flob answers before reading when the digest is already there; the
 		// body still has to be read or the connection stalls.
 		io.Copy(io.Discard, r.Body)
+		g.upload(ctx, "exists")
 	case errors.Is(err, flob.ErrDigestMismatch), errors.Is(err, flob.ErrInvalidDigest):
 		g.fail(w, r, oci.ErrDigestInvalid(err.Error()))
 		return
@@ -281,6 +283,7 @@ func (g *Registry) mount(w http.ResponseWriter, r *http.Request, name string) {
 		_, err := l.Link(ctx, flob.Digest(d), src)
 		switch {
 		case err == nil, errors.Is(err, flob.ErrAlreadyExists):
+			g.upload(ctx, "mounted")
 			g.created(w, name, d)
 			return
 		case errors.Is(err, flob.ErrNotExist):
@@ -308,6 +311,7 @@ func (g *Registry) mount(w http.ResponseWriter, r *http.Request, name string) {
 		g.fail(w, r, err)
 		return
 	}
+	g.upload(ctx, "mounted")
 	g.created(w, name, d)
 }
 
@@ -507,6 +511,7 @@ func (g *Registry) putUpload(w http.ResponseWriter, r *http.Request, name, id st
 		g.fail(w, r, stageErr(err))
 		return
 	}
+	g.upload(ctx, "completed")
 	g.created(w, name, d)
 }
 
@@ -544,5 +549,6 @@ func (g *Registry) cancelUpload(w http.ResponseWriter, r *http.Request, name, id
 		g.fail(w, r, stageErr(err))
 		return
 	}
+	g.upload(r.Context(), "cancelled")
 	w.WriteHeader(http.StatusNoContent)
 }

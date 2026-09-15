@@ -19,9 +19,12 @@ import (
 	"github.com/lesomnus/flob"
 	"github.com/lesomnus/otx/log"
 	"github.com/opencontainers/go-digest"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/lesomnus/cr/auth"
 	"github.com/lesomnus/cr/index"
+	"github.com/lesomnus/cr/telemetry"
 )
 
 // Leader decides which of several replicas runs the work called name.
@@ -64,6 +67,10 @@ type Config struct {
 
 	// Now is the clock; nil is time.Now.
 	Now func() time.Time
+
+	// Meter is what the collection's metrics are made with; nil measures
+	// nothing.
+	Meter metric.Meter
 }
 
 // Report is what one run did.
@@ -78,13 +85,66 @@ type Collector struct {
 
 	mu   sync.Mutex
 	full *Run
+
+	// Every run, by kind, trigger and state; how long it took; what it
+	// removed; what a full run found missing; and how much the index holds.
+	runs           metric.Int64Counter
+	runDuration    metric.Float64Histogram
+	reclaimed      metric.Int64Counter
+	reclaimedBytes metric.Int64Counter
+	missing        metric.Int64Gauge
+	repoGauge      metric.Int64Gauge
+	manifestGauge  metric.Int64Gauge
+	tagGauge       metric.Int64Gauge
 }
 
 func New(c Config) *Collector {
 	if c.Now == nil {
 		c.Now = time.Now
 	}
-	return &Collector{c: c}
+	m := c.Meter
+	return &Collector{
+		c:              c,
+		runs:           telemetry.Counter(m, "cr.gc.runs", "{run}", "Collections, by kind, trigger and how they ended."),
+		runDuration:    telemetry.Long(m, "cr.gc.run.duration", "Duration of a collection."),
+		reclaimed:      telemetry.Counter(m, "cr.gc.reclaimed", "{item}", "What collections removed: expired uploads, tags, manifests, blobs."),
+		reclaimedBytes: telemetry.Counter(m, "cr.gc.reclaimed.bytes", "By", "Bytes of the blobs collections erased."),
+		missing:        telemetry.Gauge(m, "cr.gc.missing", "{manifest}", "Manifests the index has and the store does not, as of the last full collection."),
+		repoGauge:      telemetry.Gauge(m, "cr.repositories", "{repository}", "Repositories in the index, as of the last collection."),
+		manifestGauge:  telemetry.Gauge(m, "cr.manifests", "{manifest}", "Manifests in the index, as of the last collection."),
+		tagGauge:       telemetry.Gauge(m, "cr.tags", "{tag}", "Tags in the index, as of the last collection."),
+	}
+}
+
+// measure records what a run was and did, and asks the index how much it
+// holds now.
+func (c *Collector) measure(ctx context.Context, run Run) {
+	kind := attribute.String("cr.gc.kind", run.Kind)
+	c.runs.Add(ctx, 1, metric.WithAttributes(kind,
+		attribute.String("cr.gc.trigger", run.Trigger),
+		attribute.String("cr.gc.state", run.State),
+	))
+	if run.Finished != nil {
+		c.runDuration.Record(ctx, run.Finished.Sub(run.Started).Seconds(), metric.WithAttributes(kind))
+	}
+	for what, n := range map[string]int{"uploads": run.Stages, "tags": run.Tags, "manifests": run.Manifests, "blobs": run.Blobs} {
+		if n > 0 {
+			c.reclaimed.Add(ctx, int64(n), metric.WithAttributes(kind, attribute.String("cr.gc.what", what)))
+		}
+	}
+	if run.Bytes > 0 {
+		c.reclaimedBytes.Add(ctx, run.Bytes, metric.WithAttributes(kind))
+	}
+	if run.Kind == KindFull {
+		c.missing.Record(ctx, int64(len(run.Missing)))
+	}
+	if counter, ok := c.c.Index.(index.Counter); ok {
+		if n, err := counter.Counts(ctx); err == nil {
+			c.repoGauge.Record(ctx, n.Repositories)
+			c.manifestGauge.Record(ctx, n.Manifests)
+			c.tagGauge.Record(ctx, n.Tags)
+		}
+	}
 }
 
 // Runs is where this collector records its runs, or nil.
@@ -158,6 +218,7 @@ func (c *Collector) collect(ctx context.Context, run Run) (Run, error) {
 	}
 
 	run.finish(rep, err, c.c.Now().UTC())
+	c.measure(ctx, run)
 	if c.c.Runs != nil {
 		if ferr := c.c.Runs.Finish(context.WithoutCancel(ctx), run); ferr != nil && err == nil {
 			err = ferr

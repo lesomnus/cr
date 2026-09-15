@@ -103,14 +103,15 @@ func Guard(ctx context.Context, c *cmd.Config, s *cmd.Server) (*auth.Guard, erro
 	}
 
 	static := staticPolicy(a)
-	policy := auth.NewPolicyStore(a.Refresh, static, entpolicy.New(s.Ent))
+	policy := auth.NewPolicyStore(a.Refresh, static, entpolicy.New(s.Ent)).Measure(meterOf(ctx))
 	if err := policy.Refresh(ctx); err != nil {
 		return nil, fmt.Errorf("auth: policy: %w", err)
 	}
 	s.Spin = append(s.Spin, policy)
 
 	log.From(ctx).InfoContext(ctx, "auth", slog.Int("authenticators", len(chain)), slog.String("service", service))
-	return &auth.Guard{Authenticator: chain, Policy: policy, Issuer: issuer, Realm: a.Token.Realm, Exchange: a.Exchange.Ttl}, nil
+	g := &auth.Guard{Authenticator: chain, Policy: policy, Issuer: issuer, Realm: a.Token.Realm, Exchange: a.Exchange.Ttl}
+	return g.Measure(meterOf(ctx)), nil
 }
 
 // Management is how the management API reads a credential: a bearer token

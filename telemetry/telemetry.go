@@ -16,7 +16,23 @@ import (
 var (
 	SecondsBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
 	BytesBuckets   = []float64{1 << 10, 16 << 10, 256 << 10, 4 << 20, 64 << 20, 1 << 30, 16 << 30}
+
+	// LongSecondsBuckets is for what takes minutes: a collection, a flush.
+	LongSecondsBuckets = []float64{0.1, 0.5, 1, 5, 15, 60, 300, 900, 1800, 3600}
 )
+
+// Long is a histogram of durations in seconds, for what takes minutes.
+func Long(m metric.Meter, name, description string) metric.Float64Histogram {
+	h, err := Meter(m).Float64Histogram(name,
+		metric.WithUnit("s"),
+		metric.WithDescription(description),
+		metric.WithExplicitBucketBoundaries(LongSecondsBuckets...),
+	)
+	if err != nil {
+		return noop.Float64Histogram{}
+	}
+	return h
+}
 
 // Meter answers m, or one that measures nothing.
 func Meter(m metric.Meter) metric.Meter {

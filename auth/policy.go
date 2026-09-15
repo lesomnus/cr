@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/lesomnus/otx/log"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // Binding grants actions on the repositories Repo matches to a subject or a
@@ -287,6 +288,11 @@ type PolicyStore struct {
 	sources []Source
 	every   time.Duration
 	cur     atomic.Pointer[Policy]
+
+	// When the last load that succeeded was, in Unix nanoseconds, and the
+	// loads that failed; see Measure.
+	last          atomic.Int64
+	refreshErrors metric.Int64Counter
 }
 
 // NewPolicyStore is a store over sources, reloaded every `every`. Until the
@@ -306,6 +312,17 @@ func (st *PolicyStore) Current() *Policy { return st.cur.Load() }
 // Refresh loads every source. When one fails, the policy in force stays in
 // force: an outage of the database is not a reason to change who may push.
 func (st *PolicyStore) Refresh(ctx context.Context) error {
+	if err := st.refresh(ctx); err != nil {
+		if st.refreshErrors != nil {
+			st.refreshErrors.Add(ctx, 1)
+		}
+		return err
+	}
+	st.last.Store(time.Now().UnixNano())
+	return nil
+}
+
+func (st *PolicyStore) refresh(ctx context.Context) error {
 	var bs []Binding
 	var rs []TagRule
 	for _, src := range st.sources {

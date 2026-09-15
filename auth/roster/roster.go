@@ -613,3 +613,6 @@ func (a *Authenticator) Spin(ctx context.Context) error {
 		backoff = min(backoff*2, time.Minute)
 	}
 }
+
+// Kind is what the count of logins calls this authenticator.
+func (a *Authenticator) Kind() string { return "roster" }

@@ -76,6 +76,7 @@ type Registry struct {
 	// it was answered.
 	errors        metric.Int64Counter
 	cacheRequests metric.Int64Counter
+	uploads       metric.Int64Counter
 }
 
 func New(c Config) *Registry {
@@ -91,6 +92,7 @@ func New(c Config) *Registry {
 	g := &Registry{c: c}
 	g.errors = telemetry.Counter(c.Meter, "cr.registry.errors", "{error}", "Errors the registry answered, by their code.")
 	g.cacheRequests = telemetry.Counter(c.Meter, "cr.cache.requests", "{request}", "Manifest requests to a pull-through cache, by how they were answered.")
+	g.uploads = telemetry.Counter(c.Meter, "cr.uploads", "{upload}", "Blob uploads that ended, by how.")
 	g.proxies.list = slices.Clone(c.Proxies)
 	slices.SortStableFunc(g.proxies.list, func(a, b *Proxy) int { return len(b.Prefix) - len(a.Prefix) })
 	return g
@@ -335,6 +337,12 @@ func (g *Registry) fail(w http.ResponseWriter, r *http.Request, err error) {
 		attribute.Int("http.response.status_code", status),
 	))
 	oci.WriteError(w, err)
+}
+
+// upload counts a blob upload that ended: `completed`, `exists` for a digest
+// the repository already had, `mounted` from another repository, `cancelled`.
+func (g *Registry) upload(ctx context.Context, outcome string) {
+	g.uploads.Add(ctx, 1, metric.WithAttributes(attribute.String("cr.upload.outcome", outcome)))
 }
 
 func (g *Registry) store(name string) flob.Store {

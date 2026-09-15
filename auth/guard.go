@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/lesomnus/cr/oci"
 )
 
@@ -26,6 +28,10 @@ type Guard struct {
 	// Exchange is how long a token from `POST /token/exchange` lasts; zero
 	// serves no exchange.
 	Exchange time.Duration
+
+	// The count of logins and of refusals; see Measure. Nil counts nothing.
+	logins metric.Int64Counter
+	denied metric.Int64Counter
 }
 
 // Caller is a request's subject and, for a bearer token, what it grants.
@@ -165,11 +171,13 @@ func (g *Guard) Caller(r *http.Request) (*Caller, error) {
 		}
 		s, err := g.Authenticator.Authenticate(r.Context(), user, pass)
 		if err != nil {
+			g.login(r.Context(), "", "refused")
 			if errors.Is(err, ErrNotMine) {
 				err = ErrUnauthenticated
 			}
 			return nil, err
 		}
+		g.login(r.Context(), s.Via, "ok")
 		return &Caller{Subject: s, policy: p}, nil
 	}
 	return nil, ErrUnauthenticated
@@ -254,10 +262,12 @@ func (g *Guard) ServeToken(w http.ResponseWriter, r *http.Request) {
 		var err error
 		s, err = g.Authenticator.Authenticate(r.Context(), user, pass)
 		if err != nil {
+			g.login(r.Context(), "", "refused")
 			w.Header().Set("WWW-Authenticate", `Basic realm="cr"`)
 			oci.WriteError(w, oci.ErrUnauthorized("the credentials do not check"))
 			return
 		}
+		g.login(r.Context(), s.Via, "ok")
 	}
 
 	ss, err := ParseScopes(scopes)
@@ -273,6 +283,7 @@ func (g *Guard) ServeToken(w http.ResponseWriter, r *http.Request) {
 		no := slices.DeleteFunc(slices.Clone(want), func(a Action) bool { return slices.Contains(granted, a) })
 		if len(no) > 0 {
 			refused = append(refused, Access{Type: t, Name: name, Actions: Strings(no)})
+			g.Denied(r.Context(), "token", no)
 		}
 	}
 	for _, sc := range ss {

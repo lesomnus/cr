@@ -54,6 +54,12 @@ type options struct {
 	// gave up; see [WithMeter].
 	lockWait metric.Float64Histogram
 	lockBusy metric.Int64Counter
+
+	// The pull bookkeeping: what waited when a flush began, what was dropped
+	// for there being too much of it, and how long a flush took.
+	pullsPending metric.Int64Gauge
+	pullsDropped metric.Int64Counter
+	pullsFlush   metric.Float64Histogram
 }
 
 type Option func(*options)
@@ -65,6 +71,9 @@ func WithMeter(m metric.Meter) Option {
 	return func(o *options) {
 		o.lockWait = telemetry.Seconds(m, "cr.repository.lock.wait", "Time a write waited for its repository's lock.")
 		o.lockBusy = telemetry.Counter(m, "cr.repository.lock.timeouts", "{wait}", "Waits for a repository's lock that gave up.")
+		o.pullsPending = telemetry.Gauge(m, "cr.index.pulls.pending", "{row}", "Pull times waiting to be written when a flush began.")
+		o.pullsDropped = telemetry.Counter(m, "cr.index.pulls.dropped", "{pull}", "Pull times dropped for there being too many waiting.")
+		o.pullsFlush = telemetry.Long(m, "cr.index.pulls.flush.duration", "Duration of a flush of the pull times.")
 	}
 }
 
@@ -240,6 +249,7 @@ func (p *pulls) Touch(repo, tag string, d digestLike, at time.Time) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if len(p.manifests) >= maxPending {
+		p.ix.o.pullsDropped.Add(context.Background(), 1)
 		return
 	}
 	k := pullKey{repo, string(d)}
@@ -279,6 +289,9 @@ func (p *pulls) flush(ctx context.Context) error {
 	ms, ts := p.manifests, p.tags
 	p.manifests, p.tags = map[pullKey]time.Time{}, map[pullKey]time.Time{}
 	p.mu.Unlock()
+	p.ix.o.pullsPending.Record(ctx, int64(len(ms)+len(ts)))
+	start := time.Now()
+	defer func() { p.ix.o.pullsFlush.Record(ctx, time.Since(start).Seconds()) }()
 
 	// A transaction per chunk rather than a commit per row, with the rows in
 	// (repo, name) order -- the order a delete erases a repository's tags in

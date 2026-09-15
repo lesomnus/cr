@@ -62,6 +62,7 @@ func Registry(ctx context.Context, c *cmd.Config, s *cmd.Server) error {
 		Leader:    ix,
 		Runs:      entruns.New(s.Ent),
 		Cache:     cache,
+		Meter:     meterOf(ctx),
 	})
 
 	reg := registry.New(registry.Config{

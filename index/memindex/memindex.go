@@ -148,6 +148,22 @@ func (ix *Index) Lock(ctx context.Context, repo string) (func(), error) {
 	return func() { <-c }, nil
 }
 
+// Counts is [index.Counter].
+func (ix *Index) Counts(ctx context.Context) (index.Counts, error) {
+	var n index.Counts
+	err := view{ix: ix}.do(ctx, func(s *state) error {
+		n.Repositories = int64(len(s.repos))
+		for _, ms := range s.manifests {
+			n.Manifests += int64(len(ms))
+		}
+		for _, ts := range s.tags {
+			n.Tags += int64(len(ts))
+		}
+		return nil
+	})
+	return n, err
+}
+
 func (v view) Repo() index.Repos         { return repos(v) }
 func (v view) Manifest() index.Manifests { return manifests(v) }
 func (v view) Tag() index.Tags           { return tags(v) }
