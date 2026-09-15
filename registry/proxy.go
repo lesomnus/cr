@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -12,6 +13,8 @@ import (
 	"github.com/lesomnus/flob"
 	"github.com/lesomnus/otx/log"
 	"github.com/opencontainers/go-digest"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/lesomnus/cr/blob"
 	"github.com/lesomnus/cr/index"
@@ -101,26 +104,47 @@ func (ps *proxies) mark(repo, tag string, now time.Time) {
 // The upstream being down is not the client's problem when the cache can
 // answer: a tag already cached is served as it is, and the failure logged.
 func (g *Registry) pullThrough(ctx context.Context, p *Proxy, name string, ref oci.Reference) error {
+	outcome, err := g.pullThroughOutcome(ctx, p, name, ref)
+	prefix := p.Prefix
+	if prefix == "" {
+		prefix = "*"
+	}
+	g.cacheRequests.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("cr.cache.proxy", prefix),
+		attribute.String("cr.cache.outcome", outcome),
+	))
+	return err
+}
+
+// pullThroughOutcome is pullThrough, saying how the request was answered:
+// `hit` from the cache alone, `revalidated` after the upstream said the tag
+// had not moved, `refreshed` after it had, `miss` for what was not cached,
+// `stale` for a cached tag served because the upstream failed, `unknown` for
+// what the upstream does not have, and `error` for the rest.
+func (g *Registry) pullThroughOutcome(ctx context.Context, p *Proxy, name string, ref oci.Reference) (string, error) {
 	ix := g.c.Index
 	remote := p.Name(name)
 
 	if ref.IsDigest() {
 		if _, err := ix.Manifest().Get(ctx, name, ref.Digest); err == nil {
-			return nil
+			return "hit", nil
 		} else if !errors.Is(err, index.ErrNotFound) {
-			return err
+			return "error", err
 		}
-		return g.fetch(ctx, p, name, remote, ref.Digest.String(), "")
+		if err := g.fetch(ctx, p, name, remote, ref.Digest.String(), ""); err != nil {
+			return failedOutcome(err), err
+		}
+		return "miss", nil
 	}
 
 	now := g.c.Now()
 	cur, err := ix.Tag().Get(ctx, name, ref.Tag)
 	cached := err == nil
 	if err != nil && !errors.Is(err, index.ErrNotFound) {
-		return err
+		return "error", err
 	}
 	if cached && g.proxies.fresh(name, ref.Tag, p.ttl(), now) {
-		return nil
+		return "hit", nil
 	}
 
 	d, err := p.Upstream.HeadManifest(ctx, remote, ref.Tag)
@@ -128,31 +152,44 @@ func (g *Registry) pullThrough(ctx context.Context, p *Proxy, name string, ref o
 	case errors.Is(err, flob.ErrNotExist):
 		// Gone upstream. The cache keeps what it has until retention says
 		// otherwise; a client asking is told what upstream says.
-		return oci.ErrManifestUnknown(ref.Tag)
+		return "unknown", oci.ErrManifestUnknown(ref.Tag)
 	case err != nil:
 		if cached {
 			log.From(ctx).WarnContext(ctx, "pull-through: upstream unavailable, serving the cached tag",
 				slog.String("repo", name), slog.String("tag", ref.Tag), slog.String("err", err.Error()))
-			return nil
+			return "stale", nil
 		}
-		return err
+		return "error", err
 	}
 	if cached && d != "" && d == cur.Digest {
 		if _, err := ix.Manifest().Get(ctx, name, d); err == nil {
 			g.proxies.mark(name, ref.Tag, now)
-			return nil
+			return "revalidated", nil
 		}
 	}
 	if err := g.fetch(ctx, p, name, remote, ref.Tag, ref.Tag); err != nil {
 		if cached {
 			log.From(ctx).WarnContext(ctx, "pull-through: fetch failed, serving the cached tag",
 				slog.String("repo", name), slog.String("tag", ref.Tag), slog.String("err", err.Error()))
-			return nil
+			return "stale", nil
 		}
-		return err
+		return failedOutcome(err), err
 	}
 	g.proxies.mark(name, ref.Tag, now)
-	return nil
+	if cached {
+		return "refreshed", nil
+	}
+	return "miss", nil
+}
+
+// failedOutcome is `unknown` for what the upstream does not have, and
+// `error` for everything else that went wrong.
+func failedOutcome(err error) string {
+	var e *oci.Error
+	if errors.As(err, &e) && e.Status == http.StatusNotFound {
+		return "unknown"
+	}
+	return "error"
 }
 
 // fetch copies one manifest from upstream into the cache, and points tag at
