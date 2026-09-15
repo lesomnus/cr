@@ -136,6 +136,7 @@ func backend(at string, driver string, o cmd.OsStorageConfig, s cmd.S3StorageCon
 		return flob.NewOsStores(o.Root, stage), nil
 	case "s3":
 		stores, err := flob.NewS3Stores(flob.S3Config{
+			Client:         s3Client(),
 			Stage:          stage,
 			StagePartSize:  s.PartSize,
 			Endpoint:       s.Endpoint,
@@ -159,6 +160,19 @@ func backend(at string, driver string, o cmd.OsStorageConfig, s cmd.S3StorageCon
 	default:
 		return nil, fmt.Errorf("%s.driver: unknown driver %q", at, driver)
 	}
+}
+
+// s3Client is what the S3 store sends its requests with. Go's default
+// transport keeps two idle connections per host and opens a new one for
+// every request past them, which at the registry's concurrency left a
+// bucket's host with thousands of connections in TIME_WAIT and no port to
+// open the next; this keeps enough for the requests in flight to reuse.
+func s3Client() *http.Client {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.MaxIdleConns = 256
+	t.MaxIdleConnsPerHost = 256
+	t.ResponseHeaderTimeout = 30 * time.Second
+	return &http.Client{Transport: t}
 }
 
 // Proxies makes the repositories each `registry.proxies` entry covers read
