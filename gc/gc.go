@@ -420,18 +420,16 @@ func (c *Collector) untagged(ctx context.Context, repo string) (int, error) {
 }
 
 func (c *Collector) untaggedBefore(ctx context.Context, repo string, cutoff time.Time) (int, error) {
+	// What the index says nothing needs, read without the lock; each is
+	// looked at again under it before it goes.
 	var candidates []index.Manifest
 	last := ""
 	for {
-		ms, err := c.c.Index.Manifest().List(ctx, repo, index.Page{Last: last, N: 500})
+		ms, err := c.c.Index.Manifest().Unneeded(ctx, repo, cutoff, index.Page{Last: last, N: 500})
 		if err != nil {
 			return 0, err
 		}
-		for _, m := range ms {
-			if old(m, cutoff) {
-				candidates = append(candidates, m)
-			}
-		}
+		candidates = append(candidates, ms...)
 		if len(ms) < 500 {
 			break
 		}
