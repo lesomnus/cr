@@ -234,3 +234,44 @@ func TestCacheEviction(t *testing.T) {
 	require.ErrorIs(t, err, index.ErrNotFound)
 	require.True(t, e.indexed("acme/app", mine.Digest), "not a cache")
 }
+
+// TestReleaseHoldsOnlyItsRepository: while a delete's release erases from the
+// store, other repositories go on writing; the repository being erased from
+// is the one that waits.
+func TestReleaseHoldsOnlyItsRepository(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	e.ix.Wait = 50 * time.Millisecond
+	stray := e.blob("acme/app", []byte("stray"))
+
+	slow := &slowErase{Store: e.stores.Use("acme/app"), entered: make(chan struct{}), gate: make(chan struct{})}
+	done := make(chan error, 1)
+	go func() { done <- gc.Release(ctx, e.ix, slow, "acme/app", []digest.Digest{stray.Digest}) }()
+	<-slow.entered
+
+	require.NoError(t, e.ix.Tx(ctx, "acme/other", func(tx index.Index) error {
+		_, err := tx.Repo().Ensure(ctx, "acme/other")
+		return err
+	}), "another repository writes meanwhile")
+	err := e.ix.Tx(ctx, "acme/app", func(index.Index) error { return nil })
+	require.ErrorIs(t, err, index.ErrBusy, "the repository being released from waits")
+
+	close(slow.gate)
+	require.NoError(t, <-done)
+	require.False(t, e.has("acme/app", stray.Digest))
+}
+
+// slowErase is a store whose first Erase says it has begun and then waits to
+// be let through.
+type slowErase struct {
+	flob.Store
+	entered chan struct{}
+	gate    chan struct{}
+	once    sync.Once
+}
+
+func (s *slowErase) Erase(ctx context.Context, d flob.Digest) error {
+	s.once.Do(func() { close(s.entered) })
+	<-s.gate
+	return s.Store.Erase(ctx, d)
+}

@@ -120,18 +120,28 @@ func (g *Registry) deleteBlob(w http.ResponseWriter, r *http.Request, name, arg 
 		return
 	}
 
+	// Under the repository's lock, so that no manifest comes to hold the blob
+	// between the look and the erase; the lock alone, since nothing here
+	// writes the index.
 	s := g.store(name)
-	err = g.c.Index.Tx(ctx, name, func(ix index.Index) error {
+	unlock, err := g.c.Index.Lock(ctx, name)
+	if err != nil {
+		g.fail(w, r, err)
+		return
+	}
+	err = func() error {
+		defer unlock()
 		// A blob a manifest still holds would leave that manifest unpullable,
 		// which is worse than refusing.
-		held, err := ix.Manifest().Holds(ctx, name, d)
+		ms := g.c.Index.Manifest()
+		held, err := ms.Holds(ctx, name, d)
 		if err != nil {
 			return err
 		}
 		if held {
 			return oci.ErrDenied("the blob is held by a manifest in this repository")
 		}
-		if _, err := ix.Manifest().Get(ctx, name, d); err == nil {
+		if _, err := ms.Get(ctx, name, d); err == nil {
 			return oci.ErrDenied("the digest is a manifest; delete it through the manifests endpoint")
 		} else if !errors.Is(err, index.ErrNotFound) {
 			return err
@@ -140,7 +150,7 @@ func (g *Registry) deleteBlob(w http.ResponseWriter, r *http.Request, name, arg 
 			return blobErr(d, err)
 		}
 		return s.Erase(ctx, flob.Digest(d))
-	})
+	}()
 	if err != nil {
 		g.fail(w, r, err)
 		return
