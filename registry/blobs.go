@@ -78,16 +78,11 @@ func (g *Registry) getBlob(w http.ResponseWriter, r *http.Request, name, arg str
 		}
 	}
 
-	// A read through a cache fills the store as it goes, and the fill is
-	// tied to the context the blob was opened with. The request's context
-	// ends the moment this handler returns, which is before a store slower
-	// than the client -- a bucket -- has finished writing what the client
-	// already has. Closing the reader is still what stops a fill short.
-	openCtx := ctx
-	if g.proxies.of(name) != nil {
-		openCtx = context.WithoutCancel(ctx)
-	}
-	rc, _, err := s.Open(openCtx, flob.Digest(d))
+	// A read through a cache fills the store as it goes. Once the client has
+	// every byte, flob lets that write finish after this handler returns and
+	// the request's context ends -- a bucket is still writing then. Closing
+	// the reader or losing the request before the last byte stops a fill short.
+	rc, _, err := s.Open(ctx, flob.Digest(d))
 	if err != nil {
 		g.fail(w, r, blobErr(d, err))
 		return
