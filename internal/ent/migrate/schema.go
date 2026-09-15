@@ -328,9 +328,19 @@ var (
 				Columns: []*schema.Column{TagColumns[2], TagColumns[1]},
 			},
 			{
-				Name:    "tag_repo_digest",
+				Name:    "tag_repo_digest_name",
 				Unique:  false,
-				Columns: []*schema.Column{TagColumns[2], TagColumns[3]},
+				Columns: []*schema.Column{TagColumns[2], TagColumns[3], TagColumns[1]},
+			},
+			{
+				Name:    "tag_repo_date_created_id",
+				Unique:  false,
+				Columns: []*schema.Column{TagColumns[2], TagColumns[7], TagColumns[0]},
+			},
+			{
+				Name:    "tag_repo_date_moved",
+				Unique:  false,
+				Columns: []*schema.Column{TagColumns[2], TagColumns[4]},
 			},
 		},
 	}

@@ -211,9 +211,19 @@ func testTags(t *testing.T, ix index.Index) {
 	require.NoError(t, err)
 	require.Len(t, all, 3)
 
+	newest, err := g.Newest(ctx, "r")
+	require.NoError(t, err)
+	require.Equal(t, "alpha", newest.Name, "the last one set")
+
 	require.NoError(t, g.Erase(ctx, "r", "alpha"))
 	require.ErrorIs(t, g.Erase(ctx, "r", "alpha"), index.ErrNotFound)
 	_, err = g.Get(ctx, "r", "alpha")
+	require.ErrorIs(t, err, index.ErrNotFound)
+
+	newest, err = g.Newest(ctx, "r")
+	require.NoError(t, err)
+	require.Equal(t, "stable", newest.Name)
+	_, err = g.Newest(ctx, "none")
 	require.ErrorIs(t, err, index.ErrNotFound)
 }
 

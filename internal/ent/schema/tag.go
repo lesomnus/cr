@@ -42,7 +42,9 @@ func (Tag) Indexes() []ent.Index {
 		index.Fields("date_created", "id"),
 		index.Fields("repo", "name").
 			Unique(),
-		index.Fields("repo", "digest"),
+		index.Fields("repo", "digest", "name"),
+		index.Fields("repo", "date_created", "id"),
+		index.Fields("repo", "date_moved"),
 	}
 }
 

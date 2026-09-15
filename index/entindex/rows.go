@@ -8,6 +8,7 @@ import (
 
 	"github.com/lesomnus/payday/pdid"
 	"github.com/opencontainers/go-digest"
+	"github.com/protobuf-orm/ent/dialect/sql"
 
 	"github.com/lesomnus/cr/index"
 	"github.com/lesomnus/cr/internal/ent"
@@ -455,6 +456,17 @@ func (r tags) All(ctx context.Context, repo string) ([]index.Tag, error) {
 		out = append(out, toTag(v))
 	}
 	return out, nil
+}
+
+func (r tags) Newest(ctx context.Context, repo string) (index.Tag, error) {
+	v, err := r.ix.client.Tag.Query().
+		Where(tag.Repo(repo)).
+		Order(tag.ByDateMoved(sql.OrderDesc()), tag.ByName()).
+		First(ctx)
+	if err != nil {
+		return index.Tag{}, notFound(err)
+	}
+	return toTag(v), nil
 }
 
 func (ix *Index) touchManifest(ctx context.Context, repo, d string, at time.Time) error {
