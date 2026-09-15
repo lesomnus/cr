@@ -20,9 +20,12 @@ import (
 	"time"
 
 	"github.com/protobuf-orm/ent/dialect"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/lesomnus/cr/index"
 	"github.com/lesomnus/cr/internal/ent"
+	"github.com/lesomnus/cr/telemetry"
 )
 
 // Index is [index.Index] over an ent client.
@@ -46,9 +49,24 @@ type options struct {
 	writer  chan struct{}
 
 	pulls *pulls
+
+	// How long a repository's lock was waited for, and how often the wait
+	// gave up; see [WithMeter].
+	lockWait metric.Float64Histogram
+	lockBusy metric.Int64Counter
 }
 
 type Option func(*options)
+
+// WithMeter measures the waits for repositories' locks with m: the histogram
+// `cr.repository.lock.wait` and the counter `cr.repository.lock.timeouts`,
+// each by `cr.lock.for`, which is what [index.Waiting] said was waiting.
+func WithMeter(m metric.Meter) Option {
+	return func(o *options) {
+		o.lockWait = telemetry.Seconds(m, "cr.repository.lock.wait", "Time a write waited for its repository's lock.")
+		o.lockBusy = telemetry.Counter(m, "cr.repository.lock.timeouts", "{wait}", "Waits for a repository's lock that gave up.")
+	}
+}
 
 // WithWait bounds how long a transaction waits for a repository's lock
 // before it is [index.ErrBusy]. The default is thirty seconds.
@@ -75,9 +93,22 @@ func New(client *ent.Client, opts ...Option) *Index {
 	for _, opt := range opts {
 		opt(o)
 	}
+	if o.lockWait == nil {
+		WithMeter(nil)(o)
+	}
 	ix := &Index{client: client, dialect: client.Dialect(), o: o}
 	o.pulls = newPulls(ix)
 	return ix
+}
+
+// waited records how long ctx waited for a repository's lock, under what
+// [index.Waiting] said was waiting, and whether the wait gave up.
+func (ix *Index) waited(ctx context.Context, start time.Time, err error) {
+	attrs := metric.WithAttributes(attribute.String("cr.lock.for", index.WaitingFor(ctx)))
+	ix.o.lockWait.Record(ctx, time.Since(start).Seconds(), attrs)
+	if errors.Is(err, index.ErrBusy) {
+		ix.o.lockBusy.Add(ctx, 1, attrs)
+	}
 }
 
 func (ix *Index) Repo() index.Repos         { return repos{ix} }
@@ -128,14 +159,17 @@ func (ix *Index) Tx(ctx context.Context, repo string, fn func(index.Index) error
 
 	pg := ix.dialect == dialect.Postgres
 	if !pg {
+		start := time.Now()
 		if repo != "" {
 			release, err := ix.acquire(ctx, ix.o.stripes[key(repo)%uint64(len(ix.o.stripes))])
 			if err != nil {
+				ix.waited(ctx, start, err)
 				return err
 			}
 			defer release()
 		}
 		release, err := ix.acquire(ctx, ix.o.writer)
+		ix.waited(ctx, start, err)
 		if err != nil {
 			return err
 		}
@@ -147,7 +181,10 @@ func (ix *Index) Tx(ctx context.Context, repo string, fn func(index.Index) error
 		return err
 	}
 	if pg && repo != "" {
-		if err := ix.lockPostgres(ctx, tx, repo); err != nil {
+		start := time.Now()
+		err := ix.lockPostgres(ctx, tx, repo)
+		ix.waited(ctx, start, err)
+		if err != nil {
 			tx.Rollback()
 			return err
 		}
@@ -237,6 +274,7 @@ func (p *pulls) run(ctx context.Context) error {
 const flushChunk = 500
 
 func (p *pulls) flush(ctx context.Context) error {
+	ctx = index.Waiting(ctx, "bookkeeping")
 	p.mu.Lock()
 	ms, ts := p.manifests, p.tags
 	p.manifests, p.tags = map[pullKey]time.Time{}, map[pullKey]time.Time{}

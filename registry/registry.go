@@ -17,11 +17,11 @@ import (
 	"github.com/opencontainers/go-digest"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/noop"
 
 	"github.com/lesomnus/cr/auth"
 	"github.com/lesomnus/cr/index"
 	"github.com/lesomnus/cr/oci"
+	"github.com/lesomnus/cr/telemetry"
 )
 
 // Config is what the handler is built from.
@@ -86,18 +86,7 @@ func New(c Config) *Registry {
 		c.RedirectTTL = flob.DefaultRedirectTTL
 	}
 	g := &Registry{c: c}
-	meter := c.Meter
-	if meter == nil {
-		meter = noop.Meter{}
-	}
-	var err error
-	g.errors, err = meter.Int64Counter("cr.registry.errors",
-		metric.WithUnit("{error}"),
-		metric.WithDescription("Errors the registry answered, by their code."),
-	)
-	if err != nil {
-		g.errors = noop.Int64Counter{}
-	}
+	g.errors = telemetry.Counter(c.Meter, "cr.registry.errors", "{error}", "Errors the registry answered, by their code.")
 	g.proxies.list = slices.Clone(c.Proxies)
 	slices.SortStableFunc(g.proxies.list, func(a, b *Proxy) int { return len(b.Prefix) - len(a.Prefix) })
 	return g

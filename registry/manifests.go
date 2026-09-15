@@ -118,7 +118,7 @@ func (g *Registry) getManifest(w http.ResponseWriter, r *http.Request, name, arg
 }
 
 func (g *Registry) putManifest(w http.ResponseWriter, r *http.Request, name, arg string) {
-	ctx := r.Context()
+	ctx := index.Waiting(r.Context(), "manifest push")
 	ref, err := referenceOf(arg, oci.ErrManifestInvalid)
 	if err != nil {
 		g.fail(w, r, err)
@@ -284,7 +284,7 @@ func (g *Registry) setTag(ctx context.Context, ix index.Index, name, tag string,
 }
 
 func (g *Registry) deleteManifest(w http.ResponseWriter, r *http.Request, name, arg string) {
-	ctx := r.Context()
+	ctx := index.Waiting(r.Context(), "manifest delete")
 	ref, err := referenceOf(arg, oci.ErrManifestUnknown)
 	if err != nil {
 		g.fail(w, r, err)
@@ -348,6 +348,7 @@ func (g *Registry) deleteManifest(w http.ResponseWriter, r *http.Request, name, 
 
 // release erases what a delete released, leaking to the sweep on failure.
 func (g *Registry) release(ctx context.Context, name string, ds []digest.Digest) {
+	ctx = index.Waiting(ctx, "release")
 	if err := gc.Release(ctx, g.c.Index, g.store(name), name, ds); err != nil {
 		log.From(ctx).WarnContext(ctx, "release", slog.String("repo", name), slog.String("err", err.Error()))
 	}

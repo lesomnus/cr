@@ -49,6 +49,7 @@ const missingSlack = time.Minute
 // arrived; a push that takes longer than Delay to put its manifest can find
 // them gone, and fails with MANIFEST_BLOB_UNKNOWN and uploads again.
 func (c *Collector) Sweep(ctx context.Context, repo string) (SweepReport, error) {
+	ctx = index.Waiting(ctx, "sweep")
 	var r SweepReport
 	s := c.c.Stores.Use(repo)
 	w, ok := flob.AsWalker(s)

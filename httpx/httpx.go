@@ -12,18 +12,10 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
-)
 
-// The histogram boundaries: the HTTP semantic conventions' for a duration in
-// seconds, and for a body in bytes steps far enough apart to tell a manifest
-// from a layer from an image. The SDK's defaults are meant for milliseconds,
-// and put every request there is in their first bucket.
-var (
-	SecondsBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}
-	BytesBuckets   = []float64{1 << 10, 16 << 10, 256 << 10, 4 << 20, 64 << 20, 1 << 30, 16 << 30}
+	"github.com/lesomnus/cr/telemetry"
 )
 
 // Instrument traces and measures h with the providers on ctx: a server span
@@ -40,38 +32,10 @@ func Instrument(ctx context.Context, route func(*http.Request) string, h http.Ha
 	tracer := o.Tracer()
 	prop := o.Propagator()
 	m := o.Meter()
-
-	duration, err := m.Float64Histogram("http.server.request.duration",
-		metric.WithUnit("s"),
-		metric.WithDescription("Duration of HTTP server requests."),
-		metric.WithExplicitBucketBoundaries(SecondsBuckets...),
-	)
-	if err != nil {
-		duration = noop.Float64Histogram{}
-	}
-	requestSize, err := m.Int64Histogram("http.server.request.body.size",
-		metric.WithUnit("By"),
-		metric.WithDescription("Bytes read from HTTP server request bodies."),
-		metric.WithExplicitBucketBoundaries(BytesBuckets...),
-	)
-	if err != nil {
-		requestSize = noop.Int64Histogram{}
-	}
-	responseSize, err := m.Int64Histogram("http.server.response.body.size",
-		metric.WithUnit("By"),
-		metric.WithDescription("Bytes written to HTTP server response bodies."),
-		metric.WithExplicitBucketBoundaries(BytesBuckets...),
-	)
-	if err != nil {
-		responseSize = noop.Int64Histogram{}
-	}
-	active, err := m.Int64UpDownCounter("http.server.active_requests",
-		metric.WithUnit("{request}"),
-		metric.WithDescription("Number of active HTTP server requests."),
-	)
-	if err != nil {
-		active = noop.Int64UpDownCounter{}
-	}
+	duration := telemetry.Seconds(m, "http.server.request.duration", "Duration of HTTP server requests.")
+	requestSize := telemetry.Bytes(m, "http.server.request.body.size", "Bytes read from HTTP server request bodies.")
+	responseSize := telemetry.Bytes(m, "http.server.response.body.size", "Bytes written to HTTP server response bodies.")
+	active := telemetry.UpDown(m, "http.server.active_requests", "{request}", "Number of active HTTP server requests.")
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()

@@ -210,6 +210,7 @@ func (c *Collector) Trigger(ctx context.Context, trigger string) (Run, error) {
 // Run collects once, every repository in turn. A failure in one repository
 // is reported and the next is collected anyway.
 func (c *Collector) Run(ctx context.Context) (Report, error) {
+	ctx = index.Waiting(ctx, "collection")
 	var (
 		r    Report
 		errs []error

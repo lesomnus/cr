@@ -9,6 +9,7 @@ import (
 
 	"github.com/lesomnus/flob"
 	"github.com/lesomnus/otx"
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/lesomnus/cr/auth"
 	"github.com/lesomnus/cr/blob"
@@ -26,7 +27,7 @@ import (
 // It is here and not in `cmd` because the stores it opens are a disk or a
 // bucket, and the sandbox that imports `cmd` has neither.
 func Registry(ctx context.Context, c *cmd.Config, s *cmd.Server) error {
-	stores, err := Stores(c.Registry.Storage)
+	stores, err := Stores(c.Registry.Storage, meterOf(ctx))
 	if err != nil {
 		return err
 	}
@@ -35,7 +36,7 @@ func Registry(ctx context.Context, c *cmd.Config, s *cmd.Server) error {
 		return err
 	}
 
-	var opts []entindex.Option
+	opts := []entindex.Option{entindex.WithMeter(meterOf(ctx))}
 	if c.Registry.LockWait > 0 {
 		opts = append(opts, entindex.WithWait(c.Registry.LockWait))
 	}
@@ -99,11 +100,16 @@ func Registry(ctx context.Context, c *cmd.Config, s *cmd.Server) error {
 	return nil
 }
 
+// meterOf is what a process measures with: the meter on ctx, which
+// [Telemetry] put there.
+func meterOf(ctx context.Context) metric.Meter { return otx.From(ctx).Meter() }
+
 // Stores opens the blob stores the configuration names: one, or one per route
-// with the first holding whatever no route covers.
-func Stores(c cmd.StorageConfig) (flob.Stores, error) {
+// with the first holding whatever no route covers. Each is measured with
+// meter, by its driver.
+func Stores(c cmd.StorageConfig, meter metric.Meter) (flob.Stores, error) {
 	stage := flob.StageConfig{TTL: c.Upload.TTL, Retention: c.Upload.Retention}
-	base, err := backend("registry.storage", c.Driver, c.Os, c.S3, stage)
+	base, err := backend("registry.storage", c.Driver, c.Os, c.S3, stage, meter)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +123,7 @@ func Stores(c cmd.StorageConfig) (flob.Stores, error) {
 		if r.Prefix == "" {
 			return nil, fmt.Errorf("%s.prefix is empty; the store above is the one for everything else", at)
 		}
-		s, err := backend(at, r.Driver, r.Os, r.S3, stage)
+		s, err := backend(at, r.Driver, r.Os, r.S3, stage, meter)
 		if err != nil {
 			return nil, err
 		}
@@ -126,7 +132,7 @@ func Stores(c cmd.StorageConfig) (flob.Stores, error) {
 	return blob.NewRouter(routes...)
 }
 
-func backend(at string, driver string, o cmd.OsStorageConfig, s cmd.S3StorageConfig, stage flob.StageConfig) (flob.Stores, error) {
+func backend(at string, driver string, o cmd.OsStorageConfig, s cmd.S3StorageConfig, stage flob.StageConfig, meter metric.Meter) (flob.Stores, error) {
 	switch driver {
 	case "", "os":
 		if o.Root == "" {
@@ -135,7 +141,7 @@ func backend(at string, driver string, o cmd.OsStorageConfig, s cmd.S3StorageCon
 		if err := os.MkdirAll(o.Root, 0o755); err != nil {
 			return nil, fmt.Errorf("%s.os.root: %w", at, err)
 		}
-		return flob.NewOsStores(o.Root, stage), nil
+		return blob.Measured(flob.NewOsStores(o.Root, stage), "os", meter), nil
 	case "s3":
 		stores, err := flob.NewS3Stores(flob.S3Config{
 			Client:         s3Client(),
@@ -156,9 +162,9 @@ func backend(at string, driver string, o cmd.OsStorageConfig, s cmd.S3StorageCon
 		if err != nil {
 			return nil, fmt.Errorf("%s.s3: %w", at, err)
 		}
-		return stores, nil
+		return blob.Measured(stores, "s3", meter), nil
 	case "memory":
-		return flob.NewMemStores(stage), nil
+		return blob.Measured(flob.NewMemStores(stage), "memory", meter), nil
 	default:
 		return nil, fmt.Errorf("%s.driver: unknown driver %q", at, driver)
 	}

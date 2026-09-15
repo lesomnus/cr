@@ -50,7 +50,7 @@ func NewCmdExport(c *cmd.Config) *xli.Command {
 			}
 			defer closeAll()
 
-			stores, err := Stores(c.Registry.Storage)
+			stores, err := Stores(c.Registry.Storage, meterOf(ctx))
 			if err != nil {
 				return err
 			}

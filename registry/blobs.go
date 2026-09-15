@@ -107,7 +107,7 @@ func blobErr(d digest.Digest, err error) error {
 }
 
 func (g *Registry) deleteBlob(w http.ResponseWriter, r *http.Request, name, arg string) {
-	ctx := r.Context()
+	ctx := index.Waiting(r.Context(), "blob delete")
 	d, err := oci.ParseDigest(arg)
 	if err != nil {
 		g.fail(w, r, oci.ErrDigestInvalid(err.Error()))
