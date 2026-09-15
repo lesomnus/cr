@@ -348,12 +348,35 @@ for a prefixed name.
 ## Health and telemetry
 
 `/healthz` answers 200 while the process runs. `/readyz` answers 200 when the
-database answers within a second, and 503 otherwise; it checks nothing else.
+database answers within a second and the process is not stopping, and 503
+otherwise; it checks nothing else.
 
-Requests to `/v2/`, `/v1/`, `/admin/`, `/token` and the key set get a server
-span named for their route (`GET /v2/{name}/blobs/{digest}`) and a
-`http.server.request.duration` histogram by method, route and status, through
-the `otel:` configuration.
+Telemetry is OpenTelemetry, configured under `otel:` in the collector's own
+language. With nothing there, the log is printed and nothing else leaves the
+process; an exporter, and the providers that use it, send the signals away:
+
+```yaml
+otel:
+  exporters:
+    otlp:
+      endpoint: collector:4317      # gRPC; or `protocol: http/protobuf` and a URL
+  providers:
+    tracer: {exporters: [otlp]}
+    meter: {exporters: [otlp]}
+    logger: {exporters: [otlp]}
+```
+
+What is measured:
+
+| | |
+| --- | --- |
+| `http.server.request.duration` | a histogram, in seconds, of every request to `/v2/`, `/v1/`, `/admin/`, `/token`, `/token/exchange` and the key set, by `http.request.method`, `http.route` and `http.response.status_code`. The route is the pattern, `/v2/{name}/blobs/{digest}`, so the series do not grow with the repositories |
+| `rpc.server.call.duration` | the management API's calls, over gRPC and Connect alike, by service, method and status code: the OpenTelemetry gRPC instrumentation's own |
+| spans | one server span per registry request, named for its route, and one per management call, continuing a trace the client started |
+
+Nothing counts what a collection did, what a store holds, or what the database
+is doing. A collection's outcome is its run, at `/admin/gc` and in
+`cr gc-run ls`; the database and the bucket have telemetry of their own.
 
 ## Export
 
