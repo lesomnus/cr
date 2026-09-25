@@ -1,0 +1,14 @@
+{
+	"name": "lesomnus/cr",
+	"dockerComposeFile": "docker-compose.yaml",
+	"service": "dev",
+	"workspaceFolder": "/workspace",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"golang.go",
+				"streetsidesoftware.code-spell-checker"
+			]
+		}
+	}
+}
