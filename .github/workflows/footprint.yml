@@ -43,7 +43,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.cache/cr-footprint
-          key: footprint-${{ hashFiles('scripts/footprint.sh') }}
+          key: footprint-${{ hashFiles('scripts/lib/registries.sh') }}
 
       - name: this change against its base
         if: github.event_name == 'pull_request'
