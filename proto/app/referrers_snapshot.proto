@@ -36,9 +36,9 @@ message ReferrersSnapshot {
   // The descriptors the upstream answered, unfiltered, as JSON.
   bytes descriptors = 11;
 
-  // When the upstream gave this answer, which is what the stale bound and
-  // `Age` are measured from.
-  google.protobuf.Timestamp date_observed = 12 [(orm.field) = {default: ""}];
+  // When the upstream last gave this answer, which is what decides whether
+  // it is asked again, and what the stale bound and `Age` are measured from.
+  google.protobuf.Timestamp date_checked = 12 [(orm.field) = {default: ""}];
 
   google.protobuf.Timestamp date_updated = 13 [(orm.field) = {version: {}}];
 

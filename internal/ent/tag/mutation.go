@@ -21,6 +21,7 @@ type Mutation struct {
 	digest        *string
 	date_moved    *time.Time
 	date_pulled   *time.Time
+	date_checked  *time.Time
 	date_updated  *time.Time
 	date_created  *time.Time
 	clearedFields map[string]struct{}
@@ -162,6 +163,38 @@ func (m *Mutation) ResetDatePulled() {
 	delete(m.clearedFields, FieldDatePulled)
 }
 
+// SetDateChecked sets the "date_checked" field.
+func (m *Mutation) SetDateChecked(t time.Time) {
+	m.date_checked = &t
+}
+
+// DateChecked returns the value of the "date_checked" field in the mutation.
+func (m *Mutation) DateChecked() (r time.Time, exists bool) {
+	v := m.date_checked
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearDateChecked clears the value of the "date_checked" field.
+func (m *Mutation) ClearDateChecked() {
+	m.date_checked = nil
+	m.clearedFields[FieldDateChecked] = struct{}{}
+}
+
+// DateCheckedCleared returns if the "date_checked" field was cleared in this mutation.
+func (m *Mutation) DateCheckedCleared() bool {
+	_, ok := m.clearedFields[FieldDateChecked]
+	return ok
+}
+
+// ResetDateChecked resets all changes to the "date_checked" field.
+func (m *Mutation) ResetDateChecked() {
+	m.date_checked = nil
+	delete(m.clearedFields, FieldDateChecked)
+}
+
 // SetDateUpdated sets the "date_updated" field.
 func (m *Mutation) SetDateUpdated(t time.Time) {
 	m.date_updated = &t
@@ -247,7 +280,7 @@ func (m *Mutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *Mutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.name != nil {
 		fields = append(fields, FieldName)
 	}
@@ -262,6 +295,9 @@ func (m *Mutation) Fields() []string {
 	}
 	if m.date_pulled != nil {
 		fields = append(fields, FieldDatePulled)
+	}
+	if m.date_checked != nil {
+		fields = append(fields, FieldDateChecked)
 	}
 	if m.date_updated != nil {
 		fields = append(fields, FieldDateUpdated)
@@ -287,6 +323,8 @@ func (m *Mutation) Field(name string) (ent.Value, bool) {
 		return m.DateMoved()
 	case FieldDatePulled:
 		return m.DatePulled()
+	case FieldDateChecked:
+		return m.DateChecked()
 	case FieldDateUpdated:
 		return m.DateUpdated()
 	case FieldDateCreated:
@@ -342,6 +380,13 @@ func (m *Mutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetDatePulled(v)
 		return nil
+	case FieldDateChecked:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDateChecked(v)
+		return nil
 	case FieldDateUpdated:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -392,6 +437,9 @@ func (m *Mutation) ClearedFields() []string {
 	if m.FieldCleared(FieldDatePulled) {
 		fields = append(fields, FieldDatePulled)
 	}
+	if m.FieldCleared(FieldDateChecked) {
+		fields = append(fields, FieldDateChecked)
+	}
 	if m.FieldCleared(FieldDateCreated) {
 		fields = append(fields, FieldDateCreated)
 	}
@@ -414,6 +462,9 @@ func (m *Mutation) ClearField(name string) error {
 		return nil
 	case FieldDatePulled:
 		m.ClearDatePulled()
+		return nil
+	case FieldDateChecked:
+		m.ClearDateChecked()
 		return nil
 	case FieldDateCreated:
 		m.ClearDateCreated()
@@ -440,6 +491,9 @@ func (m *Mutation) ResetField(name string) error {
 		return nil
 	case FieldDatePulled:
 		m.ResetDatePulled()
+		return nil
+	case FieldDateChecked:
+		m.ResetDateChecked()
 		return nil
 	case FieldDateUpdated:
 		m.ResetDateUpdated()

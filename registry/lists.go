@@ -159,7 +159,7 @@ func (g *Registry) proxiedReferrers(w http.ResponseWriter, r *http.Request, p *P
 	}
 
 	h := w.Header()
-	if age := g.c.Now().Sub(snap.ObservedAt); age >= time.Second {
+	if age := g.c.Now().Sub(snap.CheckedAt); age >= time.Second {
 		h.Set("Age", strconv.FormatInt(int64(age/time.Second), 10))
 	}
 	if stale {

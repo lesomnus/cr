@@ -15,7 +15,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file app/referrers_snapshot.proto.
  */
 export const file_app_referrers_snapshot: GenFile = /*@__PURE__*/
-  fileDesc("ChxhcHAvcmVmZXJyZXJzX3NuYXBzaG90LnByb3RvEgNhcHAi4AMKEVJlZmVycmVyc1NuYXBzaG90EhcKAmlkGAEgASgMQgvqghYHEEAoAYIBABIUCgRyZXBvGAggASgJQgbqghYCQAESFwoHc3ViamVjdBgJIAEoCUIG6oIWAkABEhEKCXN1cHBvcnRlZBgKIAEoCBITCgtkZXNjcmlwdG9ycxgLIAEoDBI6Cg1kYXRlX29ic2VydmVkGAwgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcEIH6oIWA4IBABI5CgxkYXRlX3VwZGF0ZWQYDSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wQgfqghYDigEAEjsKDGRhdGVfY3JlYXRlZBgPIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXBCCeqCFgVAAYIBADqmAcr8FVwSERABggECCAGSAQIIAZoBAggBGiASBHBhZ2UaEAoMZGF0ZV9jcmVhdGVkEA8aBgoCaWQQARolEgpieV9zdWJqZWN0GggKBHJlcG8QCBoLCgdzdWJqZWN0EAkwAYq7FkIIDzI4ChAKDgoMZGF0ZV9jcmVhdGVkCgYKBAoCaWQaBQoDcmVmGgYKBHJlcG8aCQoHc3ViamVjdCAUKGRCAgoAKgBCIVoaZ2l0aHViLmNvbS9sZXNvbW51cy9jci9hcGmSAwIIAmIIZWRpdGlvbnNw6Ac", [file_google_protobuf_timestamp, file_orm, file_payday]);
+  fileDesc("ChxhcHAvcmVmZXJyZXJzX3NuYXBzaG90LnByb3RvEgNhcHAi3wMKEVJlZmVycmVyc1NuYXBzaG90EhcKAmlkGAEgASgMQgvqghYHEEAoAYIBABIUCgRyZXBvGAggASgJQgbqghYCQAESFwoHc3ViamVjdBgJIAEoCUIG6oIWAkABEhEKCXN1cHBvcnRlZBgKIAEoCBITCgtkZXNjcmlwdG9ycxgLIAEoDBI5CgxkYXRlX2NoZWNrZWQYDCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wQgfqghYDggEAEjkKDGRhdGVfdXBkYXRlZBgNIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXBCB+qCFgOKAQASOwoMZGF0ZV9jcmVhdGVkGA8gASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcEIJ6oIWBUABggEAOqYByvwVXBIREAGCAQIIAZIBAggBmgECCAEaIBIEcGFnZRoQCgxkYXRlX2NyZWF0ZWQQDxoGCgJpZBABGiUSCmJ5X3N1YmplY3QaCAoEcmVwbxAIGgsKB3N1YmplY3QQCTABirsWQggPMjgKEAoOCgxkYXRlX2NyZWF0ZWQKBgoECgJpZBoFCgNyZWYaBgoEcmVwbxoJCgdzdWJqZWN0IBQoZEICCgAqAEIhWhpnaXRodWIuY29tL2xlc29tbnVzL2NyL2FwaZIDAggCYghlZGl0aW9uc3DoBw", [file_google_protobuf_timestamp, file_orm, file_payday]);
 
 /**
  * ReferrersSnapshot is what the upstream of a pull-through cache last answered
@@ -63,12 +63,12 @@ export type ReferrersSnapshot = Message<"app.ReferrersSnapshot"> & {
   descriptors: Uint8Array;
 
   /**
-   * When the upstream gave this answer, which is what the stale bound and
-   * `Age` are measured from.
+   * When the upstream last gave this answer, which is what decides whether
+   * it is asked again, and what the stale bound and `Age` are measured from.
    *
-   * @generated from field: google.protobuf.Timestamp date_observed = 12;
+   * @generated from field: google.protobuf.Timestamp date_checked = 12;
    */
-  dateObserved?: Timestamp | undefined;
+  dateChecked?: Timestamp | undefined;
 
   /**
    * @generated from field: google.protobuf.Timestamp date_updated = 13;

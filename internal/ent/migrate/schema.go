@@ -281,7 +281,7 @@ var (
 		{Name: "subject", Type: field.TypeString},
 		{Name: "supported", Type: field.TypeBool},
 		{Name: "descriptors", Type: field.TypeBytes},
-		{Name: "date_observed", Type: field.TypeTime, Nullable: true},
+		{Name: "date_checked", Type: field.TypeTime, Nullable: true},
 		{Name: "date_updated", Type: field.TypeTime},
 		{Name: "date_created", Type: field.TypeTime, Nullable: true},
 	}
@@ -337,6 +337,7 @@ var (
 		{Name: "digest", Type: field.TypeString},
 		{Name: "date_moved", Type: field.TypeTime, Nullable: true},
 		{Name: "date_pulled", Type: field.TypeTime, Nullable: true},
+		{Name: "date_checked", Type: field.TypeTime, Nullable: true},
 		{Name: "date_updated", Type: field.TypeTime},
 		{Name: "date_created", Type: field.TypeTime, Nullable: true},
 	}
@@ -349,7 +350,7 @@ var (
 			{
 				Name:    "tag_date_created_id",
 				Unique:  false,
-				Columns: []*schema.Column{TagColumns[7], TagColumns[0]},
+				Columns: []*schema.Column{TagColumns[8], TagColumns[0]},
 			},
 			{
 				Name:    "tag_repo_name",
@@ -364,7 +365,7 @@ var (
 			{
 				Name:    "tag_repo_date_created_id",
 				Unique:  false,
-				Columns: []*schema.Column{TagColumns[2], TagColumns[7], TagColumns[0]},
+				Columns: []*schema.Column{TagColumns[2], TagColumns[8], TagColumns[0]},
 			},
 			{
 				Name:    "tag_repo_date_moved",

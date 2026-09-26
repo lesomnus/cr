@@ -64,6 +64,11 @@ type ProxyConfig struct {
 	// is asked again; zero is five minutes.
 	TagTtl time.Duration `yaml:"tag_ttl"`
 
+	// TagMaxStale is how long after the upstream last confirmed a tag it is
+	// still served while the upstream is failing; past it the pull fails.
+	// Zero is no bound, which is what a cache is for.
+	TagMaxStale time.Duration `yaml:"tag_max_stale"`
+
 	// ReferrersTtl is how long a referrers list is served from what the
 	// upstream last answered before it is asked again. It is also how long
 	// a signature the upstream removed can still be listed. Zero is TagTtl.

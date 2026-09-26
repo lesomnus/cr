@@ -150,6 +150,10 @@ type Tag struct {
 	MovedAt   time.Time
 	PulledAt  time.Time
 	CreatedAt time.Time
+
+	// CheckedAt is when the upstream of a pull-through cache last confirmed
+	// Digest; zero for a tag that was pushed, or never checked.
+	CheckedAt time.Time
 }
 
 type Tags interface {
@@ -160,6 +164,12 @@ type Tags interface {
 	Set(ctx context.Context, repo, name string, d, from digest.Digest) error
 	Get(ctx context.Context, repo, name string) (Tag, error)
 	Erase(ctx context.Context, repo, name string) error
+
+	// Check records that the upstream confirmed name points at d at at. It
+	// changes nothing when the tag points elsewhere by now, and it moves the
+	// time only forward, so it needs no lock and two replicas checking at
+	// once agree.
+	Check(ctx context.Context, repo, name string, d digest.Digest, at time.Time) error
 
 	// List is `tags/list`: names in lexical order after p.Last.
 	List(ctx context.Context, repo string, p Page) ([]string, error)
@@ -197,8 +207,9 @@ type Snapshot struct {
 	// Descriptors is the list, unfiltered.
 	Descriptors []Descriptor
 
-	// ObservedAt is when the upstream answered.
-	ObservedAt time.Time
+	// CheckedAt is when the upstream last gave this answer: what decides
+	// whether it is asked again, and what the stale bound is measured from.
+	CheckedAt time.Time
 }
 
 // Lists reports whether s is a list that names d; an unsupported snapshot

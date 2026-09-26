@@ -314,6 +314,7 @@ registry:
       password: ""
       token_file: ""                        # a bearer minted elsewhere; see below
       tag_ttl: 5m
+      tag_max_stale: 0                      # zero serves a cached tag for as long as the upstream is down
       referrers_ttl: 5m                     # zero is tag_ttl; see "Referrers" below
       referrers_max_stale: 1h               # zero is an hour
       retention: 720h                       # what nobody uses within this goes; zero keeps it
@@ -331,10 +332,14 @@ client.
 
 A tag is answered from the cache for `tag_ttl`, then checked with a `HEAD`
 upstream, which Docker Hub does not count against its pull limits, and fetched
-again only when it moved. When a tag was last checked is kept in memory, so a
-restart or another replica checks once more. A digest is never checked again.
-When the upstream cannot be reached, a tag already cached is served as it is,
-and a tag never cached fails with `504`. An upstream that answers with an
+again only when it moved. When a tag was last checked is kept in the database
+beside the tag, so replicas share it: the upstream is asked once per
+`tag_ttl` however many there are, and a replica that starts is not cold. A
+digest is never checked again. When the upstream cannot be reached, a tag
+already cached is served as it is, and a tag never cached fails with `504`.
+`tag_max_stale` bounds the first: past it since the last check, the pull fails
+too. The default is no bound, since serving pulls while the upstream is down
+is what a cache is for. An upstream that answers with an
 error, or refuses the cache's credential, is `502`: a failure behind the
 registry, and not a `401` that would send the client to authenticate again.
 
@@ -362,8 +367,8 @@ tune `tag_ttl` for tag traffic and this for revocation, apart. The list is
 always asked for unfiltered, every page of it, and `artifactType` is applied
 by cr, so `OCI-Filters-Applied` is true whenever it is set. The referrers
 themselves are not fetched with the list; a client pulls them by digest like
-any other manifest. As with tags, when a list was last checked is kept in
-memory, so a restart or another replica checks once more before trusting it.
+any other manifest. As with tags, when a list was last checked is kept in the
+database, so every replica goes by the same check.
 
 The answers a client can get are kept apart:
 

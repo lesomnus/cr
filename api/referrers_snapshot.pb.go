@@ -32,17 +32,17 @@ const (
 // from this row or from the upstream, never from the manifests' subjects, and
 // the collection lets a referrer go only when this row omits it.
 type ReferrersSnapshot struct {
-	state                   protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_Id           []byte                 `protobuf:"bytes,1,opt,name=id"`
-	xxx_hidden_Repo         string                 `protobuf:"bytes,8,opt,name=repo"`
-	xxx_hidden_Subject      string                 `protobuf:"bytes,9,opt,name=subject"`
-	xxx_hidden_Supported    bool                   `protobuf:"varint,10,opt,name=supported"`
-	xxx_hidden_Descriptors  []byte                 `protobuf:"bytes,11,opt,name=descriptors"`
-	xxx_hidden_DateObserved *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=date_observed,json=dateObserved"`
-	xxx_hidden_DateUpdated  *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=date_updated,json=dateUpdated"`
-	xxx_hidden_DateCreated  *timestamppb.Timestamp `protobuf:"bytes,15,opt,name=date_created,json=dateCreated"`
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
+	state                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_Id          []byte                 `protobuf:"bytes,1,opt,name=id"`
+	xxx_hidden_Repo        string                 `protobuf:"bytes,8,opt,name=repo"`
+	xxx_hidden_Subject     string                 `protobuf:"bytes,9,opt,name=subject"`
+	xxx_hidden_Supported   bool                   `protobuf:"varint,10,opt,name=supported"`
+	xxx_hidden_Descriptors []byte                 `protobuf:"bytes,11,opt,name=descriptors"`
+	xxx_hidden_DateChecked *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=date_checked,json=dateChecked"`
+	xxx_hidden_DateUpdated *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=date_updated,json=dateUpdated"`
+	xxx_hidden_DateCreated *timestamppb.Timestamp `protobuf:"bytes,15,opt,name=date_created,json=dateCreated"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *ReferrersSnapshot) Reset() {
@@ -105,9 +105,9 @@ func (x *ReferrersSnapshot) GetDescriptors() []byte {
 	return nil
 }
 
-func (x *ReferrersSnapshot) GetDateObserved() *timestamppb.Timestamp {
+func (x *ReferrersSnapshot) GetDateChecked() *timestamppb.Timestamp {
 	if x != nil {
-		return x.xxx_hidden_DateObserved
+		return x.xxx_hidden_DateChecked
 	}
 	return nil
 }
@@ -152,8 +152,8 @@ func (x *ReferrersSnapshot) SetDescriptors(v []byte) {
 	x.xxx_hidden_Descriptors = v
 }
 
-func (x *ReferrersSnapshot) SetDateObserved(v *timestamppb.Timestamp) {
-	x.xxx_hidden_DateObserved = v
+func (x *ReferrersSnapshot) SetDateChecked(v *timestamppb.Timestamp) {
+	x.xxx_hidden_DateChecked = v
 }
 
 func (x *ReferrersSnapshot) SetDateUpdated(v *timestamppb.Timestamp) {
@@ -164,11 +164,11 @@ func (x *ReferrersSnapshot) SetDateCreated(v *timestamppb.Timestamp) {
 	x.xxx_hidden_DateCreated = v
 }
 
-func (x *ReferrersSnapshot) HasDateObserved() bool {
+func (x *ReferrersSnapshot) HasDateChecked() bool {
 	if x == nil {
 		return false
 	}
-	return x.xxx_hidden_DateObserved != nil
+	return x.xxx_hidden_DateChecked != nil
 }
 
 func (x *ReferrersSnapshot) HasDateUpdated() bool {
@@ -185,8 +185,8 @@ func (x *ReferrersSnapshot) HasDateCreated() bool {
 	return x.xxx_hidden_DateCreated != nil
 }
 
-func (x *ReferrersSnapshot) ClearDateObserved() {
-	x.xxx_hidden_DateObserved = nil
+func (x *ReferrersSnapshot) ClearDateChecked() {
+	x.xxx_hidden_DateChecked = nil
 }
 
 func (x *ReferrersSnapshot) ClearDateUpdated() {
@@ -209,11 +209,11 @@ type ReferrersSnapshot_builder struct {
 	Supported bool
 	// The descriptors the upstream answered, unfiltered, as JSON.
 	Descriptors []byte
-	// When the upstream gave this answer, which is what the stale bound and
-	// `Age` are measured from.
-	DateObserved *timestamppb.Timestamp
-	DateUpdated  *timestamppb.Timestamp
-	DateCreated  *timestamppb.Timestamp
+	// When the upstream last gave this answer, which is what decides whether
+	// it is asked again, and what the stale bound and `Age` are measured from.
+	DateChecked *timestamppb.Timestamp
+	DateUpdated *timestamppb.Timestamp
+	DateCreated *timestamppb.Timestamp
 }
 
 func (b0 ReferrersSnapshot_builder) Build() *ReferrersSnapshot {
@@ -225,7 +225,7 @@ func (b0 ReferrersSnapshot_builder) Build() *ReferrersSnapshot {
 	x.xxx_hidden_Subject = b.Subject
 	x.xxx_hidden_Supported = b.Supported
 	x.xxx_hidden_Descriptors = b.Descriptors
-	x.xxx_hidden_DateObserved = b.DateObserved
+	x.xxx_hidden_DateChecked = b.DateChecked
 	x.xxx_hidden_DateUpdated = b.DateUpdated
 	x.xxx_hidden_DateCreated = b.DateCreated
 	return m0
@@ -235,15 +235,15 @@ var File_app_referrers_snapshot_proto protoreflect.FileDescriptor
 
 const file_app_referrers_snapshot_proto_rawDesc = "" +
 	"\n" +
-	"\x1capp/referrers_snapshot.proto\x12\x03app\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\torm.proto\x1a\fpayday.proto\"\xb3\x04\n" +
+	"\x1capp/referrers_snapshot.proto\x12\x03app\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\torm.proto\x1a\fpayday.proto\"\xb1\x04\n" +
 	"\x11ReferrersSnapshot\x12\x1b\n" +
 	"\x02id\x18\x01 \x01(\fB\v\xea\x82\x16\a\x10@(\x01\x82\x01\x00R\x02id\x12\x1a\n" +
 	"\x04repo\x18\b \x01(\tB\x06\xea\x82\x16\x02@\x01R\x04repo\x12 \n" +
 	"\asubject\x18\t \x01(\tB\x06\xea\x82\x16\x02@\x01R\asubject\x12\x1c\n" +
 	"\tsupported\x18\n" +
 	" \x01(\bR\tsupported\x12 \n" +
-	"\vdescriptors\x18\v \x01(\fR\vdescriptors\x12H\n" +
-	"\rdate_observed\x18\f \x01(\v2\x1a.google.protobuf.TimestampB\a\xea\x82\x16\x03\x82\x01\x00R\fdateObserved\x12F\n" +
+	"\vdescriptors\x18\v \x01(\fR\vdescriptors\x12F\n" +
+	"\fdate_checked\x18\f \x01(\v2\x1a.google.protobuf.TimestampB\a\xea\x82\x16\x03\x82\x01\x00R\vdateChecked\x12F\n" +
 	"\fdate_updated\x18\r \x01(\v2\x1a.google.protobuf.TimestampB\a\xea\x82\x16\x03\x8a\x01\x00R\vdateUpdated\x12H\n" +
 	"\fdate_created\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampB\t\xea\x82\x16\x05@\x01\x82\x01\x00R\vdateCreated:\xa6\x01\xca\xfc\x15\\\x12\x11\x10\x01\x82\x01\x02\b\x01\x92\x01\x02\b\x01\x9a\x01\x02\b\x01\x1a \x12\x04page\x1a\x10\n" +
 	"\fdate_created\x10\x0f\x1a\x06\n" +
@@ -268,7 +268,7 @@ var file_app_referrers_snapshot_proto_goTypes = []any{
 	(*timestamppb.Timestamp)(nil), // 1: google.protobuf.Timestamp
 }
 var file_app_referrers_snapshot_proto_depIdxs = []int32{
-	1, // 0: app.ReferrersSnapshot.date_observed:type_name -> google.protobuf.Timestamp
+	1, // 0: app.ReferrersSnapshot.date_checked:type_name -> google.protobuf.Timestamp
 	1, // 1: app.ReferrersSnapshot.date_updated:type_name -> google.protobuf.Timestamp
 	1, // 2: app.ReferrersSnapshot.date_created:type_name -> google.protobuf.Timestamp
 	3, // [3:3] is the sub-list for method output_type

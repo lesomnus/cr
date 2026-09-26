@@ -68,6 +68,20 @@ func (_c *TagCreate) SetNillableDatePulled(v *time.Time) *TagCreate {
 	return _c
 }
 
+// SetDateChecked sets the "date_checked" field.
+func (_c *TagCreate) SetDateChecked(v time.Time) *TagCreate {
+	_c.mutation.SetDateChecked(v)
+	return _c
+}
+
+// SetNillableDateChecked sets the "date_checked" field if the given value is not nil.
+func (_c *TagCreate) SetNillableDateChecked(v *time.Time) *TagCreate {
+	if v != nil {
+		_c.SetDateChecked(*v)
+	}
+	return _c
+}
+
 // SetDateUpdated sets the "date_updated" field.
 func (_c *TagCreate) SetDateUpdated(v time.Time) *TagCreate {
 	_c.mutation.SetDateUpdated(v)
@@ -198,6 +212,10 @@ func (_c *TagCreate) createSpec() (*Tag, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.DatePulled(); ok {
 		_spec.SetField(tag.FieldDatePulled, field.TypeTime, value)
 		_node.DatePulled = &value
+	}
+	if value, ok := _c.mutation.DateChecked(); ok {
+		_spec.SetField(tag.FieldDateChecked, field.TypeTime, value)
+		_node.DateChecked = &value
 	}
 	if value, ok := _c.mutation.DateUpdated(); ok {
 		_spec.SetField(tag.FieldDateUpdated, field.TypeTime, value)

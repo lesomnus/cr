@@ -20,7 +20,7 @@ type Mutation struct {
 	subject       *string
 	supported     *bool
 	descriptors   *[]byte
-	date_observed *time.Time
+	date_checked  *time.Time
 	date_updated  *time.Time
 	date_created  *time.Time
 	clearedFields map[string]struct{}
@@ -117,36 +117,36 @@ func (m *Mutation) ResetDescriptors() {
 	m.descriptors = nil
 }
 
-// SetDateObserved sets the "date_observed" field.
-func (m *Mutation) SetDateObserved(t time.Time) {
-	m.date_observed = &t
+// SetDateChecked sets the "date_checked" field.
+func (m *Mutation) SetDateChecked(t time.Time) {
+	m.date_checked = &t
 }
 
-// DateObserved returns the value of the "date_observed" field in the mutation.
-func (m *Mutation) DateObserved() (r time.Time, exists bool) {
-	v := m.date_observed
+// DateChecked returns the value of the "date_checked" field in the mutation.
+func (m *Mutation) DateChecked() (r time.Time, exists bool) {
+	v := m.date_checked
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// ClearDateObserved clears the value of the "date_observed" field.
-func (m *Mutation) ClearDateObserved() {
-	m.date_observed = nil
-	m.clearedFields[FieldDateObserved] = struct{}{}
+// ClearDateChecked clears the value of the "date_checked" field.
+func (m *Mutation) ClearDateChecked() {
+	m.date_checked = nil
+	m.clearedFields[FieldDateChecked] = struct{}{}
 }
 
-// DateObservedCleared returns if the "date_observed" field was cleared in this mutation.
-func (m *Mutation) DateObservedCleared() bool {
-	_, ok := m.clearedFields[FieldDateObserved]
+// DateCheckedCleared returns if the "date_checked" field was cleared in this mutation.
+func (m *Mutation) DateCheckedCleared() bool {
+	_, ok := m.clearedFields[FieldDateChecked]
 	return ok
 }
 
-// ResetDateObserved resets all changes to the "date_observed" field.
-func (m *Mutation) ResetDateObserved() {
-	m.date_observed = nil
-	delete(m.clearedFields, FieldDateObserved)
+// ResetDateChecked resets all changes to the "date_checked" field.
+func (m *Mutation) ResetDateChecked() {
+	m.date_checked = nil
+	delete(m.clearedFields, FieldDateChecked)
 }
 
 // SetDateUpdated sets the "date_updated" field.
@@ -247,8 +247,8 @@ func (m *Mutation) Fields() []string {
 	if m.descriptors != nil {
 		fields = append(fields, FieldDescriptors)
 	}
-	if m.date_observed != nil {
-		fields = append(fields, FieldDateObserved)
+	if m.date_checked != nil {
+		fields = append(fields, FieldDateChecked)
 	}
 	if m.date_updated != nil {
 		fields = append(fields, FieldDateUpdated)
@@ -272,8 +272,8 @@ func (m *Mutation) Field(name string) (ent.Value, bool) {
 		return m.Supported()
 	case FieldDescriptors:
 		return m.Descriptors()
-	case FieldDateObserved:
-		return m.DateObserved()
+	case FieldDateChecked:
+		return m.DateChecked()
 	case FieldDateUpdated:
 		return m.DateUpdated()
 	case FieldDateCreated:
@@ -322,12 +322,12 @@ func (m *Mutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetDescriptors(v)
 		return nil
-	case FieldDateObserved:
+	case FieldDateChecked:
 		v, ok := value.(time.Time)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.SetDateObserved(v)
+		m.SetDateChecked(v)
 		return nil
 	case FieldDateUpdated:
 		v, ok := value.(time.Time)
@@ -373,8 +373,8 @@ func (m *Mutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *Mutation) ClearedFields() []string {
 	var fields []string
-	if m.FieldCleared(FieldDateObserved) {
-		fields = append(fields, FieldDateObserved)
+	if m.FieldCleared(FieldDateChecked) {
+		fields = append(fields, FieldDateChecked)
 	}
 	if m.FieldCleared(FieldDateCreated) {
 		fields = append(fields, FieldDateCreated)
@@ -393,8 +393,8 @@ func (m *Mutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *Mutation) ClearField(name string) error {
 	switch name {
-	case FieldDateObserved:
-		m.ClearDateObserved()
+	case FieldDateChecked:
+		m.ClearDateChecked()
 		return nil
 	case FieldDateCreated:
 		m.ClearDateCreated()
@@ -419,8 +419,8 @@ func (m *Mutation) ResetField(name string) error {
 	case FieldDescriptors:
 		m.ResetDescriptors()
 		return nil
-	case FieldDateObserved:
-		m.ResetDateObserved()
+	case FieldDateChecked:
+		m.ResetDateChecked()
 		return nil
 	case FieldDateUpdated:
 		m.ResetDateUpdated()

@@ -21,12 +21,14 @@ import (
 	"github.com/lesomnus/cr/registry"
 )
 
-// countingUpstream is an upstream cr that counts the referrers requests it
-// is sent, and answers them `404` when it has no referrers API.
+// countingUpstream is an upstream cr that counts the referrers requests and
+// the manifest requests it is sent, and answers the referrers ones `404` when
+// it has no referrers API.
 type countingUpstream struct {
 	*harness
 	srv       *httptest.Server
 	referrers atomic.Int64
+	manifests atomic.Int64
 	noAPI     atomic.Bool
 }
 
@@ -34,6 +36,9 @@ func newCountingUpstream(t *testing.T) *countingUpstream {
 	reg := registry.New(registry.Config{Stores: flob.NewMemStores(), Index: memindex.New()})
 	u := &countingUpstream{harness: &harness{t: t, h: reg}}
 	u.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/manifests/") {
+			u.manifests.Add(1)
+		}
 		if strings.Contains(r.URL.Path, "/referrers/") {
 			u.referrers.Add(1)
 			if u.noAPI.Load() {
@@ -214,27 +219,76 @@ func TestProxyReferrersWithoutTheAPI(t *testing.T) {
 	require.Equal(t, http.StatusOK, res.StatusCode)
 }
 
-func TestProxyReferrersRevalidateAfterRestart(t *testing.T) {
+func TestProxyReferrersSharedBetweenReplicas(t *testing.T) {
 	up, c, subject, size := setup(t)
 	sig := up.sign("library/app", subject, size, "application/vnd.example.sig", "sig")
 	_, ds := c.referrers(subject, "")
 	require.Equal(t, []digest.Digest{sig}, ds)
 	require.EqualValues(t, 1, up.referrers.Load())
 
-	// Another process over the same index: the snapshot is there, and is
-	// not trusted as fresh until this process has checked it once.
-	restarted := newReferrersCache(t, up, c.ix, c.clock)
-	_, ds = restarted.referrers(subject, "")
+	// Another replica over the same index, or this one restarted: the check
+	// one of them made is the check, so the upstream is asked once per TTL
+	// however many there are.
+	other := newReferrersCache(t, up, c.ix, c.clock)
+	_, ds = other.referrers(subject, "")
 	require.Equal(t, []digest.Digest{sig}, ds)
-	require.EqualValues(t, 2, up.referrers.Load())
-	_, _ = restarted.referrers(subject, "")
-	require.EqualValues(t, 2, up.referrers.Load())
+	require.EqualValues(t, 1, up.referrers.Load())
 
-	// And the snapshot is what it falls back on.
+	c.clock.Add(2 * time.Minute)
+	_, _ = other.referrers(subject, "")
+	require.EqualValues(t, 2, up.referrers.Load())
+	_, _ = c.referrers(subject, "")
+	require.EqualValues(t, 2, up.referrers.Load(), "checked by the other replica")
+
+	// And what either checked is what a new one falls back on.
 	up.srv.Close()
+	c.clock.Add(2 * time.Minute)
 	again := newReferrersCache(t, up, c.ix, c.clock)
 	res, ds := again.referrers(subject, "")
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	require.Equal(t, []digest.Digest{sig}, ds)
 	require.Equal(t, "true", res.Header.Get("Cr-Stale"))
+}
+
+func TestProxyTagsSharedBetweenReplicas(t *testing.T) {
+	up, c, _, _ := setup(t)
+	get := func(c *referrersCache) int {
+		return c.do("GET", "/v2/docker.io/library/app/manifests/latest", nil).StatusCode
+	}
+
+	require.Equal(t, http.StatusOK, get(c))
+	asked := up.manifests.Load()
+
+	// Within the TTL no replica asks, whichever made the check.
+	other := newReferrersCache(t, up, c.ix, c.clock)
+	require.Equal(t, http.StatusOK, get(other))
+	require.Equal(t, asked, up.manifests.Load())
+
+	// Past it one asks, and the other has nothing to ask.
+	c.clock.Add(2 * time.Minute)
+	require.Equal(t, http.StatusOK, get(other))
+	require.Equal(t, asked+1, up.manifests.Load(), "one HEAD")
+	require.Equal(t, http.StatusOK, get(c))
+	require.Equal(t, asked+1, up.manifests.Load())
+}
+
+func TestProxyTagMaxStale(t *testing.T) {
+	up, c, _, _ := setup(t)
+	get := func() int {
+		return c.do("GET", "/v2/docker.io/library/app/manifests/latest", nil).StatusCode
+	}
+	require.Equal(t, http.StatusOK, get())
+	up.srv.Close()
+
+	// A bound, when one is asked for, is measured from the last check.
+	c.proxy.TagMaxStale = 10 * time.Minute
+	c.clock.Add(5 * time.Minute)
+	require.Equal(t, http.StatusOK, get(), "within the bound")
+	c.clock.Add(10 * time.Minute)
+	require.Equal(t, http.StatusGatewayTimeout, get(), "past it")
+
+	// No bound, the default: served for as long as the upstream is down.
+	c.proxy.TagMaxStale = 0
+	c.clock.Add(24 * time.Hour)
+	require.Equal(t, http.StatusOK, get())
 }

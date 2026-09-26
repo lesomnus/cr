@@ -117,8 +117,8 @@ func ReferrersSnapshotSelectedFields(m *api.ReferrersSnapshotSelect) []string {
 	if m.GetDescriptors() {
 		vs = append(vs, referrerssnapshot.FieldDescriptors)
 	}
-	if m.GetDateObserved() {
-		vs = append(vs, referrerssnapshot.FieldDateObserved)
+	if m.GetDateChecked() {
+		vs = append(vs, referrerssnapshot.FieldDateChecked)
 	}
 	if m.GetDateUpdated() {
 		vs = append(vs, referrerssnapshot.FieldDateUpdated)

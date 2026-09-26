@@ -15,7 +15,7 @@ func (e *ReferrersSnapshot) Proto() *api.ReferrersSnapshot {
 	x.SetSubject(e.Subject)
 	x.SetSupported(e.Supported)
 	x.SetDescriptors(e.Descriptors)
-	x.SetDateObserved(timestamppb.New(e.DateObserved))
+	x.SetDateChecked(timestamppb.New(e.DateChecked))
 	x.SetDateUpdated(timestamppb.New(e.DateUpdated))
 	x.SetDateCreated(timestamppb.New(e.DateCreated))
 	return x

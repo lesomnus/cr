@@ -35,7 +35,7 @@ message ReferrersSnapshotSelect {
   bool subject = 9;
   bool supported = 10;
   bool descriptors = 11;
-  bool date_observed = 12;
+  bool date_checked = 12;
   bool date_updated = 13;
   bool date_created = 15;
 }

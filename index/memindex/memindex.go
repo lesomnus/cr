@@ -527,6 +527,16 @@ func (r tags) Erase(ctx context.Context, repo, name string) error {
 	})
 }
 
+func (r tags) Check(ctx context.Context, repo, name string, d digest.Digest, at time.Time) error {
+	return view(r).do(ctx, func(s *state) error {
+		if v, ok := s.tags[repo][name]; ok && v.Digest == d && at.After(v.CheckedAt) {
+			v.CheckedAt = at
+			s.tags[repo][name] = v
+		}
+		return nil
+	})
+}
+
 func (r tags) sorted(s *state, repo string) []index.Tag {
 	vs := slices.Collect(maps.Values(s.tags[repo]))
 	slices.SortFunc(vs, func(a, b index.Tag) int { return strings.Compare(a.Name, b.Name) })

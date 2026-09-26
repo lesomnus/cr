@@ -30,6 +30,12 @@ message Tag {
   // Written in batches, after the fact; see `index.Pulled`.
   google.protobuf.Timestamp date_pulled = 11 [(orm.field) = {nullable: true}];
 
+  // When the upstream of a pull-through cache last confirmed where the tag
+  // points, which is what decides whether it is asked again; empty for a
+  // tag that was pushed. Kept here rather than in a process so that every
+  // replica shares one answer to "is it due".
+  google.protobuf.Timestamp date_checked = 12 [(orm.field) = {nullable: true}];
+
   google.protobuf.Timestamp date_updated = 13 [(orm.field) = {version: {}}];
 
   google.protobuf.Timestamp date_created = 15 [(orm.field) = {

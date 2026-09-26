@@ -75,9 +75,9 @@ func Descriptors(v []byte) predicate.ReferrersSnapshot {
 	return predicate.ReferrersSnapshot(sql.FieldEQ(FieldDescriptors, v))
 }
 
-// DateObserved applies equality check predicate on the "date_observed" field. It's identical to DateObservedEQ.
-func DateObserved(v time.Time) predicate.ReferrersSnapshot {
-	return predicate.ReferrersSnapshot(sql.FieldEQ(FieldDateObserved, v))
+// DateChecked applies equality check predicate on the "date_checked" field. It's identical to DateCheckedEQ.
+func DateChecked(v time.Time) predicate.ReferrersSnapshot {
+	return predicate.ReferrersSnapshot(sql.FieldEQ(FieldDateChecked, v))
 }
 
 // DateUpdated applies equality check predicate on the "date_updated" field. It's identical to DateUpdatedEQ.
@@ -270,54 +270,54 @@ func DescriptorsLTE(v []byte) predicate.ReferrersSnapshot {
 	return predicate.ReferrersSnapshot(sql.FieldLTE(FieldDescriptors, v))
 }
 
-// DateObservedEQ applies the EQ predicate on the "date_observed" field.
-func DateObservedEQ(v time.Time) predicate.ReferrersSnapshot {
-	return predicate.ReferrersSnapshot(sql.FieldEQ(FieldDateObserved, v))
+// DateCheckedEQ applies the EQ predicate on the "date_checked" field.
+func DateCheckedEQ(v time.Time) predicate.ReferrersSnapshot {
+	return predicate.ReferrersSnapshot(sql.FieldEQ(FieldDateChecked, v))
 }
 
-// DateObservedNEQ applies the NEQ predicate on the "date_observed" field.
-func DateObservedNEQ(v time.Time) predicate.ReferrersSnapshot {
-	return predicate.ReferrersSnapshot(sql.FieldNEQ(FieldDateObserved, v))
+// DateCheckedNEQ applies the NEQ predicate on the "date_checked" field.
+func DateCheckedNEQ(v time.Time) predicate.ReferrersSnapshot {
+	return predicate.ReferrersSnapshot(sql.FieldNEQ(FieldDateChecked, v))
 }
 
-// DateObservedIn applies the In predicate on the "date_observed" field.
-func DateObservedIn(vs ...time.Time) predicate.ReferrersSnapshot {
-	return predicate.ReferrersSnapshot(sql.FieldIn(FieldDateObserved, vs...))
+// DateCheckedIn applies the In predicate on the "date_checked" field.
+func DateCheckedIn(vs ...time.Time) predicate.ReferrersSnapshot {
+	return predicate.ReferrersSnapshot(sql.FieldIn(FieldDateChecked, vs...))
 }
 
-// DateObservedNotIn applies the NotIn predicate on the "date_observed" field.
-func DateObservedNotIn(vs ...time.Time) predicate.ReferrersSnapshot {
-	return predicate.ReferrersSnapshot(sql.FieldNotIn(FieldDateObserved, vs...))
+// DateCheckedNotIn applies the NotIn predicate on the "date_checked" field.
+func DateCheckedNotIn(vs ...time.Time) predicate.ReferrersSnapshot {
+	return predicate.ReferrersSnapshot(sql.FieldNotIn(FieldDateChecked, vs...))
 }
 
-// DateObservedGT applies the GT predicate on the "date_observed" field.
-func DateObservedGT(v time.Time) predicate.ReferrersSnapshot {
-	return predicate.ReferrersSnapshot(sql.FieldGT(FieldDateObserved, v))
+// DateCheckedGT applies the GT predicate on the "date_checked" field.
+func DateCheckedGT(v time.Time) predicate.ReferrersSnapshot {
+	return predicate.ReferrersSnapshot(sql.FieldGT(FieldDateChecked, v))
 }
 
-// DateObservedGTE applies the GTE predicate on the "date_observed" field.
-func DateObservedGTE(v time.Time) predicate.ReferrersSnapshot {
-	return predicate.ReferrersSnapshot(sql.FieldGTE(FieldDateObserved, v))
+// DateCheckedGTE applies the GTE predicate on the "date_checked" field.
+func DateCheckedGTE(v time.Time) predicate.ReferrersSnapshot {
+	return predicate.ReferrersSnapshot(sql.FieldGTE(FieldDateChecked, v))
 }
 
-// DateObservedLT applies the LT predicate on the "date_observed" field.
-func DateObservedLT(v time.Time) predicate.ReferrersSnapshot {
-	return predicate.ReferrersSnapshot(sql.FieldLT(FieldDateObserved, v))
+// DateCheckedLT applies the LT predicate on the "date_checked" field.
+func DateCheckedLT(v time.Time) predicate.ReferrersSnapshot {
+	return predicate.ReferrersSnapshot(sql.FieldLT(FieldDateChecked, v))
 }
 
-// DateObservedLTE applies the LTE predicate on the "date_observed" field.
-func DateObservedLTE(v time.Time) predicate.ReferrersSnapshot {
-	return predicate.ReferrersSnapshot(sql.FieldLTE(FieldDateObserved, v))
+// DateCheckedLTE applies the LTE predicate on the "date_checked" field.
+func DateCheckedLTE(v time.Time) predicate.ReferrersSnapshot {
+	return predicate.ReferrersSnapshot(sql.FieldLTE(FieldDateChecked, v))
 }
 
-// DateObservedIsNil applies the IsNil predicate on the "date_observed" field.
-func DateObservedIsNil() predicate.ReferrersSnapshot {
-	return predicate.ReferrersSnapshot(sql.FieldIsNull(FieldDateObserved))
+// DateCheckedIsNil applies the IsNil predicate on the "date_checked" field.
+func DateCheckedIsNil() predicate.ReferrersSnapshot {
+	return predicate.ReferrersSnapshot(sql.FieldIsNull(FieldDateChecked))
 }
 
-// DateObservedNotNil applies the NotNil predicate on the "date_observed" field.
-func DateObservedNotNil() predicate.ReferrersSnapshot {
-	return predicate.ReferrersSnapshot(sql.FieldNotNull(FieldDateObserved))
+// DateCheckedNotNil applies the NotNil predicate on the "date_checked" field.
+func DateCheckedNotNil() predicate.ReferrersSnapshot {
+	return predicate.ReferrersSnapshot(sql.FieldNotNull(FieldDateChecked))
 }
 
 // DateUpdatedEQ applies the EQ predicate on the "date_updated" field.

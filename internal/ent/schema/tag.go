@@ -30,6 +30,9 @@ func (Tag) Fields() []ent.Field {
 		field.Time("date_pulled").
 			Nillable().
 			Optional(),
+		field.Time("date_checked").
+			Nillable().
+			Optional(),
 		field.Time("date_updated"),
 		field.Time("date_created").
 			Immutable().

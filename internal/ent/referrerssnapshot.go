@@ -26,8 +26,8 @@ type ReferrersSnapshot struct {
 	Supported bool `json:"supported,omitempty"`
 	// Descriptors holds the value of the "descriptors" field.
 	Descriptors []byte `json:"descriptors,omitempty"`
-	// DateObserved holds the value of the "date_observed" field.
-	DateObserved time.Time `json:"date_observed,omitempty"`
+	// DateChecked holds the value of the "date_checked" field.
+	DateChecked time.Time `json:"date_checked,omitempty"`
 	// DateUpdated holds the value of the "date_updated" field.
 	DateUpdated time.Time `json:"date_updated,omitempty"`
 	// DateCreated holds the value of the "date_created" field.
@@ -46,7 +46,7 @@ func (*ReferrersSnapshot) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case referrerssnapshot.FieldRepo, referrerssnapshot.FieldSubject:
 			values[i] = new(sql.NullString)
-		case referrerssnapshot.FieldDateObserved, referrerssnapshot.FieldDateUpdated, referrerssnapshot.FieldDateCreated:
+		case referrerssnapshot.FieldDateChecked, referrerssnapshot.FieldDateUpdated, referrerssnapshot.FieldDateCreated:
 			values[i] = new(sql.NullTime)
 		case referrerssnapshot.FieldId:
 			values[i] = new(uuid.UUID)
@@ -98,11 +98,11 @@ func (_m *ReferrersSnapshot) assignValues(columns []string, values []any) error 
 					_m.Descriptors = []byte{}
 				}
 			}
-		case referrerssnapshot.FieldDateObserved:
+		case referrerssnapshot.FieldDateChecked:
 			if value, ok := values[i].(*sql.NullTime); !ok {
-				return fmt.Errorf("unexpected type %T for field date_observed", values[i])
+				return fmt.Errorf("unexpected type %T for field date_checked", values[i])
 			} else if value.Valid {
-				_m.DateObserved = value.Time
+				_m.DateChecked = value.Time
 			}
 		case referrerssnapshot.FieldDateUpdated:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -164,8 +164,8 @@ func (_m *ReferrersSnapshot) String() string {
 	builder.WriteString("descriptors=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Descriptors))
 	builder.WriteString(", ")
-	builder.WriteString("date_observed=")
-	builder.WriteString(_m.DateObserved.Format(time.ANSIC))
+	builder.WriteString("date_checked=")
+	builder.WriteString(_m.DateChecked.Format(time.ANSIC))
 	builder.WriteString(", ")
 	builder.WriteString("date_updated=")
 	builder.WriteString(_m.DateUpdated.Format(time.ANSIC))

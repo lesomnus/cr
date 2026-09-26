@@ -80,6 +80,11 @@ func DatePulled(v time.Time) predicate.Tag {
 	return predicate.Tag(sql.FieldEQ(FieldDatePulled, v))
 }
 
+// DateChecked applies equality check predicate on the "date_checked" field. It's identical to DateCheckedEQ.
+func DateChecked(v time.Time) predicate.Tag {
+	return predicate.Tag(sql.FieldEQ(FieldDateChecked, v))
+}
+
 // DateUpdated applies equality check predicate on the "date_updated" field. It's identical to DateUpdatedEQ.
 func DateUpdated(v time.Time) predicate.Tag {
 	return predicate.Tag(sql.FieldEQ(FieldDateUpdated, v))
@@ -383,6 +388,56 @@ func DatePulledIsNil() predicate.Tag {
 // DatePulledNotNil applies the NotNil predicate on the "date_pulled" field.
 func DatePulledNotNil() predicate.Tag {
 	return predicate.Tag(sql.FieldNotNull(FieldDatePulled))
+}
+
+// DateCheckedEQ applies the EQ predicate on the "date_checked" field.
+func DateCheckedEQ(v time.Time) predicate.Tag {
+	return predicate.Tag(sql.FieldEQ(FieldDateChecked, v))
+}
+
+// DateCheckedNEQ applies the NEQ predicate on the "date_checked" field.
+func DateCheckedNEQ(v time.Time) predicate.Tag {
+	return predicate.Tag(sql.FieldNEQ(FieldDateChecked, v))
+}
+
+// DateCheckedIn applies the In predicate on the "date_checked" field.
+func DateCheckedIn(vs ...time.Time) predicate.Tag {
+	return predicate.Tag(sql.FieldIn(FieldDateChecked, vs...))
+}
+
+// DateCheckedNotIn applies the NotIn predicate on the "date_checked" field.
+func DateCheckedNotIn(vs ...time.Time) predicate.Tag {
+	return predicate.Tag(sql.FieldNotIn(FieldDateChecked, vs...))
+}
+
+// DateCheckedGT applies the GT predicate on the "date_checked" field.
+func DateCheckedGT(v time.Time) predicate.Tag {
+	return predicate.Tag(sql.FieldGT(FieldDateChecked, v))
+}
+
+// DateCheckedGTE applies the GTE predicate on the "date_checked" field.
+func DateCheckedGTE(v time.Time) predicate.Tag {
+	return predicate.Tag(sql.FieldGTE(FieldDateChecked, v))
+}
+
+// DateCheckedLT applies the LT predicate on the "date_checked" field.
+func DateCheckedLT(v time.Time) predicate.Tag {
+	return predicate.Tag(sql.FieldLT(FieldDateChecked, v))
+}
+
+// DateCheckedLTE applies the LTE predicate on the "date_checked" field.
+func DateCheckedLTE(v time.Time) predicate.Tag {
+	return predicate.Tag(sql.FieldLTE(FieldDateChecked, v))
+}
+
+// DateCheckedIsNil applies the IsNil predicate on the "date_checked" field.
+func DateCheckedIsNil() predicate.Tag {
+	return predicate.Tag(sql.FieldIsNull(FieldDateChecked))
+}
+
+// DateCheckedNotNil applies the NotNil predicate on the "date_checked" field.
+func DateCheckedNotNil() predicate.Tag {
+	return predicate.Tag(sql.FieldNotNull(FieldDateChecked))
 }
 
 // DateUpdatedEQ applies the EQ predicate on the "date_updated" field.

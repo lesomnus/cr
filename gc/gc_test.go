@@ -274,13 +274,13 @@ func TestUnlistedReferrers(t *testing.T) {
 			e.clock.Add(time.Minute)
 			snaps := e.ix.Snapshot()
 			require.NoError(t, snaps.Put(ctx, repo, index.Snapshot{
-				Subject: listedSubject.Digest, Supported: true, ObservedAt: e.clock.Now(),
+				Subject: listedSubject.Digest, Supported: true, CheckedAt: e.clock.Now(),
 				Descriptors: []index.Descriptor{{MediaType: kept.MediaType, Digest: kept.Digest, Size: kept.Size}},
 			}))
-			require.NoError(t, snaps.Put(ctx, repo, index.Snapshot{Subject: noAPISubject.Digest, ObservedAt: e.clock.Now()}))
+			require.NoError(t, snaps.Put(ctx, repo, index.Snapshot{Subject: noAPISubject.Digest, CheckedAt: e.clock.Now()}))
 			// A snapshot of a subject that is not here, which is nothing's.
 			gone := digest.FromString("gone")
-			require.NoError(t, snaps.Put(ctx, repo, index.Snapshot{Subject: gone, Supported: true, ObservedAt: e.clock.Now()}))
+			require.NoError(t, snaps.Put(ctx, repo, index.Snapshot{Subject: gone, Supported: true, CheckedAt: e.clock.Now()}))
 
 			// Fetched after the upstream was asked: the list could not name it.
 			e.clock.Add(time.Minute)
