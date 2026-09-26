@@ -310,6 +310,7 @@ registry:
       remote: ""                            # the upstream name for the prefix; empty maps the rest as is
       username: ""                          # when the upstream wants one
       password: ""
+      token_file: ""                        # a bearer minted elsewhere; see below
       tag_ttl: 5m
       retention: 720h                       # what nobody uses within this goes; zero keeps it
 ```
@@ -344,6 +345,43 @@ does not find unreferenced.
 An empty `prefix` makes every repository a cache, which is what a daemon's
 `registry-mirrors` expects of a mirror: it asks for `library/ubuntu` and not
 for a prefixed name.
+
+### A credential that expires
+
+`username` and `password` answer whatever the upstream challenges with — Basic,
+or the token endpoint its `WWW-Authenticate` names. `token_file` is for the
+other kind: a bearer the upstream never issued, minted somewhere else for this
+deployment and replaced before it expires. A machine that proves what it is to
+an authority and is handed a registry token gets one of these, and the token
+lands in a file rather than in the configuration because a value in the
+configuration would be a dead credential by the end of the week.
+
+```yaml
+registry:
+  proxies:
+    - prefix: dist
+      upstream: https://registry.example.com
+      token_file: /run/credentials/registry-token
+```
+
+It is sent as `Authorization: Bearer` **from the first request**, not after a
+401: there is nothing to exchange, and waiting for the challenge would refuse a
+request for every manifest and blob before the one that worked. It is mutually
+exclusive with `username`/`password`, which is refused where the configuration
+is read rather than at the first pull.
+
+The file is re-read when it changes, which is a `stat` beside a request cr was
+making anyway — the file's identity first, because publishing a token means
+writing a temporary name and renaming it into place, and a rename always puts a
+different file there whatever the clock says. A writer that rewrites the file in
+place with a token of the same length inside one filesystem tick is not
+noticed; publishing by rename is the contract.
+
+A read that fails **after** a good one keeps the token it has and says nothing:
+rename is atomic for content and not for permissions, so between the rename and
+the chown that follows it the file is there and unreadable, and failing a pull
+for that would be failing it because the credential was being renewed. A first
+read that fails has nothing to fall back on, and the pull fails naming the file.
 
 ## Health and telemetry
 

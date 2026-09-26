@@ -33,12 +33,17 @@ const ManifestAccept = "application/vnd.oci.image.index.v1+json, " +
 	"application/vnd.docker.distribution.manifest.v2+json"
 
 // Upstream is a remote registry read on behalf of a pull-through cache: its
-// manifests and blobs, through whatever token flow it challenges with.
+// manifests and blobs, through whatever token flow it challenges with — or with
+// a bearer minted elsewhere, when one is configured ([WithTokenFile]).
 type Upstream struct {
 	base     *url.URL
 	username string
 	password string
-	client   *http.Client
+	// token, when set, is a bearer put in place out of band: it is sent as it
+	// is, from the first request, instead of answering a challenge. See
+	// [WithTokenFile].
+	token  *tokenFile
+	client *http.Client
 
 	mu     sync.Mutex
 	tokens map[string]upstreamToken
@@ -55,6 +60,26 @@ type Upstream struct {
 
 // UpstreamOption is what [NewUpstream] takes besides its address.
 type UpstreamOption func(*Upstream)
+
+// WithTokenFile reads the upstream's credential from a file, and sends it as
+// `Authorization: Bearer`.
+//
+// For an upstream whose credential is MINTED ELSEWHERE and expires: a robot
+// presents a device certificate to an authority, a token comes back, something
+// writes it here, and it is replaced long before it expires. Nothing restarts
+// when it is, so the file is re-read when it changes.
+//
+// It replaces the challenge flow rather than feeding it. A registry that hands
+// out tokens of its own gets `username`/`password` and the exchange in
+// [Upstream.authorize]; this is for one that expects a credential it never
+// issued, and sending it only after a 401 would mean a request refused for
+// every manifest and blob before the one that worked.
+//
+// Mutually exclusive with username and password, which [cli.Proxies] enforces
+// where the configuration is read.
+func WithTokenFile(path string) UpstreamOption {
+	return func(u *Upstream) { u.token = newTokenFile(path) }
+}
 
 // WithMeter measures the requests to the upstream with m.
 func WithMeter(m metric.Meter) UpstreamOption {
@@ -146,6 +171,16 @@ func (u *Upstream) request(ctx context.Context, method, repo, path string, heade
 			req.Header.Set("Authorization", auth)
 		}
 		return u.client.Do(req)
+	}
+
+	if u.token != nil {
+		// The credential was not issued by this registry and there is nothing to
+		// exchange: send it, and let a 401 be a 401.
+		token, err := u.token.Token()
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrUpstreamUnauthorized, err)
+		}
+		return send("Bearer " + token)
 	}
 
 	res, err := send(u.cached(scope))
