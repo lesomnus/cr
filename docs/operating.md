@@ -103,6 +103,7 @@ registry:
       session_token: ""
       path_style: true                    # MinIO and most S3-compatible servers
       part_size: 16777216                 # buffered per part of an upload
+      spool_dir: ""                       # where a blob waits to be uploaded; empty is the temporary directory
     redirect:
       enabled: true
       ttl: 15m
@@ -113,6 +114,16 @@ ETags; AWS S3 and MinIO have both. With `redirect.enabled`, a blob `GET` is
 answered `307` with a URL signed for `public_endpoint`, so the bytes go from the
 bucket to the client, which has to be able to reach that endpoint. `HEAD` and
 manifests are always answered by cr.
+
+Every blob is written **whole** to a file in `spool_dir` before it goes to the
+bucket, because the upload is signed with its hash. That is every push, and
+every blob a pull-through cache fills. The directory therefore holds the
+largest blob times however many are being added at once. Put it on a disk: if
+it is a tmpfs -- `/tmp` in many images, or a Kubernetes `emptyDir` with
+`medium: Memory` -- those files are memory charged to cr, and a few concurrent
+cold pulls of large layers can take a container past its limit while cr's own
+memory looks small. Empty is the system's temporary directory, `$TMPDIR` or
+`/tmp`.
 
 On S3 a delete removes a repository's reference to a blob and leaves the one
 shared copy in the bucket, so neither deleting nor collecting garbage shrinks
