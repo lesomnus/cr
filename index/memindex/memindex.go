@@ -51,6 +51,7 @@ type state struct {
 	repos     map[string]index.Repo
 	manifests map[string]map[digest.Digest]entry
 	tags      map[string]map[string]index.Tag
+	snapshots map[string]map[digest.Digest]index.Snapshot
 }
 
 func newState() *state {
@@ -58,6 +59,7 @@ func newState() *state {
 		repos:     map[string]index.Repo{},
 		manifests: map[string]map[digest.Digest]entry{},
 		tags:      map[string]map[string]index.Tag{},
+		snapshots: map[string]map[digest.Digest]index.Snapshot{},
 	}
 }
 
@@ -69,6 +71,9 @@ func (s *state) clone() *state {
 	}
 	for k, v := range s.tags {
 		c.tags[k] = maps.Clone(v)
+	}
+	for k, v := range s.snapshots {
+		c.snapshots[k] = maps.Clone(v)
 	}
 	return c
 }
@@ -135,6 +140,7 @@ func (ix *Index) Repo() index.Repos         { return repos(view{ix: ix}) }
 func (ix *Index) Manifest() index.Manifests { return manifests(view{ix: ix}) }
 func (ix *Index) Tag() index.Tags           { return tags(view{ix: ix}) }
 func (ix *Index) Pulled() index.Pulled      { return pulled(view{ix: ix}) }
+func (ix *Index) Snapshot() index.Snapshots { return snapshots(view{ix: ix}) }
 
 func (ix *Index) Tx(ctx context.Context, repo string, fn func(index.Index) error) error {
 	return view{ix: ix}.Tx(ctx, repo, fn)
@@ -168,6 +174,7 @@ func (v view) Repo() index.Repos         { return repos(v) }
 func (v view) Manifest() index.Manifests { return manifests(v) }
 func (v view) Tag() index.Tags           { return tags(v) }
 func (v view) Pulled() index.Pulled      { return pulled(v) }
+func (v view) Snapshot() index.Snapshots { return snapshots(v) }
 
 func (v view) Lock(ctx context.Context, repo string) (func(), error) {
 	if v.s != nil {
@@ -297,6 +304,7 @@ func (r repos) Erase(ctx context.Context, name string) error {
 		delete(s.repos, name)
 		delete(s.manifests, name)
 		delete(s.tags, name)
+		delete(s.snapshots, name)
 		return nil
 	})
 }
@@ -597,6 +605,65 @@ func (r pulled) Touch(repo, tag string, d digest.Digest, at time.Time) {
 			v.PulledAt = at
 			s.tags[repo][tag] = v
 		}
+		return nil
+	})
+}
+
+type snapshots view
+
+// clone is v with nothing shared with the caller's copy.
+func clone(v index.Snapshot) index.Snapshot {
+	v.Descriptors = slices.Clone(v.Descriptors)
+	for i, d := range v.Descriptors {
+		v.Descriptors[i].Annotations = maps.Clone(d.Annotations)
+	}
+	return v
+}
+
+func (r snapshots) Put(ctx context.Context, repo string, v index.Snapshot) error {
+	return view(r).do(ctx, func(s *state) error {
+		vs := s.snapshots[repo]
+		if vs == nil {
+			vs = map[digest.Digest]index.Snapshot{}
+			s.snapshots[repo] = vs
+		}
+		vs[v.Subject] = clone(v)
+		return nil
+	})
+}
+
+func (r snapshots) Get(ctx context.Context, repo string, subject digest.Digest) (index.Snapshot, error) {
+	var out index.Snapshot
+	err := view(r).do(ctx, func(s *state) error {
+		v, ok := s.snapshots[repo][subject]
+		if !ok {
+			return index.ErrNotFound
+		}
+		out = clone(v)
+		return nil
+	})
+	return out, err
+}
+
+func (r snapshots) List(ctx context.Context, repo string, p index.Page) ([]index.Snapshot, error) {
+	var out []index.Snapshot
+	err := view(r).do(ctx, func(s *state) error {
+		vs := slices.Collect(maps.Values(s.snapshots[repo]))
+		slices.SortFunc(vs, func(a, b index.Snapshot) int { return strings.Compare(a.Subject.String(), b.Subject.String()) })
+		for _, v := range page(vs, func(v index.Snapshot) string { return v.Subject.String() }, p) {
+			out = append(out, clone(v))
+		}
+		return nil
+	})
+	return out, err
+}
+
+func (r snapshots) Erase(ctx context.Context, repo string, subject digest.Digest) error {
+	return view(r).do(ctx, func(s *state) error {
+		if _, ok := s.snapshots[repo][subject]; !ok {
+			return index.ErrNotFound
+		}
+		delete(s.snapshots[repo], subject)
 		return nil
 	})
 }

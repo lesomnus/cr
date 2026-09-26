@@ -274,6 +274,35 @@ var (
 			},
 		},
 	}
+	// ReferrerssnapshotColumns holds the columns for the "referrerssnapshot" table.
+	ReferrerssnapshotColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUuid, Unique: true},
+		{Name: "repo", Type: field.TypeString},
+		{Name: "subject", Type: field.TypeString},
+		{Name: "supported", Type: field.TypeBool},
+		{Name: "descriptors", Type: field.TypeBytes},
+		{Name: "date_observed", Type: field.TypeTime, Nullable: true},
+		{Name: "date_updated", Type: field.TypeTime},
+		{Name: "date_created", Type: field.TypeTime, Nullable: true},
+	}
+	// ReferrerssnapshotTable holds the schema information for the "referrerssnapshot" table.
+	ReferrerssnapshotTable = &schema.Table{
+		Name:       "referrerssnapshot",
+		Columns:    ReferrerssnapshotColumns,
+		PrimaryKey: []*schema.Column{ReferrerssnapshotColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "referrerssnapshot_date_created_id",
+				Unique:  false,
+				Columns: []*schema.Column{ReferrerssnapshotColumns[7], ReferrerssnapshotColumns[0]},
+			},
+			{
+				Name:    "referrerssnapshot_repo_subject",
+				Unique:  true,
+				Columns: []*schema.Column{ReferrerssnapshotColumns[1], ReferrerssnapshotColumns[2]},
+			},
+		},
+	}
 	// RepositoryColumns holds the columns for the "repository" table.
 	RepositoryColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUuid, Unique: true},
@@ -414,6 +443,7 @@ var (
 		ManifestTable,
 		ManifestblobTable,
 		OutboxTable,
+		ReferrerssnapshotTable,
 		RepositoryTable,
 		TagTable,
 		TagruleTable,
@@ -444,6 +474,9 @@ func init() {
 	}
 	OutboxTable.Annotation = &entsql.Annotation{
 		Table: "outbox",
+	}
+	ReferrerssnapshotTable.Annotation = &entsql.Annotation{
+		Table: "referrerssnapshot",
 	}
 	RepositoryTable.Annotation = &entsql.Annotation{
 		Table: "repository",

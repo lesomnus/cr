@@ -16,6 +16,7 @@ import (
 	manifestblob "github.com/lesomnus/cr/internal/ent/manifestblob"
 	outbox "github.com/lesomnus/cr/internal/ent/outbox"
 	predicate "github.com/lesomnus/cr/internal/ent/predicate"
+	referrerssnapshot "github.com/lesomnus/cr/internal/ent/referrerssnapshot"
 	repository "github.com/lesomnus/cr/internal/ent/repository"
 	tag "github.com/lesomnus/cr/internal/ent/tag"
 	tagrule "github.com/lesomnus/cr/internal/ent/tagrule"
@@ -326,6 +327,7 @@ type Scope interface {
 	AuditScope(ctx context.Context) (predicate.Audit, error)
 	HolderScope(ctx context.Context) (predicate.Holder, error)
 	OutboxScope(ctx context.Context) (predicate.Outbox, error)
+	ReferrersSnapshotScope(ctx context.Context) (predicate.ReferrersSnapshot, error)
 	RepositoryScope(ctx context.Context) (predicate.Repository, error)
 	TagScope(ctx context.Context) (predicate.Tag, error)
 	TagRuleScope(ctx context.Context) (predicate.TagRule, error)
@@ -365,6 +367,9 @@ func (Unscoped) HolderScope(_ context.Context) (predicate.Holder, error) {
 	return nil, nil
 }
 func (Unscoped) OutboxScope(_ context.Context) (predicate.Outbox, error) {
+	return nil, nil
+}
+func (Unscoped) ReferrersSnapshotScope(_ context.Context) (predicate.ReferrersSnapshot, error) {
 	return nil, nil
 }
 func (Unscoped) RepositoryScope(_ context.Context) (predicate.Repository, error) {
@@ -556,6 +561,26 @@ func (ss Scopes) OutboxScope(ctx context.Context) (predicate.Outbox, error) {
 	return outbox.And(ps...), nil
 }
 
+func (ss Scopes) ReferrersSnapshotScope(ctx context.Context) (predicate.ReferrersSnapshot, error) {
+	ps := make([]predicate.ReferrersSnapshot, 0, len(ss))
+	for _, s := range ss {
+		p, err := s.ReferrersSnapshotScope(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if p == nil {
+			continue
+		}
+
+		ps = append(ps, p)
+	}
+	if len(ps) == 0 {
+		return nil, nil
+	}
+
+	return referrerssnapshot.And(ps...), nil
+}
+
 func (ss Scopes) RepositoryScope(ctx context.Context) (predicate.Repository, error) {
 	ps := make([]predicate.Repository, 0, len(ss))
 	for _, s := range ss {
@@ -744,6 +769,9 @@ func (s Server) ManifestBlob() api.ManifestBlobServiceServer {
 func (s Server) Audit() api.AuditServiceServer   { return AuditServiceServer{Store: s.Store} }
 func (s Server) Holder() api.HolderServiceServer { return HolderServiceServer{Store: s.Store} }
 func (s Server) Outbox() api.OutboxServiceServer { return OutboxServiceServer{Store: s.Store} }
+func (s Server) ReferrersSnapshot() api.ReferrersSnapshotServiceServer {
+	return ReferrersSnapshotServiceServer{Store: s.Store}
+}
 func (s Server) Repository() api.RepositoryServiceServer {
 	return RepositoryServiceServer{Store: s.Store}
 }

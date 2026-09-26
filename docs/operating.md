@@ -236,7 +236,9 @@ registry:
   first by when they last moved; an `immutable` tag outlives retention;
 - manifests older than `untagged` that no tag points at, no index holds, no
   pull touched within `untagged`, and that are not referrers of a manifest
-  still in the repository; their blobs go when nothing else holds them. Pull
+  still in the repository (in a pull-through cache, unless the upstream's
+  list omits them; see "Referrers"); their blobs go when nothing else holds
+  them. Pull
   times are written in batches, so a pull in the last few seconds before a run
   may not count yet.
 
@@ -312,6 +314,8 @@ registry:
       password: ""
       token_file: ""                        # a bearer minted elsewhere; see below
       tag_ttl: 5m
+      referrers_ttl: 5m                     # zero is tag_ttl; see "Referrers" below
+      referrers_max_stale: 1h               # zero is an hour
       retention: 720h                       # what nobody uses within this goes; zero keeps it
 ```
 
@@ -330,17 +334,50 @@ upstream, which Docker Hub does not count against its pull limits, and fetched
 again only when it moved. When a tag was last checked is kept in memory, so a
 restart or another replica checks once more. A digest is never checked again.
 When the upstream cannot be reached, a tag already cached is served as it is,
-and a tag never cached fails.
+and a tag never cached fails with `504`. An upstream that answers with an
+error, or refuses the cache's credential, is `502`: a failure behind the
+registry, and not a `401` that would send the client to authenticate again.
 
-A cache takes no pushes (`405 UNSUPPORTED`); deletes are allowed and evict. Tag
-lists and referrers are what the cache holds, not what the upstream has. The
-collection keeps a cache to `retention` by two rules that do not look at each
-other: a tag goes when nobody pulled it by name within `retention` and it did
+A cache takes no pushes (`405 UNSUPPORTED`); deletes are allowed and evict. A
+tag list is what the cache holds, not what the upstream has. The collection
+keeps a cache to `retention` by two rules that do not look at each other: a tag goes when nobody pulled it by name within `retention` and it did
 not move, and a manifest goes when nothing holds or tags it and nobody pulled
 it, by name or by digest, within `retention`. A manifest still pulled by
 digest outlives its tag, and a tag pulled again is fetched again from the
 upstream. With a zero `retention` the cache keeps everything a full collection
 does not find unreferenced.
+
+### Referrers
+
+A referrers query against a cache is answered from what **the upstream**
+lists, never from the manifests the cache happens to hold. Those were fetched
+one digest at a time and were never seen to be the whole list, so a signature
+nobody has pulled through the cache yet would be missing from it; and the
+upstream owns the list, so a signature it has removed must not come back from
+the cache's copy.
+
+The upstream's answer is kept in the database and served for `referrers_ttl`,
+which is also how long a signature the upstream removed can still be listed:
+tune `tag_ttl` for tag traffic and this for revocation, apart. The list is
+always asked for unfiltered, every page of it, and `artifactType` is applied
+by cr, so `OCI-Filters-Applied` is true whenever it is set. The referrers
+themselves are not fetched with the list; a client pulls them by digest like
+any other manifest. As with tags, when a list was last checked is kept in
+memory, so a restart or another replica checks once more before trusting it.
+
+The answers a client can get are kept apart:
+
+| | |
+| --- | --- |
+| `200` | the upstream's list, possibly empty; carries `Age` when it is from an earlier check |
+| `200` with `Cr-Stale: true` | the upstream is failing, and this is what it said within `referrers_max_stale`; a verifier may refuse it |
+| `404` | the upstream has no referrers API; a client falls back to the `sha256-<digest>` tag schema, which the cache serves like any tag |
+| `502`, `504` | the upstream failed, and there is nothing it said recently enough |
+
+The collection follows the same authority: in a cache, a referrer whose
+subject is still there goes when the upstream's last list, taken after the
+referrer arrived, omits it. With no list for the subject, or an upstream
+without the API, the referrer is kept, since not knowing is not "none".
 
 An empty `prefix` makes every repository a cache, which is what a daemon's
 `registry-mirrors` expects of a mirror: it asks for `library/ubuntu` and not
@@ -412,10 +449,11 @@ What is measured:
 | `http.server.request.body.size`, `http.server.response.body.size` | histograms, in bytes, of what those requests read and wrote, by the same attributes. A blob `GET` answered with a redirect wrote a `307` and no bytes; the bucket sent them |
 | `http.server.active_requests` | the requests in flight, by method and route |
 | `cr.registry.errors` | every error envelope the registry answered, by `cr.error.code` -- `MANIFEST_BLOB_UNKNOWN`, `DENIED`, `NAME_UNKNOWN` and the rest -- with the route and the status: what a `400` or a `404` was |
-| `cr.repository.lock.wait`, `cr.repository.lock.timeouts` | how long a write waited for its repository's lock, and how often it gave up after `lock_wait`, by `cr.lock.for`: `manifest push`, `manifest delete`, `blob delete`, `cache fetch`, `release`, `collection`, `sweep`, `bookkeeping`. The one thing cr serializes, measured |
+| `cr.repository.lock.wait`, `cr.repository.lock.timeouts` | how long a write waited for its repository's lock, and how often it gave up after `lock_wait`, by `cr.lock.for`: `manifest push`, `manifest delete`, `blob delete`, `cache fetch`, `referrers fetch`, `release`, `collection`, `sweep`, `bookkeeping`. The one thing cr serializes, measured |
 | `cr.store.operation.duration` | each call to a blob store, by `cr.store.driver` (`os`, `s3`, `memory`), `cr.store.operation` (`add`, `stat`, `open`, `label`, `erase`) and `cr.store.outcome` (`ok`, `not_found`, `exists`, `error`). `add` includes reading what it stores, so an upload's `add` is as long as the upload; mounts, presigned URLs and the collection's walk reach the store beneath and are not measured |
 | `cr.cache.requests` | manifest requests to a pull-through cache, by `cr.cache.proxy` (the prefix, `*` for the empty one) and `cr.cache.outcome`: `hit` from the cache alone, `revalidated` after the upstream said the tag had not moved, `refreshed` after it had, `miss` for what was not cached, `stale` for a cached tag served because the upstream failed, `unknown` for what the upstream does not have, `error` for the rest. `hit` over everything is the hit ratio |
-| `cr.cache.upstream.duration`, `cr.cache.upstream.bytes` | every request a cache made to its upstream, by `cr.cache.upstream` (its host), `cr.cache.operation` (`manifest head`, `manifest get`, `blob head`, `blob get`) and the status, a challenge answered on the way included; and the bytes it read, manifests and blobs apart |
+| `cr.cache.referrers` | referrers requests to a pull-through cache, by `cr.cache.proxy` and `cr.cache.outcome`: `hit`, `revalidated` when the upstream listed the same, `refreshed` when it did not, `miss` for a list never asked for, `stale` for one served because the upstream failed, `error` for the rest |
+| `cr.cache.upstream.duration`, `cr.cache.upstream.bytes` | every request a cache made to its upstream, by `cr.cache.upstream` (its host), `cr.cache.operation` (`manifest head`, `manifest get`, `blob head`, `blob get`, `referrers get`) and the status, a challenge answered on the way included; and the bytes it read, manifests and blobs apart |
 | `cr.gc.runs`, `cr.gc.run.duration` | every collection, by `cr.gc.kind` (`online`, `full`), `cr.gc.trigger` (`schedule`, `admin`, `cli`) and `cr.gc.state` (`done`, `failed`), and how long each took |
 | `cr.gc.reclaimed`, `cr.gc.reclaimed.bytes` | what collections removed, by kind and `cr.gc.what`: `uploads` that expired, `tags` past retention, `manifests` nothing needed, `blobs` a sweep erased; and the bytes of those blobs |
 | `cr.gc.missing` | after a full collection, the manifests the index has and the store does not |

@@ -64,6 +64,17 @@ type ProxyConfig struct {
 	// is asked again; zero is five minutes.
 	TagTtl time.Duration `yaml:"tag_ttl"`
 
+	// ReferrersTtl is how long a referrers list is served from what the
+	// upstream last answered before it is asked again. It is also how long
+	// a signature the upstream removed can still be listed. Zero is TagTtl.
+	ReferrersTtl time.Duration `yaml:"referrers_ttl"`
+
+	// ReferrersMaxStale is how old the upstream's last answer about a
+	// referrers list may be and still be served while the upstream is
+	// failing; past it the request fails rather than vouch for a list
+	// nobody has checked. Zero is an hour.
+	ReferrersMaxStale time.Duration `yaml:"referrers_max_stale"`
+
 	// Retention is how long the cache keeps what nobody pulls; zero keeps
 	// it until a full collection finds it unreferenced.
 	Retention time.Duration `yaml:"retention"`

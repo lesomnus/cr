@@ -124,6 +124,7 @@ func (ix *Index) Repo() index.Repos         { return repos{ix} }
 func (ix *Index) Manifest() index.Manifests { return manifests{ix} }
 func (ix *Index) Tag() index.Tags           { return tags{ix} }
 func (ix *Index) Pulled() index.Pulled      { return ix.o.pulls }
+func (ix *Index) Snapshot() index.Snapshots { return snapshots{ix} }
 
 func (ix *Index) now() time.Time { return ix.o.now().UTC() }
 

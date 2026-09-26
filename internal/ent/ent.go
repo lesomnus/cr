@@ -16,6 +16,7 @@ import (
 	"github.com/lesomnus/cr/internal/ent/manifest"
 	"github.com/lesomnus/cr/internal/ent/manifestblob"
 	"github.com/lesomnus/cr/internal/ent/outbox"
+	"github.com/lesomnus/cr/internal/ent/referrerssnapshot"
 	"github.com/lesomnus/cr/internal/ent/repository"
 	"github.com/lesomnus/cr/internal/ent/tag"
 	"github.com/lesomnus/cr/internal/ent/tagrule"
@@ -83,17 +84,18 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			audit.Table:        audit.ValidColumn,
-			binding.Table:      binding.ValidColumn,
-			gcrun.Table:        gcrun.ValidColumn,
-			holder.Table:       holder.ValidColumn,
-			manifest.Table:     manifest.ValidColumn,
-			manifestblob.Table: manifestblob.ValidColumn,
-			outbox.Table:       outbox.ValidColumn,
-			repository.Table:   repository.ValidColumn,
-			tag.Table:          tag.ValidColumn,
-			tagrule.Table:      tagrule.ValidColumn,
-			tenant.Table:       tenant.ValidColumn,
+			audit.Table:             audit.ValidColumn,
+			binding.Table:           binding.ValidColumn,
+			gcrun.Table:             gcrun.ValidColumn,
+			holder.Table:            holder.ValidColumn,
+			manifest.Table:          manifest.ValidColumn,
+			manifestblob.Table:      manifestblob.ValidColumn,
+			outbox.Table:            outbox.ValidColumn,
+			referrerssnapshot.Table: referrerssnapshot.ValidColumn,
+			repository.Table:        repository.ValidColumn,
+			tag.Table:               tag.ValidColumn,
+			tagrule.Table:           tagrule.ValidColumn,
+			tenant.Table:            tenant.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

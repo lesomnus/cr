@@ -33,6 +33,9 @@ export const ManifestBlobDomain = 10
 /** The domain identifiers of app.Outbox carry. */
 export const OutboxDomain = 4
 
+/** The domain identifiers of app.ReferrersSnapshot carry. */
+export const ReferrersSnapshotDomain = 15
+
 /** The domain identifiers of app.Repository carry. */
 export const RepositoryDomain = 8
 
@@ -54,6 +57,7 @@ pdid.register("app.Holder", HolderDomain, "holder")
 pdid.register("app.Manifest", ManifestDomain, "manifest")
 pdid.register("app.ManifestBlob", ManifestBlobDomain, "manifest-blob")
 pdid.register("app.Outbox", OutboxDomain, "outbox")
+pdid.register("app.ReferrersSnapshot", ReferrersSnapshotDomain, "referrers-snapshot")
 pdid.register("app.Repository", RepositoryDomain, "repository")
 pdid.register("app.Tag", TagDomain, "tag")
 pdid.register("app.TagRule", TagRuleDomain, "tag-rule")

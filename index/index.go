@@ -31,6 +31,7 @@ type Index interface {
 	Manifest() Manifests
 	Tag() Tags
 	Pulled() Pulled
+	Snapshot() Snapshots
 
 	// Tx runs fn inside one transaction and hands it the Index to use; the
 	// outer one sees nothing until fn returns nil. When repo is not empty the
@@ -83,9 +84,9 @@ type Repos interface {
 	// contains q, in lexical order of name after p.Last.
 	Search(ctx context.Context, q string, p Page) ([]Repo, error)
 
-	// Erase removes the repository and every row under it. The caller has
-	// already erased the repository's blobs from flob, or accepts leaking
-	// them to the sweep.
+	// Erase removes the repository and every row under it, its snapshots
+	// included. The caller has already erased the repository's blobs from
+	// flob, or accepts leaking them to the sweep.
 	Erase(ctx context.Context, name string) error
 }
 
@@ -172,6 +173,53 @@ type Tags interface {
 	// Newest is the tag of repo that moved most recently, or [ErrNotFound]
 	// when it has none.
 	Newest(ctx context.Context, repo string) (Tag, error)
+}
+
+// Descriptor is one entry of a referrers list, as the upstream answered it.
+type Descriptor struct {
+	MediaType    string            `json:"mediaType"`
+	ArtifactType string            `json:"artifactType,omitempty"`
+	Digest       digest.Digest     `json:"digest"`
+	Size         int64             `json:"size"`
+	Annotations  map[string]string `json:"annotations,omitempty"`
+}
+
+// Snapshot is what the upstream of a pull-through cache last answered for
+// the referrers of Subject: an observation, and not a view of the manifests
+// the cache holds, which were never seen to be the whole list.
+type Snapshot struct {
+	Subject digest.Digest
+
+	// Supported is false for an upstream without the referrers API, which
+	// has no list to omit anything from.
+	Supported bool
+
+	// Descriptors is the list, unfiltered.
+	Descriptors []Descriptor
+
+	// ObservedAt is when the upstream answered.
+	ObservedAt time.Time
+}
+
+// Lists reports whether s is a list that names d; an unsupported snapshot
+// names nothing and omits nothing.
+func (s Snapshot) Lists(d digest.Digest) bool {
+	for _, v := range s.Descriptors {
+		if v.Digest == d {
+			return true
+		}
+	}
+	return false
+}
+
+type Snapshots interface {
+	// Put records s for repo, replacing what was there for its subject.
+	Put(ctx context.Context, repo string, s Snapshot) error
+	Get(ctx context.Context, repo string, subject digest.Digest) (Snapshot, error)
+
+	// List is the snapshots of repo, in subject order after p.Last.
+	List(ctx context.Context, repo string, p Page) ([]Snapshot, error)
+	Erase(ctx context.Context, repo string, subject digest.Digest) error
 }
 
 // Pulled is the one write a read makes, and it is not on the request: Touch

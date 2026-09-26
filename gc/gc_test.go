@@ -235,6 +235,88 @@ func TestCacheEviction(t *testing.T) {
 	require.True(t, e.indexed("acme/app", mine.Digest), "not a cache")
 }
 
+func (e *env) referrer(repo string, subject v1.Descriptor, what string) v1.Descriptor {
+	e.t.Helper()
+	return e.manifest(repo, "", v1.Manifest{
+		Versioned:    specs.Versioned{SchemaVersion: 2},
+		MediaType:    v1.MediaTypeImageManifest,
+		ArtifactType: "application/vnd.example.sig",
+		Config:       v1.DescriptorEmptyJSON,
+		Layers:       []v1.Descriptor{e.blob(repo, []byte(what))},
+		Subject:      &subject,
+	}, v1.MediaTypeImageManifest)
+}
+
+// TestUnlistedReferrers: in a pull-through cache the upstream owns the
+// referrers list, so a referrer whose subject is here goes when a snapshot of
+// that list omits it -- and only then.
+func TestUnlistedReferrers(t *testing.T) {
+	ctx := context.Background()
+	const repo = "mirror/app"
+	for _, tc := range []struct {
+		name  string
+		cache time.Duration
+	}{
+		{"untagged", 0},
+		{"cache", 24 * time.Hour},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t)
+			listedSubject, _ := e.image(repo, "a", "a")
+			noAPISubject, _ := e.image(repo, "b", "b")
+			unknownSubject, _ := e.image(repo, "c", "c")
+
+			kept := e.referrer(repo, listedSubject, "kept")
+			revoked := e.referrer(repo, listedSubject, "revoked")
+			noAPI := e.referrer(repo, noAPISubject, "no api")
+			unknown := e.referrer(repo, unknownSubject, "unknown")
+
+			e.clock.Add(time.Minute)
+			snaps := e.ix.Snapshot()
+			require.NoError(t, snaps.Put(ctx, repo, index.Snapshot{
+				Subject: listedSubject.Digest, Supported: true, ObservedAt: e.clock.Now(),
+				Descriptors: []index.Descriptor{{MediaType: kept.MediaType, Digest: kept.Digest, Size: kept.Size}},
+			}))
+			require.NoError(t, snaps.Put(ctx, repo, index.Snapshot{Subject: noAPISubject.Digest, ObservedAt: e.clock.Now()}))
+			// A snapshot of a subject that is not here, which is nothing's.
+			gone := digest.FromString("gone")
+			require.NoError(t, snaps.Put(ctx, repo, index.Snapshot{Subject: gone, Supported: true, ObservedAt: e.clock.Now()}))
+
+			// Fetched after the upstream was asked: the list could not name it.
+			e.clock.Add(time.Minute)
+			late := e.referrer(repo, listedSubject, "late")
+
+			e.clock.Add(48 * time.Hour)
+			// The subjects are in use; what is decided is their referrers.
+			for _, d := range []digest.Digest{listedSubject.Digest, noAPISubject.Digest, unknownSubject.Digest} {
+				e.ix.Pulled().Touch(repo, "", d, e.clock.Now())
+			}
+			for _, tag := range []string{"a", "b", "c"} {
+				e.ix.Pulled().Touch(repo, tag, "", e.clock.Now())
+			}
+			cfg := gc.Config{Stores: e.stores, Index: e.ix, Untagged: 24 * time.Hour, Now: e.clock.Now}
+			if tc.cache > 0 {
+				cfg.Cache = func(string) time.Duration { return tc.cache }
+			}
+			r, err := gc.New(cfg).Run(ctx)
+			require.NoError(t, err)
+			require.Equal(t, 1, r.Manifests)
+
+			require.False(t, e.indexed(repo, revoked.Digest), "omitted by the upstream's list")
+			require.False(t, e.has(repo, revoked.Digest))
+			require.True(t, e.indexed(repo, kept.Digest), "listed")
+			require.True(t, e.indexed(repo, late.Digest), "newer than the list")
+			require.True(t, e.indexed(repo, noAPI.Digest), "an upstream without the API omits nothing")
+			require.True(t, e.indexed(repo, unknown.Digest), "no snapshot is not an empty list")
+
+			_, err = snaps.Get(ctx, repo, gone)
+			require.ErrorIs(t, err, index.ErrNotFound)
+			_, err = snaps.Get(ctx, repo, listedSubject.Digest)
+			require.NoError(t, err)
+		})
+	}
+}
+
 // TestReleaseHoldsOnlyItsRepository: while a delete's release erases from the
 // store, other repositories go on writing; the repository being erased from
 // is the one that waits.

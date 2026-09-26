@@ -1,0 +1,84 @@
+edition = "2023";
+
+package app;
+
+import "google/protobuf/timestamp.proto";
+import "orm.proto";
+import "payday.proto";
+
+option features.field_presence = IMPLICIT;
+option go_package = "github.com/lesomnus/cr/api";
+
+// ReferrersSnapshot is what the upstream of a pull-through cache last answered
+// for the referrers of one manifest.
+//
+// It is an observation, not a view of the manifests here: in a proxied
+// repository the upstream owns the list, and what the cache happened to fetch
+// by digest was never seen to be all of it. So a referrers query is answered
+// from this row or from the upstream, never from the manifests' subjects, and
+// the collection lets a referrer go only when this row omits it.
+message ReferrersSnapshot {
+  bytes id = 1 [(orm.field) = {
+    type: TYPE_UUID
+    key: true
+    default: ""
+  }];
+
+  string repo = 8 [(orm.field) = {immutable: true}];
+
+  // The digest of the manifest the referrers refer to.
+  string subject = 9 [(orm.field) = {immutable: true}];
+
+  // Whether the upstream has the referrers API at all. An upstream that
+  // answered `404` has no list to omit anything from.
+  bool supported = 10;
+
+  // The descriptors the upstream answered, unfiltered, as JSON.
+  bytes descriptors = 11;
+
+  // When the upstream gave this answer, which is what the stale bound and
+  // `Age` are measured from.
+  google.protobuf.Timestamp date_observed = 12 [(orm.field) = {default: ""}];
+
+  google.protobuf.Timestamp date_updated = 13 [(orm.field) = {version: {}}];
+
+  google.protobuf.Timestamp date_created = 15 [(orm.field) = {
+    immutable: true
+    default: ""
+  }];
+
+  // Written by the registry and read here: a row written through the API
+  // would be a claim about the upstream nobody observed.
+  option (orm.message) = {
+    rpc: {crud: true, add: {disabled: true}, patch: {disabled: true}, erase: {disabled: true}}
+    indexes: [
+      {
+        name: "page"
+        refs: [
+          {name: "date_created", number: 15},
+          {name: "id", number: 1}
+        ]
+      },
+      {
+        name: "by_subject"
+        refs: [
+          {name: "repo", number: 8},
+          {name: "subject", number: 9}
+        ]
+        unique: true
+      }
+    ]
+  };
+  option (payday.entity) = {
+    domain: 15
+    global: {}
+    erase: {hard: {}}
+
+    list: {
+      order: [{field: {name: "date_created"}}, {field: {name: "id"}}]
+      by: [{name: "ref"}, {name: "repo"}, {name: "subject"}]
+      size: 20
+      max: 100
+    }
+  };
+}

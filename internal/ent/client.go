@@ -17,6 +17,7 @@ import (
 	"github.com/lesomnus/cr/internal/ent/manifest"
 	"github.com/lesomnus/cr/internal/ent/manifestblob"
 	"github.com/lesomnus/cr/internal/ent/outbox"
+	"github.com/lesomnus/cr/internal/ent/referrerssnapshot"
 	"github.com/lesomnus/cr/internal/ent/repository"
 	"github.com/lesomnus/cr/internal/ent/tag"
 	"github.com/lesomnus/cr/internal/ent/tagrule"
@@ -44,6 +45,8 @@ type Client struct {
 	ManifestBlob *ManifestBlobClient
 	// Outbox is the client for interacting with the Outbox builders.
 	Outbox *OutboxClient
+	// ReferrersSnapshot is the client for interacting with the ReferrersSnapshot builders.
+	ReferrersSnapshot *ReferrersSnapshotClient
 	// Repository is the client for interacting with the Repository builders.
 	Repository *RepositoryClient
 	// Tag is the client for interacting with the Tag builders.
@@ -69,6 +72,7 @@ func (c *Client) init() {
 	c.Manifest = NewManifestClient(c.config)
 	c.ManifestBlob = NewManifestBlobClient(c.config)
 	c.Outbox = NewOutboxClient(c.config)
+	c.ReferrersSnapshot = NewReferrersSnapshotClient(c.config)
 	c.Repository = NewRepositoryClient(c.config)
 	c.Tag = NewTagClient(c.config)
 	c.TagRule = NewTagRuleClient(c.config)
@@ -163,19 +167,20 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:          ctx,
-		config:       cfg,
-		Audit:        NewAuditClient(cfg),
-		Binding:      NewBindingClient(cfg),
-		GcRun:        NewGcRunClient(cfg),
-		Holder:       NewHolderClient(cfg),
-		Manifest:     NewManifestClient(cfg),
-		ManifestBlob: NewManifestBlobClient(cfg),
-		Outbox:       NewOutboxClient(cfg),
-		Repository:   NewRepositoryClient(cfg),
-		Tag:          NewTagClient(cfg),
-		TagRule:      NewTagRuleClient(cfg),
-		Tenant:       NewTenantClient(cfg),
+		ctx:               ctx,
+		config:            cfg,
+		Audit:             NewAuditClient(cfg),
+		Binding:           NewBindingClient(cfg),
+		GcRun:             NewGcRunClient(cfg),
+		Holder:            NewHolderClient(cfg),
+		Manifest:          NewManifestClient(cfg),
+		ManifestBlob:      NewManifestBlobClient(cfg),
+		Outbox:            NewOutboxClient(cfg),
+		ReferrersSnapshot: NewReferrersSnapshotClient(cfg),
+		Repository:        NewRepositoryClient(cfg),
+		Tag:               NewTagClient(cfg),
+		TagRule:           NewTagRuleClient(cfg),
+		Tenant:            NewTenantClient(cfg),
 	}, nil
 }
 
@@ -193,19 +198,20 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:          ctx,
-		config:       cfg,
-		Audit:        NewAuditClient(cfg),
-		Binding:      NewBindingClient(cfg),
-		GcRun:        NewGcRunClient(cfg),
-		Holder:       NewHolderClient(cfg),
-		Manifest:     NewManifestClient(cfg),
-		ManifestBlob: NewManifestBlobClient(cfg),
-		Outbox:       NewOutboxClient(cfg),
-		Repository:   NewRepositoryClient(cfg),
-		Tag:          NewTagClient(cfg),
-		TagRule:      NewTagRuleClient(cfg),
-		Tenant:       NewTenantClient(cfg),
+		ctx:               ctx,
+		config:            cfg,
+		Audit:             NewAuditClient(cfg),
+		Binding:           NewBindingClient(cfg),
+		GcRun:             NewGcRunClient(cfg),
+		Holder:            NewHolderClient(cfg),
+		Manifest:          NewManifestClient(cfg),
+		ManifestBlob:      NewManifestBlobClient(cfg),
+		Outbox:            NewOutboxClient(cfg),
+		ReferrersSnapshot: NewReferrersSnapshotClient(cfg),
+		Repository:        NewRepositoryClient(cfg),
+		Tag:               NewTagClient(cfg),
+		TagRule:           NewTagRuleClient(cfg),
+		Tenant:            NewTenantClient(cfg),
 	}, nil
 }
 
@@ -282,7 +288,7 @@ func (c *Client) InTx() bool {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.Audit, c.Binding, c.GcRun, c.Holder, c.Manifest, c.ManifestBlob, c.Outbox,
-		c.Repository, c.Tag, c.TagRule, c.Tenant,
+		c.ReferrersSnapshot, c.Repository, c.Tag, c.TagRule, c.Tenant,
 	} {
 		n.Use(hooks...)
 	}
@@ -293,7 +299,7 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.Audit, c.Binding, c.GcRun, c.Holder, c.Manifest, c.ManifestBlob, c.Outbox,
-		c.Repository, c.Tag, c.TagRule, c.Tenant,
+		c.ReferrersSnapshot, c.Repository, c.Tag, c.TagRule, c.Tenant,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -316,6 +322,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.ManifestBlob.mutate(ctx, m)
 	case *OutboxMutation:
 		return c.Outbox.mutate(ctx, m)
+	case *ReferrersSnapshotMutation:
+		return c.ReferrersSnapshot.mutate(ctx, m)
 	case *RepositoryMutation:
 		return c.Repository.mutate(ctx, m)
 	case *TagMutation:
@@ -1292,6 +1300,139 @@ func (c *OutboxClient) mutate(ctx context.Context, m *OutboxMutation) (Value, er
 	}
 }
 
+// ReferrersSnapshotClient is a client for the ReferrersSnapshot schema.
+type ReferrersSnapshotClient struct {
+	config
+}
+
+// NewReferrersSnapshotClient returns a client for the ReferrersSnapshot from the given config.
+func NewReferrersSnapshotClient(c config) *ReferrersSnapshotClient {
+	return &ReferrersSnapshotClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `referrerssnapshot.Hooks(f(g(h())))`.
+func (c *ReferrersSnapshotClient) Use(hooks ...Hook) {
+	c.hooks.ReferrersSnapshot = append(c.hooks.ReferrersSnapshot, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `referrerssnapshot.Intercept(f(g(h())))`.
+func (c *ReferrersSnapshotClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ReferrersSnapshot = append(c.inters.ReferrersSnapshot, interceptors...)
+}
+
+// Create returns a builder for creating a ReferrersSnapshot entity.
+func (c *ReferrersSnapshotClient) Create() *ReferrersSnapshotCreate {
+	mutation := newReferrersSnapshotMutation(c.config, OpCreate)
+	return &ReferrersSnapshotCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ReferrersSnapshot entities.
+func (c *ReferrersSnapshotClient) CreateBulk(builders ...*ReferrersSnapshotCreate) *ReferrersSnapshotCreateBulk {
+	return &ReferrersSnapshotCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ReferrersSnapshotClient) MapCreateBulk(slice any, setFunc func(*ReferrersSnapshotCreate, int)) *ReferrersSnapshotCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ReferrersSnapshotCreateBulk{err: fmt.Errorf("calling to ReferrersSnapshotClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ReferrersSnapshotCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ReferrersSnapshotCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ReferrersSnapshot.
+func (c *ReferrersSnapshotClient) Update() *ReferrersSnapshotUpdate {
+	mutation := newReferrersSnapshotMutation(c.config, OpUpdate)
+	return &ReferrersSnapshotUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ReferrersSnapshotClient) UpdateOne(_m *ReferrersSnapshot) *ReferrersSnapshotUpdateOne {
+	mutation := newReferrersSnapshotMutation(c.config, OpUpdateOne, withReferrersSnapshot(_m))
+	return &ReferrersSnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneId returns an update builder for the given id.
+func (c *ReferrersSnapshotClient) UpdateOneId(id uuid.UUID) *ReferrersSnapshotUpdateOne {
+	mutation := newReferrersSnapshotMutation(c.config, OpUpdateOne, withReferrersSnapshotId(id))
+	return &ReferrersSnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ReferrersSnapshot.
+func (c *ReferrersSnapshotClient) Delete() *ReferrersSnapshotDelete {
+	mutation := newReferrersSnapshotMutation(c.config, OpDelete)
+	return &ReferrersSnapshotDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ReferrersSnapshotClient) DeleteOne(_m *ReferrersSnapshot) *ReferrersSnapshotDeleteOne {
+	return c.DeleteOneId(_m.Id)
+}
+
+// DeleteOneId returns a builder for deleting the given entity by its id.
+func (c *ReferrersSnapshotClient) DeleteOneId(id uuid.UUID) *ReferrersSnapshotDeleteOne {
+	builder := c.Delete().Where(referrerssnapshot.Id(id))
+	builder.mutation.id = &id
+	builder.mutation.SetOp(OpDeleteOne)
+	return &ReferrersSnapshotDeleteOne{builder}
+}
+
+// Query returns a query builder for ReferrersSnapshot.
+func (c *ReferrersSnapshotClient) Query() *ReferrersSnapshotQuery {
+	return &ReferrersSnapshotQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeReferrersSnapshot},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ReferrersSnapshot entity by its id.
+func (c *ReferrersSnapshotClient) Get(ctx context.Context, id uuid.UUID) (*ReferrersSnapshot, error) {
+	return c.Query().Where(referrerssnapshot.Id(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ReferrersSnapshotClient) GetX(ctx context.Context, id uuid.UUID) *ReferrersSnapshot {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ReferrersSnapshotClient) Hooks() []Hook {
+	return c.hooks.ReferrersSnapshot
+}
+
+// Interceptors returns the client interceptors.
+func (c *ReferrersSnapshotClient) Interceptors() []Interceptor {
+	return c.inters.ReferrersSnapshot
+}
+
+func (c *ReferrersSnapshotClient) mutate(ctx context.Context, m *ReferrersSnapshotMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ReferrersSnapshotCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ReferrersSnapshotUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ReferrersSnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ReferrersSnapshotDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ReferrersSnapshot mutation op: %q", m.Op())
+	}
+}
+
 // RepositoryClient is a client for the Repository schema.
 type RepositoryClient struct {
 	config
@@ -1843,11 +1984,11 @@ func (c *TenantClient) mutate(ctx context.Context, m *TenantMutation) (Value, er
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Audit, Binding, GcRun, Holder, Manifest, ManifestBlob, Outbox, Repository, Tag,
-		TagRule, Tenant []ent.Hook
+		Audit, Binding, GcRun, Holder, Manifest, ManifestBlob, Outbox,
+		ReferrersSnapshot, Repository, Tag, TagRule, Tenant []ent.Hook
 	}
 	inters struct {
-		Audit, Binding, GcRun, Holder, Manifest, ManifestBlob, Outbox, Repository, Tag,
-		TagRule, Tenant []ent.Interceptor
+		Audit, Binding, GcRun, Holder, Manifest, ManifestBlob, Outbox,
+		ReferrersSnapshot, Repository, Tag, TagRule, Tenant []ent.Interceptor
 	}
 )

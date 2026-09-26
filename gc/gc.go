@@ -471,12 +471,94 @@ func (c *Collector) evict(ctx context.Context, repo string, keep time.Duration) 
 	if err != nil {
 		errs = append(errs, err)
 	}
-	return n, m, errors.Join(errs...)
+	u, err := c.unlisted(ctx, repo, cutoff)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	return n, m + u, errors.Join(errs...)
 }
 
 // untagged deletes the manifests past the grace period that nothing needs.
 func (c *Collector) untagged(ctx context.Context, repo string) (int, error) {
-	return c.untaggedBefore(ctx, repo, c.c.Now().Add(-c.c.Untagged))
+	cutoff := c.c.Now().Add(-c.c.Untagged)
+	n, err := c.untaggedBefore(ctx, repo, cutoff)
+	u, uerr := c.unlisted(ctx, repo, cutoff)
+	return n + u, errors.Join(err, uerr)
+}
+
+// unlisted deletes the referrers a pull-through cache holds that its upstream
+// no longer lists, and forgets the snapshots nothing is left to be listed by.
+//
+// In a proxied repository the upstream owns the referrers list, so a referrer
+// is not kept merely because its subject is: a signature the upstream removed
+// would otherwise stay for as long as the image does. It goes only on the
+// evidence of a snapshot that is a list, that is newer than the referrer, and
+// that omits it. A repository with no snapshot for the subject -- expired, or
+// never asked about -- or one whose upstream has no referrers API, keeps the
+// referrer by the subject rule, since not knowing is not "none".
+//
+// Only a proxied repository has snapshots, so any other costs one query.
+func (c *Collector) unlisted(ctx context.Context, repo string, cutoff time.Time) (int, error) {
+	var snaps []index.Snapshot
+	last := ""
+	for {
+		ss, err := c.c.Index.Snapshot().List(ctx, repo, index.Page{Last: last, N: 500})
+		if err != nil {
+			return 0, err
+		}
+		snaps = append(snaps, ss...)
+		if len(ss) < 500 {
+			break
+		}
+		last = ss[len(ss)-1].Subject.String()
+	}
+
+	n := 0
+	var errs []error
+	for _, s := range snaps {
+		if _, err := c.c.Index.Manifest().Get(ctx, repo, s.Subject); errors.Is(err, index.ErrNotFound) {
+			// The subject is gone, and the referrers with it by the subject
+			// rule; what is left is a snapshot of nothing. It goes once it
+			// is past the cutoff, which a subject fetched again outlives.
+			if s.ObservedAt.Before(cutoff) {
+				err := c.c.Index.Tx(ctx, repo, func(ix index.Index) error {
+					err := ix.Snapshot().Erase(ctx, repo, s.Subject)
+					if errors.Is(err, index.ErrNotFound) {
+						return nil
+					}
+					return err
+				})
+				if err != nil {
+					errs = append(errs, err)
+				}
+			}
+			continue
+		} else if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if !s.Supported {
+			continue
+		}
+		ms, err := c.c.Index.Manifest().Referrers(ctx, repo, s.Subject, "")
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		for _, m := range ms {
+			if s.Lists(m.Digest) || !m.CreatedAt.Before(s.ObservedAt) || !old(m, cutoff) {
+				continue
+			}
+			ok, err := c.deleteManifest(ctx, repo, m.Digest, cutoff)
+			if err != nil {
+				errs = append(errs, err)
+			}
+			if ok {
+				n++
+			}
+		}
+	}
+	return n, errors.Join(errs...)
 }
 
 func (c *Collector) untaggedBefore(ctx context.Context, repo string, cutoff time.Time) (int, error) {
@@ -516,7 +598,8 @@ func old(m index.Manifest, cutoff time.Time) bool {
 
 // deleteManifest deletes d if, looked at again under the repository's lock,
 // it is still old and still needed by nothing: no tag points at it, no
-// manifest holds it, and it is not a referrer of a manifest that is here.
+// manifest holds it, and it is not a referrer of a manifest that is here --
+// unless a snapshot of that manifest's referrers, newer than d, omits it.
 func (c *Collector) deleteManifest(ctx context.Context, repo string, d digest.Digest, cutoff time.Time) (bool, error) {
 	var released []digest.Digest
 	deleted := false
@@ -539,7 +622,9 @@ func (c *Collector) deleteManifest(ctx context.Context, repo string, d digest.Di
 		}
 		if m.Subject != "" {
 			if _, err := ix.Manifest().Get(ctx, repo, m.Subject); err == nil {
-				return nil
+				if listed, err := stillListed(ctx, ix, repo, m); err != nil || listed {
+					return err
+				}
 			} else if !errors.Is(err, index.ErrNotFound) {
 				return err
 			}
@@ -555,6 +640,20 @@ func (c *Collector) deleteManifest(ctx context.Context, repo string, d digest.Di
 		return false, err
 	}
 	return true, Release(ctx, c.c.Index, c.c.Stores.Use(repo), repo, append(released, d))
+}
+
+// stillListed reports whether m, a referrer whose subject is here, is to be
+// kept for it: true unless a snapshot of the subject's referrers is a list,
+// was observed after m arrived, and does not name m. See [Collector.unlisted].
+func stillListed(ctx context.Context, ix index.Index, repo string, m index.Manifest) (bool, error) {
+	s, err := ix.Snapshot().Get(ctx, repo, m.Subject)
+	if errors.Is(err, index.ErrNotFound) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return !s.Supported || s.Lists(m.Digest) || !m.CreatedAt.Before(s.ObservedAt), nil
 }
 
 // Release erases from s what repo's index no longer refers to among ds. It

@@ -93,6 +93,18 @@ func (f OutboxFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, erro
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OutboxMutation", m)
 }
 
+// The ReferrersSnapshotFunc type is an adapter to allow the use of ordinary
+// function as ReferrersSnapshot mutator.
+type ReferrersSnapshotFunc func(context.Context, *ent.ReferrersSnapshotMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ReferrersSnapshotFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ReferrersSnapshotMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ReferrersSnapshotMutation", m)
+}
+
 // The RepositoryFunc type is an adapter to allow the use of ordinary
 // function as Repository mutator.
 type RepositoryFunc func(context.Context, *ent.RepositoryMutation) (ent.Value, error)

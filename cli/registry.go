@@ -211,7 +211,14 @@ func Proxies(c cmd.RegistryConfig, base flob.Stores, meter metric.Meter) (flob.S
 		if _, ok := keep[pc.Prefix]; ok {
 			return nil, nil, nil, fmt.Errorf("registry.proxies[%d].prefix: %q is already a cache", i, pc.Prefix)
 		}
-		p := &registry.Proxy{Prefix: pc.Prefix, Upstream: up, Remote: pc.Remote, TagTTL: pc.TagTtl}
+		p := &registry.Proxy{
+			Prefix:            pc.Prefix,
+			Upstream:          up,
+			Remote:            pc.Remote,
+			TagTTL:            pc.TagTtl,
+			ReferrersTTL:      pc.ReferrersTtl,
+			ReferrersMaxStale: pc.ReferrersMaxStale,
+		}
 		ps = append(ps, p)
 		routes = append(routes, blob.CacheRoute{Prefix: pc.Prefix, Origin: up.Stores(p.Name)})
 		keep[pc.Prefix] = pc.Retention
