@@ -53,6 +53,14 @@ releases, or with `BASE=<ref>` beside cr at another commit. `footprint.yml`
 runs the second on a pull request that touches Go and the first on main, and
 reports; it holds nothing to a number. Pull and push throughput are not in it
 on purpose: they measure the database and the storage more than cr.
+
+What a pull-through cache costs while cold pulls are in flight is
+`scripts/coldpull.sh`: cr, distribution and zot, each in a container that can
+be given a memory limit, filling from a synthetic upstream (or a real one)
+while 1, 2, 4 and 8 clients pull at once. It reports the process's memory
+and the container's -- page cache and socket buffers, which a limit counts
+too -- what the kernel did about the limit, and how long clients waited for a
+first byte. It moves gigabytes and needs docker, so it is not in CI.
 `oidc-release.yml` and `oidc-sibling.yml` check OpenID Connect against
 GitHub's own ID tokens on every push to main: the release workflow's push is
 allowed and the sibling's is refused.

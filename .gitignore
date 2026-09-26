@@ -7,6 +7,7 @@ node_modules/
 /data/
 /results/
 /footprint-results/
+/coldpull-results/
 
 # The sandbox's build: the whole server compiled into the page, and the JS half
 # of the Go runtime that goes with it, which is version-coupled to whichever
