@@ -46,6 +46,13 @@ CR_TEST_POSTGRES=postgres://... go test -run TestPostgres ./index/...   # entind
 ```
 
 CI runs all three, `pd gen --check`, the page's build and the image's build.
+
+What the process costs to start and to keep around -- startup time, memory,
+idle CPU -- is `scripts/footprint.sh`: cr beside zot and distribution at pinned
+releases, or with `BASE=<ref>` beside cr at another commit. `footprint.yml`
+runs the second on a pull request that touches Go and the first on main, and
+reports; it holds nothing to a number. Pull and push throughput are not in it
+on purpose: they measure the database and the storage more than cr.
 `oidc-release.yml` and `oidc-sibling.yml` check OpenID Connect against
 GitHub's own ID tokens on every push to main: the release workflow's push is
 allowed and the sibling's is refused.
