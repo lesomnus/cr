@@ -1,0 +1,69 @@
+# What cr costs to start and to keep around: startup time, memory, idle CPU.
+# A report, not a gate -- a shared runner makes milliseconds noisy, and the
+# numbers are worth watching for a while before any of them is held to.
+#
+# A pull request measures cr at its base and at its head on the same runner,
+# one after the other, so that what the runner does to both cancels out; the
+# change is what is left. A push to main, or a run started by hand, measures
+# cr beside zot and distribution at pinned releases.
+#
+# Both are `scripts/footprint.sh`, as a desk runs it; the table is in the
+# job's summary and the numbers in the artifact.
+name: footprint
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "**.go"
+      - go.mod
+      - go.sum
+      - proto/**
+      - scripts/footprint.*
+      - .github/workflows/footprint.yml
+
+concurrency:
+  group: footprint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  footprint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The base of a pull request is built from its own worktree.
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/cr-footprint
+          key: footprint-${{ hashFiles('scripts/footprint.sh') }}
+
+      - name: this change against its base
+        if: github.event_name == 'pull_request'
+        run: ./scripts/footprint.sh
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          RUNS: "10"
+          IDLE: "30"
+          RESULTS_DIR: ${{ github.workspace }}/footprint-results
+
+      - name: cr beside other registries
+        if: github.event_name != 'pull_request'
+        run: ./scripts/footprint.sh
+        env:
+          RUNS: "10"
+          IDLE: "30"
+          RESULTS_DIR: ${{ github.workspace }}/footprint-results
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: footprint
+          path: footprint-results/
