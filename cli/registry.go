@@ -197,7 +197,14 @@ func Proxies(c cmd.RegistryConfig, base flob.Stores, meter metric.Meter) (flob.S
 		keep   = map[string]time.Duration{}
 	)
 	for i, pc := range c.Proxies {
-		up, err := blob.NewUpstream(pc.Upstream, pc.Username, pc.Password, blob.WithMeter(meter))
+		opts := []blob.UpstreamOption{blob.WithMeter(meter)}
+		if pc.TokenFile != "" {
+			if pc.Username != "" || pc.Password != "" {
+				return nil, nil, nil, fmt.Errorf("registry.proxies[%d]: token_file and username/password are two credentials; configure one", i)
+			}
+			opts = append(opts, blob.WithTokenFile(pc.TokenFile))
+		}
+		up, err := blob.NewUpstream(pc.Upstream, pc.Username, pc.Password, opts...)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("registry.proxies[%d].upstream: %w", i, err)
 		}

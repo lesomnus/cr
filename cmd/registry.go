@@ -46,6 +46,20 @@ type ProxyConfig struct {
 	Username string `yaml:"username"`
 	Password string `yaml:"password"`
 
+	// TokenFile holds a bearer token, sent as `Authorization: Bearer` instead
+	// of username and password. It is RE-READ WHEN IT CHANGES, which is the
+	// whole reason it is a file: a credential minted for this deployment
+	// elsewhere — against a device certificate, say — is replaced on disk
+	// before it expires, and cr picks the new one up without a restart.
+	//
+	// It is not the token a registry hands out after a `WWW-Authenticate`
+	// challenge; that exchange happens on its own from username and password.
+	// This is a credential put in place out of band, for an upstream that
+	// expects one it never issued.
+	//
+	// Mutually exclusive with username and password.
+	TokenFile string `yaml:"token_file"`
+
 	// TagTtl is how long a tag is served from the cache before the upstream
 	// is asked again; zero is five minutes.
 	TagTtl time.Duration `yaml:"tag_ttl"`
