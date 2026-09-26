@@ -247,9 +247,11 @@ func TestProxyUpstreamAuth(t *testing.T) {
 	body, m := up.imageAs(ci, "private/app", "secret layer")
 	require.Equal(t, http.StatusCreated, up.do("PUT", "/v2/private/app/manifests/latest", body, "Content-Type", v1.MediaTypeImageManifest, "Authorization", ci).StatusCode)
 
+	// Refused behind the registry: not the client's credential to fix, so
+	// not a 401 that would send it to authenticate again.
 	anonymous := newCache(t, up, "", "")
 	res := anonymous.do("GET", "/v2/docker.io/private/app/manifests/latest", nil)
-	require.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	require.Equal(t, http.StatusBadGateway, res.StatusCode)
 
 	c := newCache(t, up, "whoever", "ci-secret")
 	res = c.do("GET", "/v2/docker.io/private/app/manifests/latest", nil)

@@ -26,6 +26,8 @@ type Tx struct {
 	ManifestBlob *ManifestBlobClient
 	// Outbox is the client for interacting with the Outbox builders.
 	Outbox *OutboxClient
+	// ReferrersSnapshot is the client for interacting with the ReferrersSnapshot builders.
+	ReferrersSnapshot *ReferrersSnapshotClient
 	// Repository is the client for interacting with the Repository builders.
 	Repository *RepositoryClient
 	// Tag is the client for interacting with the Tag builders.
@@ -172,6 +174,7 @@ func (tx *Tx) init() {
 	tx.Manifest = NewManifestClient(tx.config)
 	tx.ManifestBlob = NewManifestBlobClient(tx.config)
 	tx.Outbox = NewOutboxClient(tx.config)
+	tx.ReferrersSnapshot = NewReferrersSnapshotClient(tx.config)
 	tx.Repository = NewRepositoryClient(tx.config)
 	tx.Tag = NewTagClient(tx.config)
 	tx.TagRule = NewTagRuleClient(tx.config)

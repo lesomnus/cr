@@ -22,6 +22,7 @@ import (
 	manifestblob "github.com/lesomnus/cr/internal/ent/manifestblob"
 	outbox "github.com/lesomnus/cr/internal/ent/outbox"
 	predicate "github.com/lesomnus/cr/internal/ent/predicate"
+	referrerssnapshot "github.com/lesomnus/cr/internal/ent/referrerssnapshot"
 	repository "github.com/lesomnus/cr/internal/ent/repository"
 	tag "github.com/lesomnus/cr/internal/ent/tag"
 	tagrule "github.com/lesomnus/cr/internal/ent/tagrule"
@@ -84,17 +85,18 @@ func Check() error { return version.Same(Payday) }
 // trail says what kind of thing it was long after the row is gone. So a
 // number is chosen once and never given to something else.
 const (
-	AuditDomain        pdid.Domain = 3  // "audit"
-	BindingDomain      pdid.Domain = 12 // "binding"
-	GcRunDomain        pdid.Domain = 14 // "gc-run"
-	HolderDomain       pdid.Domain = 2  // "holder"
-	ManifestDomain     pdid.Domain = 9  // "manifest"
-	ManifestBlobDomain pdid.Domain = 10 // "manifest-blob"
-	OutboxDomain       pdid.Domain = 4  // "outbox"
-	RepositoryDomain   pdid.Domain = 8  // "repository"
-	TagDomain          pdid.Domain = 11 // "tag"
-	TagRuleDomain      pdid.Domain = 13 // "tag-rule"
-	TenantDomain       pdid.Domain = 1  // "tenant"
+	AuditDomain             pdid.Domain = 3  // "audit"
+	BindingDomain           pdid.Domain = 12 // "binding"
+	GcRunDomain             pdid.Domain = 14 // "gc-run"
+	HolderDomain            pdid.Domain = 2  // "holder"
+	ManifestDomain          pdid.Domain = 9  // "manifest"
+	ManifestBlobDomain      pdid.Domain = 10 // "manifest-blob"
+	OutboxDomain            pdid.Domain = 4  // "outbox"
+	ReferrersSnapshotDomain pdid.Domain = 15 // "referrers-snapshot"
+	RepositoryDomain        pdid.Domain = 8  // "repository"
+	TagDomain               pdid.Domain = 11 // "tag"
+	TagRuleDomain           pdid.Domain = 13 // "tag-rule"
+	TenantDomain            pdid.Domain = 1  // "tenant"
 )
 
 func init() {
@@ -105,6 +107,7 @@ func init() {
 	pdid.Register("app.Manifest", ManifestDomain, "manifest")
 	pdid.Register("app.ManifestBlob", ManifestBlobDomain, "manifest-blob")
 	pdid.Register("app.Outbox", OutboxDomain, "outbox")
+	pdid.Register("app.ReferrersSnapshot", ReferrersSnapshotDomain, "referrers-snapshot")
 	pdid.Register("app.Repository", RepositoryDomain, "repository")
 	pdid.Register("app.Tag", TagDomain, "tag")
 	pdid.Register("app.TagRule", TagRuleDomain, "tag-rule")
@@ -116,17 +119,18 @@ func init() {
 // Domains is the domain of each entity by the full name of its message,
 // which is the name a [Minter] is asked about.
 var Domains = map[string]pdid.Domain{
-	"app.Audit":        AuditDomain,
-	"app.Binding":      BindingDomain,
-	"app.GcRun":        GcRunDomain,
-	"app.Holder":       HolderDomain,
-	"app.Manifest":     ManifestDomain,
-	"app.ManifestBlob": ManifestBlobDomain,
-	"app.Outbox":       OutboxDomain,
-	"app.Repository":   RepositoryDomain,
-	"app.Tag":          TagDomain,
-	"app.TagRule":      TagRuleDomain,
-	"app.Tenant":       TenantDomain,
+	"app.Audit":             AuditDomain,
+	"app.Binding":           BindingDomain,
+	"app.GcRun":             GcRunDomain,
+	"app.Holder":            HolderDomain,
+	"app.Manifest":          ManifestDomain,
+	"app.ManifestBlob":      ManifestBlobDomain,
+	"app.Outbox":            OutboxDomain,
+	"app.ReferrersSnapshot": ReferrersSnapshotDomain,
+	"app.Repository":        RepositoryDomain,
+	"app.Tag":               TagDomain,
+	"app.TagRule":           TagRuleDomain,
+	"app.Tenant":            TenantDomain,
 }
 
 // Minter answers with the [bare.Minter] that gives every new row an
@@ -218,6 +222,11 @@ func (wall) ManifestBlobScope(ctx context.Context) (predicate.ManifestBlob, erro
 
 // OutboxScope: declared `global`, so it is not behind the wall at all.
 func (wall) OutboxScope(ctx context.Context) (predicate.Outbox, error) {
+	return nil, nil
+}
+
+// ReferrersSnapshotScope: declared `global`, so it is not behind the wall at all.
+func (wall) ReferrersSnapshotScope(ctx context.Context) (predicate.ReferrersSnapshot, error) {
 	return nil, nil
 }
 
@@ -2200,6 +2209,155 @@ func filterManifestBlob(f *api.ManifestBlobFilter) (predicate.ManifestBlob, erro
 	}
 
 	return manifestblob.And(ps...), nil
+}
+
+type sinkReferrersSnapshot struct {
+	api.ReferrersSnapshotServiceServer
+	store  bare.Store
+	w      *watch.Watch
+	namer  slug.Namer
+	joined bool
+}
+
+func (s Sink) ReferrersSnapshot() api.ReferrersSnapshotServiceServer {
+	return sinkReferrersSnapshot{s.Server.ReferrersSnapshot(), s.Server.Store, s.w, s.namer, s.joined}
+}
+
+// orderReferrersSnapshot is how ReferrersSnapshots come back.
+//
+// The last column is the key, and it is not decoration: a cursor cannot
+// tell apart two rows equal in every column of the order, so the page after
+// the first of them either repeats the second or skips it. Rows written by
+// one request are stamped a moment apart at best.
+var orderReferrersSnapshot = []sqlpage.Order{
+	{Column: referrerssnapshot.FieldDateCreated, Desc: false},
+	{Column: referrerssnapshot.FieldId, Desc: false},
+}
+
+const (
+	// ReferrersSnapshotPageSize is what a request that did not say gets, and
+	// ReferrersSnapshotPageLimit is the most it gets however loudly it asks.
+	ReferrersSnapshotPageSize  = 20
+	ReferrersSnapshotPageLimit = 100
+
+	// ReferrersSnapshotFilterLimit is how many filters one request may carry. Each is a
+	// predicate in the same query, so it is what says how much of the
+	// database a request may ask to read -- and it is refused rather than
+	// clamped, because dropping half the filters would answer a question
+	// nobody asked.
+	ReferrersSnapshotFilterLimit = 32
+)
+
+// List answers with the ReferrersSnapshots that match any of the given filters, or with
+// every one there is if the request named none, a page at a time.
+func (s sinkReferrersSnapshot) List(ctx context.Context, req *api.ReferrersSnapshotListRequest) (*api.ReferrersSnapshotListResponse, error) {
+	q := s.store.Db.ReferrersSnapshot.Query()
+
+	// Through the same narrowing every generated read goes through, and not
+	// by asking the scope alone: what narrows a read is the wall today and
+	// the wall and something else tomorrow, and a list that reached past it
+	// would be the one read that missed the something else.
+	if p, err := bare.ReferrersSnapshotNarrow(ctx, s.store.Scope, nil); err != nil {
+		return nil, err
+	} else if p != nil {
+		q.Where(p)
+	}
+
+	if fs := req.GetFilters(); len(fs) > 0 {
+		if len(fs) > ReferrersSnapshotFilterLimit {
+			return nil, status.Errorf(codes.InvalidArgument,
+				"filters: %d of them, and %d is the most one list carries", len(fs), ReferrersSnapshotFilterLimit)
+		}
+
+		ps := make([]predicate.ReferrersSnapshot, 0, len(fs))
+		for i, f := range fs {
+			p, err := filterReferrersSnapshot(f)
+			if err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "filters[%d]: %s", i, err)
+			}
+
+			ps = append(ps, p)
+		}
+
+		q.Where(referrerssnapshot.Or(ps...))
+	}
+
+	if v := req.GetAfter(); v != "" {
+		var (
+			at0 time.Time
+			at1 uuid.UUID
+		)
+		if err := sqlpage.Decode(v, &at0, &at1); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "after: %s", err)
+		}
+
+		p, err := sqlpage.After(orderReferrersSnapshot, []any{at0, at1})
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "after: %s", err)
+		}
+
+		q.Where(p)
+	}
+
+	// One row more than the page, which is how "is there another" is answered
+	// without a second query and without a count. The extra is dropped before
+	// the answer is built; it was only ever asked for to see whether it was
+	// there -- so a full last page answers with no cursor rather than sending
+	// the caller back for an empty one.
+	size := sqlpage.Size(int(req.GetSize()), ReferrersSnapshotPageSize, ReferrersSnapshotPageLimit)
+	us, err := q.Order(referrerssnapshot.ByDateCreated(), referrerssnapshot.ById()).Limit(size + 1).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	more := len(us) > size
+	if more {
+		us = us[:size]
+	}
+
+	items := make([]*api.ReferrersSnapshot, len(us))
+	for i, u := range us {
+		items[i] = u.Proto()
+	}
+
+	res := api.ReferrersSnapshotListResponse_builder{Items: items}.Build()
+	if more {
+		last := us[len(us)-1]
+		next, err := sqlpage.Encode(last.DateCreated, last.Id)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "next: %s", err)
+		}
+
+		res.SetNext(next)
+	}
+
+	return res, nil
+}
+
+// filterReferrersSnapshot turns one filter into the predicate that selects what it
+// names. Naming nothing is refused, since the request asked for "these" and
+// did not say which.
+func filterReferrersSnapshot(f *api.ReferrersSnapshotFilter) (predicate.ReferrersSnapshot, error) {
+	ps := make([]predicate.ReferrersSnapshot, 0, 1)
+	if f.HasRef() {
+		p, err := bare.ReferrersSnapshotPick(f.GetRef())
+		if err != nil {
+			return nil, err
+		}
+
+		ps = append(ps, p)
+	}
+	if f.HasRepo() {
+		ps = append(ps, referrerssnapshot.RepoEQ(f.GetRepo()))
+	}
+	if f.HasSubject() {
+		ps = append(ps, referrerssnapshot.SubjectEQ(f.GetSubject()))
+	}
+	if len(ps) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "a filter that names nothing")
+	}
+
+	return referrerssnapshot.And(ps...), nil
 }
 
 type sinkRepository struct {
@@ -4464,6 +4622,25 @@ func (s interceptHolder) Watch(req *api.HolderWatchRequest, out grpc.ServerStrea
 		api.HolderService_Watch_FullMethodName, req, out, s.HolderServiceServer.Watch)
 }
 
+func (s Intercept) ReferrersSnapshot() api.ReferrersSnapshotServiceServer {
+	return interceptReferrersSnapshot{s, s.Next().ReferrersSnapshot()}
+}
+
+type interceptReferrersSnapshot struct {
+	Intercept
+	api.ReferrersSnapshotServiceServer
+}
+
+func (s interceptReferrersSnapshot) Get(ctx context.Context, req *api.ReferrersSnapshotGetRequest) (*api.ReferrersSnapshot, error) {
+	return grpcx.RunUnary(ctx, s.unary, s.ReferrersSnapshotServiceServer,
+		api.ReferrersSnapshotService_Get_FullMethodName, req, s.ReferrersSnapshotServiceServer.Get)
+}
+
+func (s interceptReferrersSnapshot) List(ctx context.Context, req *api.ReferrersSnapshotListRequest) (*api.ReferrersSnapshotListResponse, error) {
+	return grpcx.RunUnary(ctx, s.unary, s.ReferrersSnapshotServiceServer,
+		api.ReferrersSnapshotService_List_FullMethodName, req, s.ReferrersSnapshotServiceServer.List)
+}
+
 func (s Intercept) Repository() api.RepositoryServiceServer {
 	return interceptRepository{s, s.Next().Repository()}
 }
@@ -5471,6 +5648,32 @@ func dispatch(ctx context.Context, s api.Server, op *pdpb.Op) (*anypb.Any, error
 		}
 
 		res, err := s.Holder().List(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+
+		return anypb.New(res)
+
+	case api.ReferrersSnapshotService_Get_FullMethodName:
+		v := &api.ReferrersSnapshotGetRequest{}
+		if err := op.GetRequest().UnmarshalTo(v); err != nil {
+			return nil, batch.ErrRequest(m, err)
+		}
+
+		res, err := s.ReferrersSnapshot().Get(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+
+		return anypb.New(res)
+
+	case api.ReferrersSnapshotService_List_FullMethodName:
+		v := &api.ReferrersSnapshotListRequest{}
+		if err := op.GetRequest().UnmarshalTo(v); err != nil {
+			return nil, batch.ErrRequest(m, err)
+		}
+
+		res, err := s.ReferrersSnapshot().List(ctx, v)
 		if err != nil {
 			return nil, err
 		}

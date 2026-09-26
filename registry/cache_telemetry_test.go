@@ -54,7 +54,7 @@ func TestCacheRequestsAreCounted(t *testing.T) {
 	up.srv.Close()
 	clock.Add(2 * time.Minute)
 	require.Equal(t, http.StatusOK, get("latest"), "stale: the upstream is gone, the cache is not")
-	require.Equal(t, http.StatusInternalServerError, get("other"), "error: not cached, and no upstream")
+	require.Equal(t, http.StatusGatewayTimeout, get("other"), "error: not cached, and no upstream")
 
 	outcomes := map[string]int64{}
 	upstream := map[string]uint64{}

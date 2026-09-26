@@ -27,6 +27,7 @@ func Run(t *testing.T, open Open) {
 	t.Run("manifests", func(t *testing.T) { testManifests(t, open(t, 0)) })
 	t.Run("erase releases", func(t *testing.T) { testErase(t, open(t, 0)) })
 	t.Run("referrers", func(t *testing.T) { testReferrers(t, open(t, 0)) })
+	t.Run("snapshots", func(t *testing.T) { testSnapshots(t, open(t, 0)) })
 	t.Run("tags", func(t *testing.T) { testTags(t, open(t, 0)) })
 	t.Run("tx rolls back", func(t *testing.T) { testRollback(t, open(t, 0)) })
 	t.Run("tx busy", func(t *testing.T) { testBusy(t, open(t, 100*time.Millisecond)) })
@@ -172,6 +173,68 @@ func testReferrers(t *testing.T, ix index.Index) {
 	vs, err = m.Referrers(ctx, "other", subject, "")
 	require.NoError(t, err)
 	require.Empty(t, vs)
+}
+
+func testSnapshots(t *testing.T, ix index.Index) {
+	ctx := context.Background()
+	ss := ix.Snapshot()
+	at := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
+
+	_, err := ss.Get(ctx, "r", d("a"))
+	require.ErrorIs(t, err, index.ErrNotFound)
+
+	sig := index.Descriptor{
+		MediaType:    "application/vnd.oci.image.manifest.v1+json",
+		ArtifactType: "application/sig",
+		Digest:       d("sig"),
+		Size:         42,
+		Annotations:  map[string]string{"k": "v"},
+	}
+	require.NoError(t, ss.Put(ctx, "r", index.Snapshot{Subject: d("a"), Supported: true, Descriptors: []index.Descriptor{sig}, ObservedAt: at}))
+	require.NoError(t, ss.Put(ctx, "r", index.Snapshot{Subject: d("b"), ObservedAt: at}))
+
+	v, err := ss.Get(ctx, "r", d("a"))
+	require.NoError(t, err)
+	require.True(t, v.Supported)
+	require.Equal(t, []index.Descriptor{sig}, v.Descriptors)
+	require.True(t, v.ObservedAt.Equal(at))
+	require.True(t, v.Lists(d("sig")))
+
+	v, err = ss.Get(ctx, "r", d("b"))
+	require.NoError(t, err)
+	require.False(t, v.Supported)
+	require.Empty(t, v.Descriptors)
+
+	// A second answer replaces the first.
+	require.NoError(t, ss.Put(ctx, "r", index.Snapshot{Subject: d("a"), Supported: true, ObservedAt: at.Add(time.Minute)}))
+	v, err = ss.Get(ctx, "r", d("a"))
+	require.NoError(t, err)
+	require.Empty(t, v.Descriptors)
+	require.False(t, v.Lists(d("sig")))
+	require.True(t, v.ObservedAt.Equal(at.Add(time.Minute)))
+
+	vs, err := ss.List(ctx, "r", index.Page{})
+	require.NoError(t, err)
+	require.Len(t, vs, 2)
+	first := vs[0].Subject
+	vs, err = ss.List(ctx, "r", index.Page{Last: first.String(), N: 10})
+	require.NoError(t, err)
+	require.Len(t, vs, 1)
+	require.NotEqual(t, first, vs[0].Subject)
+
+	vs, err = ss.List(ctx, "other", index.Page{})
+	require.NoError(t, err)
+	require.Empty(t, vs)
+
+	require.NoError(t, ss.Erase(ctx, "r", d("b")))
+	require.ErrorIs(t, ss.Erase(ctx, "r", d("b")), index.ErrNotFound)
+
+	// Erasing the repository takes its snapshots.
+	_, err = ix.Repo().Ensure(ctx, "r")
+	require.NoError(t, err)
+	require.NoError(t, ix.Repo().Erase(ctx, "r"))
+	_, err = ss.Get(ctx, "r", d("a"))
+	require.ErrorIs(t, err, index.ErrNotFound)
 }
 
 func testTags(t *testing.T, ix index.Index) {

@@ -18,6 +18,7 @@ import (
 
 	"github.com/lesomnus/flob"
 	"github.com/opencontainers/go-digest"
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
@@ -130,7 +131,7 @@ func NewUpstream(rawURL, username, password string, opts ...UpstreamOption) (*Up
 func (u *Upstream) String() string { return u.base.String() }
 
 // do is request, timed: under the upstream's host, the operation -- `manifest
-// head`, `manifest get`, `blob head`, `blob get` -- and the status, or 0 when
+// head`, `manifest get`, `blob head`, `blob get`, `referrers get` -- and the status, or 0 when
 // nothing answered. A challenge answered on the way is part of the time.
 func (u *Upstream) do(ctx context.Context, method, repo, path string, header http.Header) (*http.Response, error) {
 	start := time.Now()
@@ -149,8 +150,11 @@ func (u *Upstream) do(ctx context.Context, method, repo, path string, header htt
 
 func operationOf(method, path string) string {
 	kind := "blob"
-	if strings.Contains(path, "/manifests/") {
+	switch {
+	case strings.Contains(path, "/manifests/"):
 		kind = "manifest"
+	case strings.Contains(path, "/referrers/"):
+		kind = "referrers"
 	}
 	return kind + " " + strings.ToLower(method)
 }
@@ -170,7 +174,7 @@ func (u *Upstream) request(ctx context.Context, method, repo, path string, heade
 		if auth != "" {
 			req.Header.Set("Authorization", auth)
 		}
-		return u.client.Do(req)
+		return u.send(req)
 	}
 
 	if u.token != nil {
@@ -212,6 +216,40 @@ func (u *Upstream) cached(scope string) string {
 // asked for some and was configured with none.
 var ErrUpstreamUnauthorized = errors.New("upstream: unauthorized")
 
+// ErrUpstreamUnreachable is an upstream that did not answer at all: refused,
+// reset, timed out. It wraps what the transport said, so a request the
+// client itself gave up on is still [context.Canceled].
+var ErrUpstreamUnreachable = errors.New("upstream: unreachable")
+
+// UpstreamStatusError is an upstream that answered, with a status that is
+// not the one asked for. A 401 or a 403 is also [ErrUpstreamUnauthorized].
+type UpstreamStatusError struct {
+	// What is the request: `manifest GET`, `blob HEAD`.
+	What   string
+	Status int
+}
+
+func (e *UpstreamStatusError) Error() string {
+	return fmt.Sprintf("upstream: %s answered %d %s", e.What, e.Status, http.StatusText(e.Status))
+}
+
+func (e *UpstreamStatusError) Unwrap() error {
+	if e.Status == http.StatusUnauthorized || e.Status == http.StatusForbidden {
+		return ErrUpstreamUnauthorized
+	}
+	return nil
+}
+
+// send is the one place a request leaves for the upstream or its token
+// endpoint, so that every failure to get an answer is [ErrUpstreamUnreachable].
+func (u *Upstream) send(req *http.Request) (*http.Response, error) {
+	res, err := u.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrUpstreamUnreachable, err)
+	}
+	return res, nil
+}
+
 func (u *Upstream) authorize(ctx context.Context, challenge, scope string) (string, error) {
 	scheme, params := parseChallenge(challenge)
 	switch strings.ToLower(scheme) {
@@ -243,7 +281,7 @@ func (u *Upstream) authorize(ctx context.Context, challenge, scope string) (stri
 	if u.username != "" {
 		req.SetBasicAuth(u.username, u.password)
 	}
-	res, err := u.client.Do(req)
+	res, err := u.send(req)
 	if err != nil {
 		return "", err
 	}
@@ -308,10 +346,7 @@ func upstreamErr(what string, res *http.Response) error {
 	if res.StatusCode == http.StatusNotFound {
 		return flob.ErrNotExist
 	}
-	if res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden {
-		return fmt.Errorf("%w: %s answered %s", ErrUpstreamUnauthorized, what, res.Status)
-	}
-	return fmt.Errorf("upstream: %s answered %s", what, res.Status)
+	return &UpstreamStatusError{What: what, Status: res.StatusCode}
 }
 
 // HeadManifest answers the digest the upstream has for reference in repo, or
@@ -368,6 +403,89 @@ func (u *Upstream) GetManifest(ctx context.Context, repo, reference string, max 
 		return nil, "", "", fmt.Errorf("upstream: %s hashes to %s", reference, d)
 	}
 	return b, mt, d, nil
+}
+
+// maxReferrersPages bounds how many pages of one referrers list are followed,
+// against an upstream whose `Link` never ends.
+const maxReferrersPages = 100
+
+// Referrers answers every descriptor the upstream lists as a referrer of
+// subject in repo: unfiltered, and every page of it, each at most max bytes.
+// An upstream without the referrers API answers `404`, which is
+// [flob.ErrNotExist]; the specification has one that has it never do so.
+func (u *Upstream) Referrers(ctx context.Context, repo string, subject digest.Digest, max int64) ([]v1.Descriptor, error) {
+	out := []v1.Descriptor{}
+	path := "/v2/" + repo + "/referrers/" + subject.String()
+	for range maxReferrersPages {
+		ds, next, err := u.referrersPage(ctx, repo, path, max)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, ds...)
+		if next == "" {
+			return out, nil
+		}
+		path = next
+	}
+	return nil, fmt.Errorf("upstream: the referrers of %s run past %d pages", subject, maxReferrersPages)
+}
+
+// referrersPage is one page of a referrers list, and the path of the next
+// one, or nothing when this is the last.
+func (u *Upstream) referrersPage(ctx context.Context, repo, path string, max int64) ([]v1.Descriptor, string, error) {
+	res, err := u.do(ctx, http.MethodGet, repo, path, http.Header{"Accept": {v1.MediaTypeImageIndex}})
+	if err != nil {
+		return nil, "", err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, "", upstreamErr("referrers GET", res)
+	}
+	b, err := io.ReadAll(io.LimitReader(res.Body, max+1))
+	if err != nil {
+		return nil, "", fmt.Errorf("%w: %w", ErrUpstreamUnreachable, err)
+	}
+	u.bytes.Add(ctx, int64(len(b)), metric.WithAttributes(u.host, attribute.String("cr.cache.operation", "referrers get")))
+	if int64(len(b)) > max {
+		return nil, "", fmt.Errorf("upstream: a page of referrers is larger than %d bytes", max)
+	}
+	var ix v1.Index
+	if err := json.Unmarshal(b, &ix); err != nil {
+		return nil, "", fmt.Errorf("upstream: referrers: %w", err)
+	}
+	next, err := u.nextPage(path, res.Header.Get("Link"))
+	if err != nil {
+		return nil, "", err
+	}
+	return ix.Manifests, next, nil
+}
+
+// nextPage is the path and query of the `rel="next"` in link, resolved
+// against the page it came with; a link to another host is refused, since
+// the credential is this upstream's.
+func (u *Upstream) nextPage(path, link string) (string, error) {
+	for _, part := range strings.Split(link, ",") {
+		target, params, ok := strings.Cut(strings.TrimSpace(part), ";")
+		if !ok || !strings.Contains(strings.ReplaceAll(params, " ", ""), `rel="next"`) {
+			continue
+		}
+		target = strings.TrimSpace(target)
+		target = strings.TrimSuffix(strings.TrimPrefix(target, "<"), ">")
+		ref, err := url.Parse(target)
+		if err != nil {
+			return "", fmt.Errorf("upstream: referrers: link %q: %w", target, err)
+		}
+		cur, err := url.Parse(u.base.String() + path)
+		if err != nil {
+			return "", err
+		}
+		next := cur.ResolveReference(ref)
+		if next.Host != u.base.Host {
+			return "", fmt.Errorf("upstream: referrers: link to another host, %q", next.Host)
+		}
+		return strings.TrimPrefix(next.RequestURI(), u.base.Path), nil
+	}
+	return "", nil
 }
 
 // Stores is the upstream's blobs as flob stores, read-only, whose namespaces

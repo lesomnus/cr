@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
+	"github.com/opencontainers/go-digest"
 	specs "github.com/opencontainers/image-spec/specs-go"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -112,27 +114,81 @@ func (g *Registry) referrers(w http.ResponseWriter, r *http.Request, name, arg s
 		g.fail(w, r, oci.ErrDigestInvalid(err.Error()))
 		return
 	}
-
 	at := r.URL.Query().Get("artifactType")
+
+	if p := g.proxies.of(name); p != nil {
+		g.proxiedReferrers(w, r, p, name, d, at)
+		return
+	}
+
 	ms, err := g.c.Index.Manifest().Referrers(ctx, name, d, at)
 	if err != nil {
 		g.fail(w, r, err)
 		return
 	}
-
-	out := v1.Index{
-		Versioned: specs.Versioned{SchemaVersion: 2},
-		MediaType: v1.MediaTypeImageIndex,
-		Manifests: make([]v1.Descriptor, 0, len(ms)),
-	}
+	ds := make([]v1.Descriptor, 0, len(ms))
 	for _, m := range ms {
-		out.Manifests = append(out.Manifests, v1.Descriptor{
+		ds = append(ds, v1.Descriptor{
 			MediaType:    m.MediaType,
 			ArtifactType: m.ArtifactType,
 			Digest:       m.Digest,
 			Size:         m.Size,
 			Annotations:  m.Annotations,
 		})
+	}
+	writeReferrers(w, r, ds, at)
+}
+
+// proxiedReferrers answers the referrers of d in a repository that is a
+// pull-through cache, from what its upstream says: a list the upstream gave,
+// a `404` for an upstream without the API, or a failure when there is
+// nothing it said recently enough -- never an empty list nobody observed.
+//
+// An answer from before the last check carries `Age`, and one served because
+// the upstream is failing also `Cr-Stale`, so that a caller verifying a
+// signature can refuse what a caller browsing accepts.
+func (g *Registry) proxiedReferrers(w http.ResponseWriter, r *http.Request, p *Proxy, name string, d digest.Digest, at string) {
+	snap, stale, err := g.referrersThrough(r.Context(), p, name, d)
+	if err != nil {
+		g.fail(w, r, err)
+		return
+	}
+	if !snap.Supported {
+		g.fail(w, r, oci.NewError(http.StatusNotFound, oci.CodeUnsupported, "the upstream has no referrers API; use the tag schema"))
+		return
+	}
+
+	h := w.Header()
+	if age := g.c.Now().Sub(snap.ObservedAt); age >= time.Second {
+		h.Set("Age", strconv.FormatInt(int64(age/time.Second), 10))
+	}
+	if stale {
+		h.Set("Cr-Stale", "true")
+	}
+
+	ds := make([]v1.Descriptor, 0, len(snap.Descriptors))
+	for _, v := range snap.Descriptors {
+		if at != "" && v.ArtifactType != at {
+			continue
+		}
+		ds = append(ds, v1.Descriptor{
+			MediaType:    v.MediaType,
+			ArtifactType: v.ArtifactType,
+			Digest:       v.Digest,
+			Size:         v.Size,
+			Annotations:  v.Annotations,
+		})
+	}
+	writeReferrers(w, r, ds, at)
+}
+
+// writeReferrers answers ds as the referrers index, saying the artifactType
+// filter was applied when there was one: every caller of it applied it.
+func writeReferrers(w http.ResponseWriter, r *http.Request, ds []v1.Descriptor, at string) {
+	out := v1.Index{
+		Versioned: specs.Versioned{SchemaVersion: 2},
+		MediaType: v1.MediaTypeImageIndex,
+		Manifests: ds,
 	}
 	if at != "" {
 		w.Header().Set("OCI-Filters-Applied", "artifactType")

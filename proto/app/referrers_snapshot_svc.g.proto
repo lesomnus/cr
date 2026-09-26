@@ -1,0 +1,77 @@
+edition = "2023";
+package app;
+
+import "app/referrers_snapshot.proto";
+
+option go_package = "github.com/lesomnus/cr/api";
+
+service ReferrersSnapshotService {
+  // Get retrieves a ReferrersSnapshot
+  rpc Get(ReferrersSnapshotGetRequest) returns (ReferrersSnapshot);
+  // List reads ReferrersSnapshots a page at a time.
+  rpc List(ReferrersSnapshotListRequest) returns (ReferrersSnapshotListResponse);
+}
+
+message ReferrersSnapshotGetRequest {
+  ReferrersSnapshotRef ref = 1;
+  ReferrersSnapshotSelect select = 2;
+}
+
+message ReferrersSnapshotRef {
+  oneof key {
+    bytes id = 1;
+    ReferrersSnapshotRefByBySubject by_subject = 8;
+  }
+}
+
+message ReferrersSnapshotRefByBySubject {
+  string repo = 8;
+  string subject = 9;
+}
+
+message ReferrersSnapshotSelect {
+  bool all = 1;
+  bool repo = 8;
+  bool subject = 9;
+  bool supported = 10;
+  bool descriptors = 11;
+  bool date_observed = 12;
+  bool date_updated = 13;
+  bool date_created = 15;
+}
+
+message ReferrersSnapshotListRequest {
+  // Bounded because the work is: each filter is a predicate in the same query,
+  // so this is what says how much of the database one request may read.
+  repeated ReferrersSnapshotFilter filters = 1;
+
+  // How many to answer with. Nothing said is what the schema declared, and more
+  // than the cap is the cap -- a caller asking for more than there is meant no
+  // harm, so it is not an error and it is not the whole table either.
+  int32 size = 2 [features.field_presence = IMPLICIT];
+
+  // Where to carry on from: the "next" of the answer before. It names the last
+  // row of that page rather than counting rows from the start, so a row added
+  // ahead of the page does not shift it and a caller reading through never sees
+  // one twice or misses one.
+  string after = 3 [features.field_presence = IMPLICIT];
+}
+
+message ReferrersSnapshotListResponse {
+  repeated ReferrersSnapshot items = 1;
+
+  // What to ask for next, and empty when this was the last of them.
+  //
+  // Empty means there is no more *for now*: a list is read as it is, and one
+  // that has grown since answers a fresh call. It is not empty merely because
+  // the page came back short -- a page is short when the last row of it was the
+  // last row there was, which is a thing the server can only know by having
+  // looked.
+  string next = 2 [features.field_presence = IMPLICIT];
+}
+
+message ReferrersSnapshotFilter {
+  ReferrersSnapshotRef ref = 1;
+  string repo = 2;
+  string subject = 3;
+}

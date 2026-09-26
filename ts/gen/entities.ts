@@ -20,6 +20,7 @@ import { HolderSchema } from './app/payday/holder_pb.js'
 import { ManifestSchema } from './app/manifest_pb.js'
 import { ManifestBlobSchema } from './app/manifest_blob_pb.js'
 import { OutboxSchema } from './app/payday/outbox_pb.js'
+import { ReferrersSnapshotSchema } from './app/referrers_snapshot_pb.js'
 import { RepositorySchema } from './app/repository_pb.js'
 import { TagSchema } from './app/tag_pb.js'
 import { TagRuleSchema } from './app/tag_rule_pb.js'
@@ -31,6 +32,7 @@ import { HolderService } from './app/payday/holder_svc_pb.js'
 import { ManifestService } from './app/manifest_svc_pb.js'
 import { ManifestBlobService } from './app/manifest_blob_svc_pb.js'
 import { OutboxService } from './app/payday/outbox_svc_pb.js'
+import { ReferrersSnapshotService } from './app/referrers_snapshot_svc_pb.js'
 import { RepositoryService } from './app/repository_svc_pb.js'
 import { TagService } from './app/tag_svc_pb.js'
 import { TagRuleService } from './app/tag_rule_svc_pb.js'
@@ -114,6 +116,17 @@ export const Outbox = {
 	service: OutboxService,
 } as const satisfies EntityDesc
 
+/** app.ReferrersSnapshot, as the store holds it. */
+export const ReferrersSnapshot = {
+	typeName: "app.ReferrersSnapshot",
+	schema: ReferrersSnapshotSchema,
+	domain: 15,
+	version: "dateUpdated",
+	key: "id",
+	ids: ["id"],
+	service: ReferrersSnapshotService,
+} as const satisfies EntityDesc
+
 /** app.Repository, as the store holds it. */
 export const Repository = {
 	typeName: "app.Repository",
@@ -162,5 +175,5 @@ export const Tenant = {
 } as const satisfies EntityDesc
 
 /** Every entity of this app, which is what a store is opened over. */
-export const entities = [Audit, Binding, GcRun, Holder, Manifest, ManifestBlob, Outbox, Repository, Tag, TagRule, Tenant] as const
+export const entities = [Audit, Binding, GcRun, Holder, Manifest, ManifestBlob, Outbox, ReferrersSnapshot, Repository, Tag, TagRule, Tenant] as const
 

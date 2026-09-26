@@ -95,7 +95,8 @@ A manifest with a `subject` is a referrer of that subject, listed by
 `GET /v2/<name>/referrers/<digest>` and filtered by `?artifactType=`, which the
 answer confirms with `OCI-Filters-Applied: artifactType`. Referrers are
 untagged manifests, and the collection keeps them for as long as their subject
-is in the repository. Deleting one takes it off the list.
+is in the repository. Deleting one takes it off the list. In a pull-through
+cache the list is the upstream's instead; see "Referrers" in `operating.md`.
 
 Checked on 2026-09-14 with oras 1.3.4, cosign 3.1.3 and notation 1.3.2 against a
 multi-platform image, before and after a full collection:

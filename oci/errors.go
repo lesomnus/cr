@@ -150,6 +150,19 @@ func ErrUnavailable(retryAfterSeconds int, detail any) *Error {
 		WithHeader("Retry-After", strconv.Itoa(retryAfterSeconds))
 }
 
+// ErrBadGateway is the upstream of a pull-through cache answering with an
+// error, its refusing cr's credential included: not the client's to fix by
+// authenticating again. The spec has no code for a failure behind the
+// registry, so the status carries it.
+func ErrBadGateway(detail any) *Error {
+	return NewError(http.StatusBadGateway, CodeUnknown, detail)
+}
+
+// ErrGatewayTimeout is the upstream of a pull-through cache not answering.
+func ErrGatewayTimeout(detail any) *Error {
+	return NewError(http.StatusGatewayTimeout, CodeUnknown, detail)
+}
+
 type envelope struct {
 	Errors []*Error `json:"errors"`
 }

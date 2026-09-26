@@ -17,6 +17,7 @@ import (
 	"github.com/lesomnus/cr/internal/ent/manifest"
 	"github.com/lesomnus/cr/internal/ent/manifestblob"
 	"github.com/lesomnus/cr/internal/ent/outbox"
+	"github.com/lesomnus/cr/internal/ent/referrerssnapshot"
 	"github.com/lesomnus/cr/internal/ent/repository"
 	"github.com/lesomnus/cr/internal/ent/tag"
 	"github.com/lesomnus/cr/internal/ent/tagrule"
@@ -33,17 +34,18 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeAudit        = "Audit"
-	TypeBinding      = "Binding"
-	TypeGcRun        = "GcRun"
-	TypeHolder       = "Holder"
-	TypeManifest     = "Manifest"
-	TypeManifestBlob = "ManifestBlob"
-	TypeOutbox       = "Outbox"
-	TypeRepository   = "Repository"
-	TypeTag          = "Tag"
-	TypeTagRule      = "TagRule"
-	TypeTenant       = "Tenant"
+	TypeAudit             = "Audit"
+	TypeBinding           = "Binding"
+	TypeGcRun             = "GcRun"
+	TypeHolder            = "Holder"
+	TypeManifest          = "Manifest"
+	TypeManifestBlob      = "ManifestBlob"
+	TypeOutbox            = "Outbox"
+	TypeReferrersSnapshot = "ReferrersSnapshot"
+	TypeRepository        = "Repository"
+	TypeTag               = "Tag"
+	TypeTagRule           = "TagRule"
+	TypeTenant            = "Tenant"
 )
 
 // AuditMutation represents an operation that mutates the Audit nodes in the graph.
@@ -2138,6 +2140,259 @@ func (m *OutboxMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldDateCreated(ctx)
 	}
 	return nil, fmt.Errorf("unknown Outbox field %s", name)
+}
+
+// ReferrersSnapshotMutation represents an operation that mutates the ReferrersSnapshot nodes in the graph.
+type ReferrersSnapshotMutation struct {
+	referrerssnapshot.Mutation
+	config
+	id       *uuid.UUID
+	done     bool
+	oldValue func(context.Context) (*ReferrersSnapshot, error)
+}
+
+var _ ent.Mutation = (*ReferrersSnapshotMutation)(nil)
+
+// referrerssnapshotOption allows management of the mutation configuration using functional options.
+type referrerssnapshotOption func(*ReferrersSnapshotMutation)
+
+// newReferrersSnapshotMutation creates new mutation for the ReferrersSnapshot entity.
+func newReferrersSnapshotMutation(c config, op Op, opts ...referrerssnapshotOption) *ReferrersSnapshotMutation {
+	m := &ReferrersSnapshotMutation{
+		Mutation: *referrerssnapshot.NewMutation(op),
+		config:   c,
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// SetId sets the value of the id field. Note that this
+// operation is only accepted on creation of ReferrersSnapshot entities.
+func (m *ReferrersSnapshotMutation) SetId(id uuid.UUID) {
+	m.id = &id
+}
+
+// Id returns the Id value in the mutation. Note that the Id is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ReferrersSnapshotMutation) Id() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// withReferrersSnapshotId sets the Id field of the mutation.
+func withReferrersSnapshotId(id uuid.UUID) referrerssnapshotOption {
+	return func(m *ReferrersSnapshotMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ReferrersSnapshot
+		)
+		m.oldValue = func(ctx context.Context) (*ReferrersSnapshot, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ReferrersSnapshot.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withReferrersSnapshot sets the old ReferrersSnapshot of the mutation.
+func withReferrersSnapshot(node *ReferrersSnapshot) referrerssnapshotOption {
+	return func(m *ReferrersSnapshotMutation) {
+		m.oldValue = func(context.Context) (*ReferrersSnapshot, error) {
+			return node, nil
+		}
+		m.id = &node.Id
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ReferrersSnapshotMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ReferrersSnapshotMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// Ids queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ReferrersSnapshotMutation) Ids(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.Op().Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.Id()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.Op().Is(OpUpdate | OpDelete):
+		return m.Client().ReferrersSnapshot.Query().Where(m.Predicates()...).Ids(ctx)
+	default:
+		return nil, fmt.Errorf("Ids is not allowed on %s operations", m.Op())
+	}
+}
+
+// OldRepo returns the old "repo" field's value of the ReferrersSnapshot entity.
+// If the ReferrersSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ReferrersSnapshotMutation) OldRepo(ctx context.Context) (v string, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldRepo is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldRepo requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRepo: %w", err)
+	}
+	return oldValue.Repo, nil
+}
+
+// OldSubject returns the old "subject" field's value of the ReferrersSnapshot entity.
+// If the ReferrersSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ReferrersSnapshotMutation) OldSubject(ctx context.Context) (v string, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldSubject is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldSubject requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSubject: %w", err)
+	}
+	return oldValue.Subject, nil
+}
+
+// OldSupported returns the old "supported" field's value of the ReferrersSnapshot entity.
+// If the ReferrersSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ReferrersSnapshotMutation) OldSupported(ctx context.Context) (v bool, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldSupported is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldSupported requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSupported: %w", err)
+	}
+	return oldValue.Supported, nil
+}
+
+// OldDescriptors returns the old "descriptors" field's value of the ReferrersSnapshot entity.
+// If the ReferrersSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ReferrersSnapshotMutation) OldDescriptors(ctx context.Context) (v []byte, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldDescriptors is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldDescriptors requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDescriptors: %w", err)
+	}
+	return oldValue.Descriptors, nil
+}
+
+// OldDateObserved returns the old "date_observed" field's value of the ReferrersSnapshot entity.
+// If the ReferrersSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ReferrersSnapshotMutation) OldDateObserved(ctx context.Context) (v time.Time, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldDateObserved is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldDateObserved requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDateObserved: %w", err)
+	}
+	return oldValue.DateObserved, nil
+}
+
+// OldDateUpdated returns the old "date_updated" field's value of the ReferrersSnapshot entity.
+// If the ReferrersSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ReferrersSnapshotMutation) OldDateUpdated(ctx context.Context) (v time.Time, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldDateUpdated is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldDateUpdated requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDateUpdated: %w", err)
+	}
+	return oldValue.DateUpdated, nil
+}
+
+// OldDateCreated returns the old "date_created" field's value of the ReferrersSnapshot entity.
+// If the ReferrersSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ReferrersSnapshotMutation) OldDateCreated(ctx context.Context) (v time.Time, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldDateCreated is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldDateCreated requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDateCreated: %w", err)
+	}
+	return oldValue.DateCreated, nil
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ReferrersSnapshotMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case referrerssnapshot.FieldRepo:
+		return m.OldRepo(ctx)
+	case referrerssnapshot.FieldSubject:
+		return m.OldSubject(ctx)
+	case referrerssnapshot.FieldSupported:
+		return m.OldSupported(ctx)
+	case referrerssnapshot.FieldDescriptors:
+		return m.OldDescriptors(ctx)
+	case referrerssnapshot.FieldDateObserved:
+		return m.OldDateObserved(ctx)
+	case referrerssnapshot.FieldDateUpdated:
+		return m.OldDateUpdated(ctx)
+	case referrerssnapshot.FieldDateCreated:
+		return m.OldDateCreated(ctx)
+	}
+	return nil, fmt.Errorf("unknown ReferrersSnapshot field %s", name)
 }
 
 // RepositoryMutation represents an operation that mutates the Repository nodes in the graph.

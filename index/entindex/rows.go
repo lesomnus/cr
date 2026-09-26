@@ -2,6 +2,8 @@ package entindex
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"iter"
 	"slices"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/lesomnus/cr/internal/ent"
 	"github.com/lesomnus/cr/internal/ent/manifest"
 	"github.com/lesomnus/cr/internal/ent/manifestblob"
+	"github.com/lesomnus/cr/internal/ent/referrerssnapshot"
 	"github.com/lesomnus/cr/internal/ent/repository"
 	"github.com/lesomnus/cr/internal/ent/tag"
 	"github.com/lesomnus/cr/server/pd"
@@ -124,6 +127,9 @@ func (r repos) Erase(ctx context.Context, name string) error {
 		return err
 	}
 	if _, err := c.Manifest.Delete().Where(manifest.Repo(name)).Exec(ctx); err != nil {
+		return err
+	}
+	if _, err := c.ReferrersSnapshot.Delete().Where(referrerssnapshot.Repo(name)).Exec(ctx); err != nil {
 		return err
 	}
 	_, err := c.Repository.Delete().Where(repository.Name(name)).Exec(ctx)
@@ -518,6 +524,106 @@ func (r tags) Newest(ctx context.Context, repo string) (index.Tag, error) {
 		return index.Tag{}, notFound(err)
 	}
 	return toTag(v), nil
+}
+
+func toSnapshot(v *ent.ReferrersSnapshot) (index.Snapshot, error) {
+	s := index.Snapshot{Subject: digest.Digest(v.Subject), Supported: v.Supported, ObservedAt: v.DateObserved}
+	if len(v.Descriptors) > 0 {
+		if err := json.Unmarshal(v.Descriptors, &s.Descriptors); err != nil {
+			return index.Snapshot{}, fmt.Errorf("referrers snapshot of %s: %w", v.Subject, err)
+		}
+	}
+	return s, nil
+}
+
+type snapshots struct{ ix *Index }
+
+func (r snapshots) Put(ctx context.Context, repo string, s index.Snapshot) error {
+	c := r.ix.client
+	ds := s.Descriptors
+	if ds == nil {
+		ds = []index.Descriptor{}
+	}
+	b, err := json.Marshal(ds)
+	if err != nil {
+		return err
+	}
+	now := r.ix.now()
+	observed := s.ObservedAt.UTC()
+
+	update := func() (int, error) {
+		return c.ReferrersSnapshot.Update().
+			Where(referrerssnapshot.Repo(repo), referrerssnapshot.Subject(s.Subject.String())).
+			SetSupported(s.Supported).
+			SetDescriptors(b).
+			SetDateObserved(observed).
+			SetDateUpdated(now).
+			Save(ctx)
+	}
+	n, err := update()
+	if err != nil || n > 0 {
+		return err
+	}
+	_, err = c.ReferrersSnapshot.Create().
+		SetId(pdid.New(pd.ReferrersSnapshotDomain).Uuid()).
+		SetRepo(repo).
+		SetSubject(s.Subject.String()).
+		SetSupported(s.Supported).
+		SetDescriptors(b).
+		SetDateObserved(observed).
+		SetDateCreated(now).
+		SetDateUpdated(now).
+		Save(ctx)
+	if ent.IsConstraintError(err) {
+		// Created by another request between the two statements.
+		_, err = update()
+	}
+	return err
+}
+
+func (r snapshots) Get(ctx context.Context, repo string, subject digest.Digest) (index.Snapshot, error) {
+	v, err := r.ix.client.ReferrersSnapshot.Query().
+		Where(referrerssnapshot.Repo(repo), referrerssnapshot.Subject(subject.String())).
+		Only(ctx)
+	if err != nil {
+		return index.Snapshot{}, notFound(err)
+	}
+	return toSnapshot(v)
+}
+
+func (r snapshots) List(ctx context.Context, repo string, p index.Page) ([]index.Snapshot, error) {
+	q := r.ix.client.ReferrersSnapshot.Query().
+		Where(referrerssnapshot.Repo(repo), referrerssnapshot.SubjectGT(p.Last)).
+		Order(referrerssnapshot.BySubject())
+	if p.N > 0 {
+		q = q.Limit(p.N)
+	}
+	vs, err := q.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]index.Snapshot, 0, len(vs))
+	for _, v := range vs {
+		s, err := toSnapshot(v)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, nil
+}
+
+func (r snapshots) Erase(ctx context.Context, repo string, subject digest.Digest) error {
+	n, err := r.ix.client.ReferrersSnapshot.Delete().
+		Where(referrerssnapshot.Repo(repo), referrerssnapshot.Subject(subject.String())).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return index.ErrNotFound
+	}
+	return nil
 }
 
 func (ix *Index) touchManifest(ctx context.Context, repo, d string, at time.Time) error {

@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/lesomnus/cr/auth"
+	"github.com/lesomnus/cr/blob"
 	"github.com/lesomnus/cr/index"
 	"github.com/lesomnus/cr/oci"
 	"github.com/lesomnus/cr/telemetry"
@@ -73,10 +74,11 @@ type Registry struct {
 
 	// errors counts every error envelope answered, by its code, and
 	// cacheRequests every manifest request to a pull-through cache, by how
-	// it was answered.
-	errors        metric.Int64Counter
-	cacheRequests metric.Int64Counter
-	uploads       metric.Int64Counter
+	// it was answered, and cacheReferrers every referrers request to one.
+	errors         metric.Int64Counter
+	cacheRequests  metric.Int64Counter
+	cacheReferrers metric.Int64Counter
+	uploads        metric.Int64Counter
 }
 
 func New(c Config) *Registry {
@@ -92,6 +94,7 @@ func New(c Config) *Registry {
 	g := &Registry{c: c}
 	g.errors = telemetry.Counter(c.Meter, "cr.registry.errors", "{error}", "Errors the registry answered, by their code.")
 	g.cacheRequests = telemetry.Counter(c.Meter, "cr.cache.requests", "{request}", "Manifest requests to a pull-through cache, by how they were answered.")
+	g.cacheReferrers = telemetry.Counter(c.Meter, "cr.cache.referrers", "{request}", "Referrers requests to a pull-through cache, by how they were answered.")
 	g.uploads = telemetry.Counter(c.Meter, "cr.uploads", "{upload}", "Blob uploads that ended, by how.")
 	g.proxies.list = slices.Clone(c.Proxies)
 	slices.SortStableFunc(g.proxies.list, func(a, b *Proxy) int { return len(b.Prefix) - len(a.Prefix) })
@@ -316,6 +319,21 @@ func (g *Registry) fail(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, context.Canceled):
 		// The client went away; there is nobody to answer.
 		return
+	case errors.Is(err, blob.ErrUpstreamUnreachable), upstreamAnswered(err):
+		// Behind the registry, and not the client's to fix: logged, and
+		// answered as a gateway's failure rather than as ours.
+		ctx := r.Context()
+		log.From(ctx).WarnContext(ctx, "registry: upstream",
+			slog.String("method", r.Method),
+			slog.String("path", r.URL.Path),
+			slog.String("err", err.Error()),
+		)
+		if errors.Is(err, blob.ErrUpstreamUnreachable) {
+			err = oci.ErrGatewayTimeout("the upstream did not answer")
+		} else {
+			err = oci.ErrBadGateway("the upstream answered with an error")
+		}
+		errors.As(err, &e)
 	default:
 		ctx := r.Context()
 		log.From(ctx).ErrorContext(ctx, "registry",
@@ -337,6 +355,13 @@ func (g *Registry) fail(w http.ResponseWriter, r *http.Request, err error) {
 		attribute.Int("http.response.status_code", status),
 	))
 	oci.WriteError(w, err)
+}
+
+// upstreamAnswered reports whether err is an upstream that answered with an
+// error, or refused cr's credential.
+func upstreamAnswered(err error) bool {
+	var s *blob.UpstreamStatusError
+	return errors.As(err, &s) || errors.Is(err, blob.ErrUpstreamUnauthorized)
 }
 
 // upload counts a blob upload that ended: `completed`, `exists` for a digest
