@@ -46,16 +46,16 @@ func (_c *ReferrersSnapshotCreate) SetDescriptors(v []byte) *ReferrersSnapshotCr
 	return _c
 }
 
-// SetDateObserved sets the "date_observed" field.
-func (_c *ReferrersSnapshotCreate) SetDateObserved(v time.Time) *ReferrersSnapshotCreate {
-	_c.mutation.SetDateObserved(v)
+// SetDateChecked sets the "date_checked" field.
+func (_c *ReferrersSnapshotCreate) SetDateChecked(v time.Time) *ReferrersSnapshotCreate {
+	_c.mutation.SetDateChecked(v)
 	return _c
 }
 
-// SetNillableDateObserved sets the "date_observed" field if the given value is not nil.
-func (_c *ReferrersSnapshotCreate) SetNillableDateObserved(v *time.Time) *ReferrersSnapshotCreate {
+// SetNillableDateChecked sets the "date_checked" field if the given value is not nil.
+func (_c *ReferrersSnapshotCreate) SetNillableDateChecked(v *time.Time) *ReferrersSnapshotCreate {
 	if v != nil {
-		_c.SetDateObserved(*v)
+		_c.SetDateChecked(*v)
 	}
 	return _c
 }
@@ -190,9 +190,9 @@ func (_c *ReferrersSnapshotCreate) createSpec() (*ReferrersSnapshot, *sqlgraph.C
 		_spec.SetField(referrerssnapshot.FieldDescriptors, field.TypeBytes, value)
 		_node.Descriptors = value
 	}
-	if value, ok := _c.mutation.DateObserved(); ok {
-		_spec.SetField(referrerssnapshot.FieldDateObserved, field.TypeTime, value)
-		_node.DateObserved = value
+	if value, ok := _c.mutation.DateChecked(); ok {
+		_spec.SetField(referrerssnapshot.FieldDateChecked, field.TypeTime, value)
+		_node.DateChecked = value
 	}
 	if value, ok := _c.mutation.DateUpdated(); ok {
 		_spec.SetField(referrerssnapshot.FieldDateUpdated, field.TypeTime, value)

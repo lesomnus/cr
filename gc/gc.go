@@ -520,7 +520,7 @@ func (c *Collector) unlisted(ctx context.Context, repo string, cutoff time.Time)
 			// The subject is gone, and the referrers with it by the subject
 			// rule; what is left is a snapshot of nothing. It goes once it
 			// is past the cutoff, which a subject fetched again outlives.
-			if s.ObservedAt.Before(cutoff) {
+			if s.CheckedAt.Before(cutoff) {
 				err := c.c.Index.Tx(ctx, repo, func(ix index.Index) error {
 					err := ix.Snapshot().Erase(ctx, repo, s.Subject)
 					if errors.Is(err, index.ErrNotFound) {
@@ -546,7 +546,7 @@ func (c *Collector) unlisted(ctx context.Context, repo string, cutoff time.Time)
 			continue
 		}
 		for _, m := range ms {
-			if s.Lists(m.Digest) || !m.CreatedAt.Before(s.ObservedAt) || !old(m, cutoff) {
+			if s.Lists(m.Digest) || !m.CreatedAt.Before(s.CheckedAt) || !old(m, cutoff) {
 				continue
 			}
 			ok, err := c.deleteManifest(ctx, repo, m.Digest, cutoff)
@@ -653,7 +653,7 @@ func stillListed(ctx context.Context, ix index.Index, repo string, m index.Manif
 	if err != nil {
 		return false, err
 	}
-	return !s.Supported || s.Lists(m.Digest) || !m.CreatedAt.Before(s.ObservedAt), nil
+	return !s.Supported || s.Lists(m.Digest) || !m.CreatedAt.Before(s.CheckedAt), nil
 }
 
 // Release erases from s what repo's index no longer refers to among ds. It

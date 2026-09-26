@@ -216,6 +216,7 @@ func Proxies(c cmd.RegistryConfig, base flob.Stores, meter metric.Meter) (flob.S
 			Upstream:          up,
 			Remote:            pc.Remote,
 			TagTTL:            pc.TagTtl,
+			TagMaxStale:       pc.TagMaxStale,
 			ReferrersTTL:      pc.ReferrersTtl,
 			ReferrersMaxStale: pc.ReferrersMaxStale,
 		}

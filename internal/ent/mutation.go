@@ -2321,21 +2321,21 @@ func (m *ReferrersSnapshotMutation) OldDescriptors(ctx context.Context) (v []byt
 	return oldValue.Descriptors, nil
 }
 
-// OldDateObserved returns the old "date_observed" field's value of the ReferrersSnapshot entity.
+// OldDateChecked returns the old "date_checked" field's value of the ReferrersSnapshot entity.
 // If the ReferrersSnapshot object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ReferrersSnapshotMutation) OldDateObserved(ctx context.Context) (v time.Time, err error) {
+func (m *ReferrersSnapshotMutation) OldDateChecked(ctx context.Context) (v time.Time, err error) {
 	if !m.Op().Is(OpUpdateOne) {
-		return v, errors.New("OldDateObserved is only allowed on UpdateOne operations")
+		return v, errors.New("OldDateChecked is only allowed on UpdateOne operations")
 	}
 	if _, exists := m.Id(); !exists || m.oldValue == nil {
-		return v, errors.New("OldDateObserved requires an Id field in the mutation")
+		return v, errors.New("OldDateChecked requires an Id field in the mutation")
 	}
 	oldValue, err := m.oldValue(ctx)
 	if err != nil {
-		return v, fmt.Errorf("querying old value for OldDateObserved: %w", err)
+		return v, fmt.Errorf("querying old value for OldDateChecked: %w", err)
 	}
-	return oldValue.DateObserved, nil
+	return oldValue.DateChecked, nil
 }
 
 // OldDateUpdated returns the old "date_updated" field's value of the ReferrersSnapshot entity.
@@ -2385,8 +2385,8 @@ func (m *ReferrersSnapshotMutation) OldField(ctx context.Context, name string) (
 		return m.OldSupported(ctx)
 	case referrerssnapshot.FieldDescriptors:
 		return m.OldDescriptors(ctx)
-	case referrerssnapshot.FieldDateObserved:
-		return m.OldDateObserved(ctx)
+	case referrerssnapshot.FieldDateChecked:
+		return m.OldDateChecked(ctx)
 	case referrerssnapshot.FieldDateUpdated:
 		return m.OldDateUpdated(ctx)
 	case referrerssnapshot.FieldDateCreated:
@@ -2787,6 +2787,23 @@ func (m *TagMutation) OldDatePulled(ctx context.Context) (v *time.Time, err erro
 	return oldValue.DatePulled, nil
 }
 
+// OldDateChecked returns the old "date_checked" field's value of the Tag entity.
+// If the Tag object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TagMutation) OldDateChecked(ctx context.Context) (v *time.Time, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldDateChecked is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldDateChecked requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDateChecked: %w", err)
+	}
+	return oldValue.DateChecked, nil
+}
+
 // OldDateUpdated returns the old "date_updated" field's value of the Tag entity.
 // If the Tag object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
@@ -2836,6 +2853,8 @@ func (m *TagMutation) OldField(ctx context.Context, name string) (ent.Value, err
 		return m.OldDateMoved(ctx)
 	case tag.FieldDatePulled:
 		return m.OldDatePulled(ctx)
+	case tag.FieldDateChecked:
+		return m.OldDateChecked(ctx)
 	case tag.FieldDateUpdated:
 		return m.OldDateUpdated(ctx)
 	case tag.FieldDateCreated:

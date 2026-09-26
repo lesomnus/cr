@@ -29,6 +29,7 @@ func Run(t *testing.T, open Open) {
 	t.Run("referrers", func(t *testing.T) { testReferrers(t, open(t, 0)) })
 	t.Run("snapshots", func(t *testing.T) { testSnapshots(t, open(t, 0)) })
 	t.Run("tags", func(t *testing.T) { testTags(t, open(t, 0)) })
+	t.Run("tag check", func(t *testing.T) { testTagCheck(t, open(t, 0)) })
 	t.Run("tx rolls back", func(t *testing.T) { testRollback(t, open(t, 0)) })
 	t.Run("tx busy", func(t *testing.T) { testBusy(t, open(t, 100*time.Millisecond)) })
 	t.Run("lock", func(t *testing.T) { testLock(t, open(t, 100*time.Millisecond)) })
@@ -190,14 +191,14 @@ func testSnapshots(t *testing.T, ix index.Index) {
 		Size:         42,
 		Annotations:  map[string]string{"k": "v"},
 	}
-	require.NoError(t, ss.Put(ctx, "r", index.Snapshot{Subject: d("a"), Supported: true, Descriptors: []index.Descriptor{sig}, ObservedAt: at}))
-	require.NoError(t, ss.Put(ctx, "r", index.Snapshot{Subject: d("b"), ObservedAt: at}))
+	require.NoError(t, ss.Put(ctx, "r", index.Snapshot{Subject: d("a"), Supported: true, Descriptors: []index.Descriptor{sig}, CheckedAt: at}))
+	require.NoError(t, ss.Put(ctx, "r", index.Snapshot{Subject: d("b"), CheckedAt: at}))
 
 	v, err := ss.Get(ctx, "r", d("a"))
 	require.NoError(t, err)
 	require.True(t, v.Supported)
 	require.Equal(t, []index.Descriptor{sig}, v.Descriptors)
-	require.True(t, v.ObservedAt.Equal(at))
+	require.True(t, v.CheckedAt.Equal(at))
 	require.True(t, v.Lists(d("sig")))
 
 	v, err = ss.Get(ctx, "r", d("b"))
@@ -206,12 +207,12 @@ func testSnapshots(t *testing.T, ix index.Index) {
 	require.Empty(t, v.Descriptors)
 
 	// A second answer replaces the first.
-	require.NoError(t, ss.Put(ctx, "r", index.Snapshot{Subject: d("a"), Supported: true, ObservedAt: at.Add(time.Minute)}))
+	require.NoError(t, ss.Put(ctx, "r", index.Snapshot{Subject: d("a"), Supported: true, CheckedAt: at.Add(time.Minute)}))
 	v, err = ss.Get(ctx, "r", d("a"))
 	require.NoError(t, err)
 	require.Empty(t, v.Descriptors)
 	require.False(t, v.Lists(d("sig")))
-	require.True(t, v.ObservedAt.Equal(at.Add(time.Minute)))
+	require.True(t, v.CheckedAt.Equal(at.Add(time.Minute)))
 
 	vs, err := ss.List(ctx, "r", index.Page{})
 	require.NoError(t, err)
@@ -290,6 +291,45 @@ func testTags(t *testing.T, ix index.Index) {
 	require.Equal(t, "stable", newest.Name)
 	_, err = g.Newest(ctx, "none")
 	require.ErrorIs(t, err, index.ErrNotFound)
+}
+
+func testTagCheck(t *testing.T, ix index.Index) {
+	ctx := context.Background()
+	g := ix.Tag()
+	at := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
+
+	// Checking a tag that is not there is nothing.
+	require.NoError(t, g.Check(ctx, "r", "latest", d("a"), at))
+
+	require.NoError(t, g.Set(ctx, "r", "latest", d("a"), ""))
+	v, err := g.Get(ctx, "r", "latest")
+	require.NoError(t, err)
+	require.True(t, v.CheckedAt.IsZero(), "a tag set is not a tag checked")
+
+	require.NoError(t, g.Check(ctx, "r", "latest", d("a"), at))
+	v, err = g.Get(ctx, "r", "latest")
+	require.NoError(t, err)
+	require.True(t, v.CheckedAt.Equal(at))
+
+	// Only forward: a replica that checked earlier and wrote later does not
+	// take the time back.
+	require.NoError(t, g.Check(ctx, "r", "latest", d("a"), at.Add(-time.Minute)))
+	v, err = g.Get(ctx, "r", "latest")
+	require.NoError(t, err)
+	require.True(t, v.CheckedAt.Equal(at))
+
+	// A check of where the tag used to point does not vouch for where it
+	// points now.
+	require.NoError(t, g.Set(ctx, "r", "latest", d("b"), d("a")))
+	require.NoError(t, g.Check(ctx, "r", "latest", d("a"), at.Add(time.Minute)))
+	v, err = g.Get(ctx, "r", "latest")
+	require.NoError(t, err)
+	require.True(t, v.CheckedAt.Equal(at))
+
+	require.NoError(t, g.Check(ctx, "r", "latest", d("b"), at.Add(time.Minute)))
+	v, err = g.Get(ctx, "r", "latest")
+	require.NoError(t, err)
+	require.True(t, v.CheckedAt.Equal(at.Add(time.Minute)))
 }
 
 func testRollback(t *testing.T, ix index.Index) {

@@ -49,23 +49,23 @@ func (_u *ReferrersSnapshotUpdate) SetDescriptors(v []byte) *ReferrersSnapshotUp
 	return _u
 }
 
-// SetDateObserved sets the "date_observed" field.
-func (_u *ReferrersSnapshotUpdate) SetDateObserved(v time.Time) *ReferrersSnapshotUpdate {
-	_u.mutation.SetDateObserved(v)
+// SetDateChecked sets the "date_checked" field.
+func (_u *ReferrersSnapshotUpdate) SetDateChecked(v time.Time) *ReferrersSnapshotUpdate {
+	_u.mutation.SetDateChecked(v)
 	return _u
 }
 
-// SetNillableDateObserved sets the "date_observed" field if the given value is not nil.
-func (_u *ReferrersSnapshotUpdate) SetNillableDateObserved(v *time.Time) *ReferrersSnapshotUpdate {
+// SetNillableDateChecked sets the "date_checked" field if the given value is not nil.
+func (_u *ReferrersSnapshotUpdate) SetNillableDateChecked(v *time.Time) *ReferrersSnapshotUpdate {
 	if v != nil {
-		_u.SetDateObserved(*v)
+		_u.SetDateChecked(*v)
 	}
 	return _u
 }
 
-// ClearDateObserved clears the value of the "date_observed" field.
-func (_u *ReferrersSnapshotUpdate) ClearDateObserved() *ReferrersSnapshotUpdate {
-	_u.mutation.ClearDateObserved()
+// ClearDateChecked clears the value of the "date_checked" field.
+func (_u *ReferrersSnapshotUpdate) ClearDateChecked() *ReferrersSnapshotUpdate {
+	_u.mutation.ClearDateChecked()
 	return _u
 }
 
@@ -136,11 +136,11 @@ func (_u *ReferrersSnapshotUpdate) sqlSave(ctx context.Context) (_node int, err 
 	if value, ok := _u.mutation.Descriptors(); ok {
 		_spec.SetField(referrerssnapshot.FieldDescriptors, field.TypeBytes, value)
 	}
-	if value, ok := _u.mutation.DateObserved(); ok {
-		_spec.SetField(referrerssnapshot.FieldDateObserved, field.TypeTime, value)
+	if value, ok := _u.mutation.DateChecked(); ok {
+		_spec.SetField(referrerssnapshot.FieldDateChecked, field.TypeTime, value)
 	}
-	if _u.mutation.DateObservedCleared() {
-		_spec.ClearField(referrerssnapshot.FieldDateObserved, field.TypeTime)
+	if _u.mutation.DateCheckedCleared() {
+		_spec.ClearField(referrerssnapshot.FieldDateChecked, field.TypeTime)
 	}
 	if value, ok := _u.mutation.DateUpdated(); ok {
 		_spec.SetField(referrerssnapshot.FieldDateUpdated, field.TypeTime, value)
@@ -190,23 +190,23 @@ func (_u *ReferrersSnapshotUpdateOne) SetDescriptors(v []byte) *ReferrersSnapsho
 	return _u
 }
 
-// SetDateObserved sets the "date_observed" field.
-func (_u *ReferrersSnapshotUpdateOne) SetDateObserved(v time.Time) *ReferrersSnapshotUpdateOne {
-	_u.mutation.SetDateObserved(v)
+// SetDateChecked sets the "date_checked" field.
+func (_u *ReferrersSnapshotUpdateOne) SetDateChecked(v time.Time) *ReferrersSnapshotUpdateOne {
+	_u.mutation.SetDateChecked(v)
 	return _u
 }
 
-// SetNillableDateObserved sets the "date_observed" field if the given value is not nil.
-func (_u *ReferrersSnapshotUpdateOne) SetNillableDateObserved(v *time.Time) *ReferrersSnapshotUpdateOne {
+// SetNillableDateChecked sets the "date_checked" field if the given value is not nil.
+func (_u *ReferrersSnapshotUpdateOne) SetNillableDateChecked(v *time.Time) *ReferrersSnapshotUpdateOne {
 	if v != nil {
-		_u.SetDateObserved(*v)
+		_u.SetDateChecked(*v)
 	}
 	return _u
 }
 
-// ClearDateObserved clears the value of the "date_observed" field.
-func (_u *ReferrersSnapshotUpdateOne) ClearDateObserved() *ReferrersSnapshotUpdateOne {
-	_u.mutation.ClearDateObserved()
+// ClearDateChecked clears the value of the "date_checked" field.
+func (_u *ReferrersSnapshotUpdateOne) ClearDateChecked() *ReferrersSnapshotUpdateOne {
+	_u.mutation.ClearDateChecked()
 	return _u
 }
 
@@ -307,11 +307,11 @@ func (_u *ReferrersSnapshotUpdateOne) sqlSave(ctx context.Context) (_node *Refer
 	if value, ok := _u.mutation.Descriptors(); ok {
 		_spec.SetField(referrerssnapshot.FieldDescriptors, field.TypeBytes, value)
 	}
-	if value, ok := _u.mutation.DateObserved(); ok {
-		_spec.SetField(referrerssnapshot.FieldDateObserved, field.TypeTime, value)
+	if value, ok := _u.mutation.DateChecked(); ok {
+		_spec.SetField(referrerssnapshot.FieldDateChecked, field.TypeTime, value)
 	}
-	if _u.mutation.DateObservedCleared() {
-		_spec.ClearField(referrerssnapshot.FieldDateObserved, field.TypeTime)
+	if _u.mutation.DateCheckedCleared() {
+		_spec.ClearField(referrerssnapshot.FieldDateChecked, field.TypeTime)
 	}
 	if value, ok := _u.mutation.DateUpdated(); ok {
 		_spec.SetField(referrerssnapshot.FieldDateUpdated, field.TypeTime, value)

@@ -15,7 +15,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file app/tag.proto.
  */
 export const file_app_tag: GenFile = /*@__PURE__*/
-  fileDesc("Cg1hcHAvdGFnLnByb3RvEgNhcHAi8AQKA1RhZxIXCgJpZBgBIAEoDEIL6oIWBxBAKAGCAQASFAoEbmFtZRgFIAEoCUIG6oIWAkABEhQKBHJlcG8YCCABKAlCBuqCFgJAARIOCgZkaWdlc3QYCSABKAkSNwoKZGF0ZV9tb3ZlZBgKIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXBCB+qCFgOCAQASNwoLZGF0ZV9wdWxsZWQYCyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wQgbqghYCOAESOQoMZGF0ZV91cGRhdGVkGA0gASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcEIH6oIWA4oBABI7CgxkYXRlX2NyZWF0ZWQYDyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wQgnqghYFQAGCAQA6qQLK/BXdARIREAGCAQIIAZIBAggBmgECCAEaIBIEcGFnZRoQCgxkYXRlX2NyZWF0ZWQQDxoGCgJpZBABGh8SB2J5X25hbWUaCAoEcmVwbxAIGggKBG5hbWUQBTABGisSCWJ5X2RpZ2VzdBoICgRyZXBvEAgaCgoGZGlnZXN0EAkaCAoEbmFtZRAFGjISDHBhZ2VfaW5fcmVwbxoICgRyZXBvEAgaEAoMZGF0ZV9jcmVhdGVkEA8aBgoCaWQQARokEghieV9tb3ZlZBoICgRyZXBvEAgaDgoKZGF0ZV9tb3ZlZBAKirsWQwgLMjcKEAoOCgxkYXRlX2NyZWF0ZWQKBgoECgJpZBoFCgNyZWYaBgoEcmVwbxoICgZkaWdlc3QgFChkOgBCAgoAKgBCIVoaZ2l0aHViLmNvbS9sZXNvbW51cy9jci9hcGmSAwIIAmIIZWRpdGlvbnNw6Ac", [file_google_protobuf_timestamp, file_orm, file_payday]);
+  fileDesc("Cg1hcHAvdGFnLnByb3RvEgNhcHAiqgUKA1RhZxIXCgJpZBgBIAEoDEIL6oIWBxBAKAGCAQASFAoEbmFtZRgFIAEoCUIG6oIWAkABEhQKBHJlcG8YCCABKAlCBuqCFgJAARIOCgZkaWdlc3QYCSABKAkSNwoKZGF0ZV9tb3ZlZBgKIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXBCB+qCFgOCAQASNwoLZGF0ZV9wdWxsZWQYCyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wQgbqghYCOAESOAoMZGF0ZV9jaGVja2VkGAwgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcEIG6oIWAjgBEjkKDGRhdGVfdXBkYXRlZBgNIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXBCB+qCFgOKAQASOwoMZGF0ZV9jcmVhdGVkGA8gASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcEIJ6oIWBUABggEAOqkCyvwV3QESERABggECCAGSAQIIAZoBAggBGiASBHBhZ2UaEAoMZGF0ZV9jcmVhdGVkEA8aBgoCaWQQARofEgdieV9uYW1lGggKBHJlcG8QCBoICgRuYW1lEAUwARorEglieV9kaWdlc3QaCAoEcmVwbxAIGgoKBmRpZ2VzdBAJGggKBG5hbWUQBRoyEgxwYWdlX2luX3JlcG8aCAoEcmVwbxAIGhAKDGRhdGVfY3JlYXRlZBAPGgYKAmlkEAEaJBIIYnlfbW92ZWQaCAoEcmVwbxAIGg4KCmRhdGVfbW92ZWQQCoq7FkMICzI3ChAKDgoMZGF0ZV9jcmVhdGVkCgYKBAoCaWQaBQoDcmVmGgYKBHJlcG8aCAoGZGlnZXN0IBQoZDoAQgIKACoAQiFaGmdpdGh1Yi5jb20vbGVzb21udXMvY3IvYXBpkgMCCAJiCGVkaXRpb25zcOgH", [file_google_protobuf_timestamp, file_orm, file_payday]);
 
 /**
  * Tag is a name in a repository pointing at a manifest digest.
@@ -59,6 +59,16 @@ export type Tag = Message<"app.Tag"> & {
    * @generated from field: google.protobuf.Timestamp date_pulled = 11;
    */
   datePulled?: Timestamp | undefined;
+
+  /**
+   * When the upstream of a pull-through cache last confirmed where the tag
+   * points, which is what decides whether it is asked again; empty for a
+   * tag that was pushed. Kept here rather than in a process so that every
+   * replica shares one answer to "is it due".
+   *
+   * @generated from field: google.protobuf.Timestamp date_checked = 12;
+   */
+  dateChecked?: Timestamp | undefined;
 
   /**
    * @generated from field: google.protobuf.Timestamp date_updated = 13;

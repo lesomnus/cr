@@ -18,6 +18,9 @@ func (e *Tag) Proto() *api.Tag {
 	if e.DatePulled != nil {
 		x.SetDatePulled(timestamppb.New(*e.DatePulled))
 	}
+	if e.DateChecked != nil {
+		x.SetDateChecked(timestamppb.New(*e.DateChecked))
+	}
 	x.SetDateUpdated(timestamppb.New(e.DateUpdated))
 	x.SetDateCreated(timestamppb.New(e.DateCreated))
 	return x

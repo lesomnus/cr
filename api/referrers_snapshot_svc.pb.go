@@ -395,19 +395,19 @@ func (b0 ReferrersSnapshotRefByBySubject_builder) Build() *ReferrersSnapshotRefB
 }
 
 type ReferrersSnapshotSelect struct {
-	state                   protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_All          bool                   `protobuf:"varint,1,opt,name=all"`
-	xxx_hidden_Repo         bool                   `protobuf:"varint,8,opt,name=repo"`
-	xxx_hidden_Subject      bool                   `protobuf:"varint,9,opt,name=subject"`
-	xxx_hidden_Supported    bool                   `protobuf:"varint,10,opt,name=supported"`
-	xxx_hidden_Descriptors  bool                   `protobuf:"varint,11,opt,name=descriptors"`
-	xxx_hidden_DateObserved bool                   `protobuf:"varint,12,opt,name=date_observed,json=dateObserved"`
-	xxx_hidden_DateUpdated  bool                   `protobuf:"varint,13,opt,name=date_updated,json=dateUpdated"`
-	xxx_hidden_DateCreated  bool                   `protobuf:"varint,15,opt,name=date_created,json=dateCreated"`
-	XXX_raceDetectHookData  protoimpl.RaceDetectHookData
-	XXX_presence            [1]uint32
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
+	state                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_All         bool                   `protobuf:"varint,1,opt,name=all"`
+	xxx_hidden_Repo        bool                   `protobuf:"varint,8,opt,name=repo"`
+	xxx_hidden_Subject     bool                   `protobuf:"varint,9,opt,name=subject"`
+	xxx_hidden_Supported   bool                   `protobuf:"varint,10,opt,name=supported"`
+	xxx_hidden_Descriptors bool                   `protobuf:"varint,11,opt,name=descriptors"`
+	xxx_hidden_DateChecked bool                   `protobuf:"varint,12,opt,name=date_checked,json=dateChecked"`
+	xxx_hidden_DateUpdated bool                   `protobuf:"varint,13,opt,name=date_updated,json=dateUpdated"`
+	xxx_hidden_DateCreated bool                   `protobuf:"varint,15,opt,name=date_created,json=dateCreated"`
+	XXX_raceDetectHookData protoimpl.RaceDetectHookData
+	XXX_presence           [1]uint32
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *ReferrersSnapshotSelect) Reset() {
@@ -470,9 +470,9 @@ func (x *ReferrersSnapshotSelect) GetDescriptors() bool {
 	return false
 }
 
-func (x *ReferrersSnapshotSelect) GetDateObserved() bool {
+func (x *ReferrersSnapshotSelect) GetDateChecked() bool {
 	if x != nil {
-		return x.xxx_hidden_DateObserved
+		return x.xxx_hidden_DateChecked
 	}
 	return false
 }
@@ -516,8 +516,8 @@ func (x *ReferrersSnapshotSelect) SetDescriptors(v bool) {
 	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 8)
 }
 
-func (x *ReferrersSnapshotSelect) SetDateObserved(v bool) {
-	x.xxx_hidden_DateObserved = v
+func (x *ReferrersSnapshotSelect) SetDateChecked(v bool) {
+	x.xxx_hidden_DateChecked = v
 	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 5, 8)
 }
 
@@ -566,7 +566,7 @@ func (x *ReferrersSnapshotSelect) HasDescriptors() bool {
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 4)
 }
 
-func (x *ReferrersSnapshotSelect) HasDateObserved() bool {
+func (x *ReferrersSnapshotSelect) HasDateChecked() bool {
 	if x == nil {
 		return false
 	}
@@ -612,9 +612,9 @@ func (x *ReferrersSnapshotSelect) ClearDescriptors() {
 	x.xxx_hidden_Descriptors = false
 }
 
-func (x *ReferrersSnapshotSelect) ClearDateObserved() {
+func (x *ReferrersSnapshotSelect) ClearDateChecked() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 5)
-	x.xxx_hidden_DateObserved = false
+	x.xxx_hidden_DateChecked = false
 }
 
 func (x *ReferrersSnapshotSelect) ClearDateUpdated() {
@@ -630,14 +630,14 @@ func (x *ReferrersSnapshotSelect) ClearDateCreated() {
 type ReferrersSnapshotSelect_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	All          *bool
-	Repo         *bool
-	Subject      *bool
-	Supported    *bool
-	Descriptors  *bool
-	DateObserved *bool
-	DateUpdated  *bool
-	DateCreated  *bool
+	All         *bool
+	Repo        *bool
+	Subject     *bool
+	Supported   *bool
+	Descriptors *bool
+	DateChecked *bool
+	DateUpdated *bool
+	DateCreated *bool
 }
 
 func (b0 ReferrersSnapshotSelect_builder) Build() *ReferrersSnapshotSelect {
@@ -664,9 +664,9 @@ func (b0 ReferrersSnapshotSelect_builder) Build() *ReferrersSnapshotSelect {
 		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 8)
 		x.xxx_hidden_Descriptors = *b.Descriptors
 	}
-	if b.DateObserved != nil {
+	if b.DateChecked != nil {
 		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 5, 8)
-		x.xxx_hidden_DateObserved = *b.DateObserved
+		x.xxx_hidden_DateChecked = *b.DateChecked
 	}
 	if b.DateUpdated != nil {
 		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 6, 8)
@@ -1006,15 +1006,15 @@ const file_app_referrers_snapshot_svc_g_proto_rawDesc = "" +
 	"\x03key\"O\n" +
 	"\x1fReferrersSnapshotRefByBySubject\x12\x12\n" +
 	"\x04repo\x18\b \x01(\tR\x04repo\x12\x18\n" +
-	"\asubject\x18\t \x01(\tR\asubject\"\x84\x02\n" +
+	"\asubject\x18\t \x01(\tR\asubject\"\x82\x02\n" +
 	"\x17ReferrersSnapshotSelect\x12\x10\n" +
 	"\x03all\x18\x01 \x01(\bR\x03all\x12\x12\n" +
 	"\x04repo\x18\b \x01(\bR\x04repo\x12\x18\n" +
 	"\asubject\x18\t \x01(\bR\asubject\x12\x1c\n" +
 	"\tsupported\x18\n" +
 	" \x01(\bR\tsupported\x12 \n" +
-	"\vdescriptors\x18\v \x01(\bR\vdescriptors\x12#\n" +
-	"\rdate_observed\x18\f \x01(\bR\fdateObserved\x12!\n" +
+	"\vdescriptors\x18\v \x01(\bR\vdescriptors\x12!\n" +
+	"\fdate_checked\x18\f \x01(\bR\vdateChecked\x12!\n" +
 	"\fdate_updated\x18\r \x01(\bR\vdateUpdated\x12!\n" +
 	"\fdate_created\x18\x0f \x01(\bR\vdateCreated\"\x8e\x01\n" +
 	"\x1cReferrersSnapshotListRequest\x126\n" +

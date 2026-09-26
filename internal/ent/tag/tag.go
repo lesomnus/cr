@@ -21,6 +21,8 @@ const (
 	FieldDateMoved = "date_moved"
 	// FieldDatePulled holds the string denoting the date_pulled field in the database.
 	FieldDatePulled = "date_pulled"
+	// FieldDateChecked holds the string denoting the date_checked field in the database.
+	FieldDateChecked = "date_checked"
 	// FieldDateUpdated holds the string denoting the date_updated field in the database.
 	FieldDateUpdated = "date_updated"
 	// FieldDateCreated holds the string denoting the date_created field in the database.
@@ -37,6 +39,7 @@ var Columns = []string{
 	FieldDigest,
 	FieldDateMoved,
 	FieldDatePulled,
+	FieldDateChecked,
 	FieldDateUpdated,
 	FieldDateCreated,
 }
@@ -82,6 +85,11 @@ func ByDateMoved(opts ...sql.OrderTermOption) OrderOption {
 // ByDatePulled orders the results by the date_pulled field.
 func ByDatePulled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDatePulled, opts...).ToFunc()
+}
+
+// ByDateChecked orders the results by the date_checked field.
+func ByDateChecked(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDateChecked, opts...).ToFunc()
 }
 
 // ByDateUpdated orders the results by the date_updated field.

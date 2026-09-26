@@ -83,6 +83,26 @@ func (_u *TagUpdate) ClearDatePulled() *TagUpdate {
 	return _u
 }
 
+// SetDateChecked sets the "date_checked" field.
+func (_u *TagUpdate) SetDateChecked(v time.Time) *TagUpdate {
+	_u.mutation.SetDateChecked(v)
+	return _u
+}
+
+// SetNillableDateChecked sets the "date_checked" field if the given value is not nil.
+func (_u *TagUpdate) SetNillableDateChecked(v *time.Time) *TagUpdate {
+	if v != nil {
+		_u.SetDateChecked(*v)
+	}
+	return _u
+}
+
+// ClearDateChecked clears the value of the "date_checked" field.
+func (_u *TagUpdate) ClearDateChecked() *TagUpdate {
+	_u.mutation.ClearDateChecked()
+	return _u
+}
+
 // SetDateUpdated sets the "date_updated" field.
 func (_u *TagUpdate) SetDateUpdated(v time.Time) *TagUpdate {
 	_u.mutation.SetDateUpdated(v)
@@ -158,6 +178,12 @@ func (_u *TagUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.DatePulledCleared() {
 		_spec.ClearField(tag.FieldDatePulled, field.TypeTime)
+	}
+	if value, ok := _u.mutation.DateChecked(); ok {
+		_spec.SetField(tag.FieldDateChecked, field.TypeTime, value)
+	}
+	if _u.mutation.DateCheckedCleared() {
+		_spec.ClearField(tag.FieldDateChecked, field.TypeTime)
 	}
 	if value, ok := _u.mutation.DateUpdated(); ok {
 		_spec.SetField(tag.FieldDateUpdated, field.TypeTime, value)
@@ -238,6 +264,26 @@ func (_u *TagUpdateOne) SetNillableDatePulled(v *time.Time) *TagUpdateOne {
 // ClearDatePulled clears the value of the "date_pulled" field.
 func (_u *TagUpdateOne) ClearDatePulled() *TagUpdateOne {
 	_u.mutation.ClearDatePulled()
+	return _u
+}
+
+// SetDateChecked sets the "date_checked" field.
+func (_u *TagUpdateOne) SetDateChecked(v time.Time) *TagUpdateOne {
+	_u.mutation.SetDateChecked(v)
+	return _u
+}
+
+// SetNillableDateChecked sets the "date_checked" field if the given value is not nil.
+func (_u *TagUpdateOne) SetNillableDateChecked(v *time.Time) *TagUpdateOne {
+	if v != nil {
+		_u.SetDateChecked(*v)
+	}
+	return _u
+}
+
+// ClearDateChecked clears the value of the "date_checked" field.
+func (_u *TagUpdateOne) ClearDateChecked() *TagUpdateOne {
+	_u.mutation.ClearDateChecked()
 	return _u
 }
 
@@ -346,6 +392,12 @@ func (_u *TagUpdateOne) sqlSave(ctx context.Context) (_node *Tag, err error) {
 	}
 	if _u.mutation.DatePulledCleared() {
 		_spec.ClearField(tag.FieldDatePulled, field.TypeTime)
+	}
+	if value, ok := _u.mutation.DateChecked(); ok {
+		_spec.SetField(tag.FieldDateChecked, field.TypeTime, value)
+	}
+	if _u.mutation.DateCheckedCleared() {
+		_spec.ClearField(tag.FieldDateChecked, field.TypeTime)
 	}
 	if value, ok := _u.mutation.DateUpdated(); ok {
 		_spec.SetField(tag.FieldDateUpdated, field.TypeTime, value)

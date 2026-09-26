@@ -120,6 +120,9 @@ func TagSelectedFields(m *api.TagSelect) []string {
 	if m.GetDatePulled() {
 		vs = append(vs, tag.FieldDatePulled)
 	}
+	if m.GetDateChecked() {
+		vs = append(vs, tag.FieldDateChecked)
+	}
 	if m.GetDateUpdated() {
 		vs = append(vs, tag.FieldDateUpdated)
 	}

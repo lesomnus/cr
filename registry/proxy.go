@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/lesomnus/flob"
@@ -40,6 +39,12 @@ type Proxy struct {
 	// TagTTL is how long a tag is answered from the cache before the upstream
 	// is asked again; zero is five minutes. A digest is never asked again.
 	TagTTL time.Duration
+
+	// TagMaxStale is how long after the upstream last confirmed a tag it may
+	// still be answered while the upstream is failing; past it the request
+	// fails. Zero is no bound: a cache exists so that pulls go on while the
+	// upstream is down, and a stale tag is an older image, not a claim.
+	TagMaxStale time.Duration
 
 	// ReferrersTTL is how long a referrers list is answered from what the
 	// upstream last said before it is asked again, which is also how long a
@@ -86,17 +91,14 @@ func (p *Proxy) referrersMaxStale() time.Duration {
 	return p.ReferrersMaxStale
 }
 
-// proxies is the proxies, longest prefix first, and when each tag and each
-// referrers list was last checked against its upstream.
+// proxies is the proxies, longest prefix first.
 //
-// That is kept in memory on purpose, while what the upstream answered is in
-// the index: a restart, or another replica, checks everything again once
-// before it answers from the cache, and still has the answer to fall back on.
+// When a tag or a referrers list was last checked against its upstream is in
+// the index beside what the upstream answered, and not here: every replica
+// shares one answer to "is it due", so the upstream is asked once per TTL
+// however many there are, and a replica that starts is not cold.
 type proxies struct {
 	list []*Proxy
-
-	mu      sync.Mutex
-	checked map[string]time.Time
 }
 
 func (ps *proxies) of(repo string) *Proxy {
@@ -108,32 +110,16 @@ func (ps *proxies) of(repo string) *Proxy {
 	return nil
 }
 
-// tagKey and referrersKey are what [proxies.fresh] and [proxies.mark] keep a
-// tag and a referrers list under; a tag has no `@`.
-func tagKey(repo, tag string) string { return repo + ":" + tag }
-
-func referrersKey(repo string, subject digest.Digest) string {
-	return repo + "@" + subject.String()
+// fresh reports whether something the upstream confirmed at checked is
+// still to be answered without asking it again.
+func fresh(checked time.Time, ttl time.Duration, now time.Time) bool {
+	return !checked.IsZero() && now.Sub(checked) < ttl
 }
 
-func (ps *proxies) fresh(key string, ttl time.Duration, now time.Time) bool {
-	ps.mu.Lock()
-	defer ps.mu.Unlock()
-	at, ok := ps.checked[key]
-	return ok && now.Sub(at) < ttl
-}
-
-func (ps *proxies) mark(key string, now time.Time) {
-	ps.mu.Lock()
-	defer ps.mu.Unlock()
-	if ps.checked == nil {
-		ps.checked = map[string]time.Time{}
-	}
-	// A bound, not an eviction policy: past it every tag is checked again.
-	if len(ps.checked) > 100_000 {
-		clear(ps.checked)
-	}
-	ps.checked[key] = now
+// servable reports whether something the upstream confirmed at checked may be
+// answered while the upstream is failing; a zero bound is none.
+func servable(checked time.Time, bound time.Duration, now time.Time) bool {
+	return bound <= 0 || (!checked.IsZero() && now.Sub(checked) <= bound)
 }
 
 // pullThrough makes sure the manifest ref names in a proxied repository is in
@@ -181,8 +167,20 @@ func (g *Registry) pullThroughOutcome(ctx context.Context, p *Proxy, name string
 	if err != nil && !errors.Is(err, index.ErrNotFound) {
 		return "error", err
 	}
-	if cached && g.proxies.fresh(tagKey(name, ref.Tag), p.ttl(), now) {
+	if cached && fresh(cur.CheckedAt, p.ttl(), now) {
 		return "hit", nil
+	}
+	// The upstream failing is the client's problem only when the cache has
+	// nothing to answer with, or nothing the upstream confirmed recently
+	// enough.
+	stale := func(what string, err error) (string, error) {
+		if !cached || !servable(cur.CheckedAt, p.TagMaxStale, now) {
+			return failedOutcome(err), err
+		}
+		log.From(ctx).WarnContext(ctx, "pull-through: "+what+", serving the cached tag",
+			slog.String("repo", name), slog.String("tag", ref.Tag),
+			slog.Time("checked", cur.CheckedAt), slog.String("err", err.Error()))
+		return "stale", nil
 	}
 
 	d, err := p.Upstream.HeadManifest(ctx, remote, ref.Tag)
@@ -192,28 +190,22 @@ func (g *Registry) pullThroughOutcome(ctx context.Context, p *Proxy, name string
 		// otherwise; a client asking is told what upstream says.
 		return "unknown", oci.ErrManifestUnknown(ref.Tag)
 	case err != nil:
-		if cached {
-			log.From(ctx).WarnContext(ctx, "pull-through: upstream unavailable, serving the cached tag",
-				slog.String("repo", name), slog.String("tag", ref.Tag), slog.String("err", err.Error()))
-			return "stale", nil
-		}
-		return "error", err
+		return stale("upstream unavailable", err)
 	}
 	if cached && d != "" && d == cur.Digest {
 		if _, err := ix.Manifest().Get(ctx, name, d); err == nil {
-			g.proxies.mark(tagKey(name, ref.Tag), now)
+			// The tag is right whether or not this is written; a check
+			// that is not recorded is only a check made again.
+			if err := ix.Tag().Check(ctx, name, ref.Tag, d, now); err != nil {
+				log.From(ctx).WarnContext(ctx, "pull-through: recording a check",
+					slog.String("repo", name), slog.String("tag", ref.Tag), slog.String("err", err.Error()))
+			}
 			return "revalidated", nil
 		}
 	}
 	if err := g.fetch(ctx, p, name, remote, ref.Tag, ref.Tag); err != nil {
-		if cached {
-			log.From(ctx).WarnContext(ctx, "pull-through: fetch failed, serving the cached tag",
-				slog.String("repo", name), slog.String("tag", ref.Tag), slog.String("err", err.Error()))
-			return "stale", nil
-		}
-		return failedOutcome(err), err
+		return stale("fetch failed", err)
 	}
-	g.proxies.mark(tagKey(name, ref.Tag), now)
 	if cached {
 		return "refreshed", nil
 	}
@@ -256,18 +248,17 @@ func (g *Registry) referrersThrough(ctx context.Context, p *Proxy, name string, 
 func (g *Registry) referrersOutcome(ctx context.Context, p *Proxy, name string, subject digest.Digest) (index.Snapshot, bool, string, error) {
 	ix := g.c.Index
 	now := g.c.Now()
-	key := referrersKey(name, subject)
 
 	cur, err := ix.Snapshot().Get(ctx, name, subject)
 	have := err == nil
 	if err != nil && !errors.Is(err, index.ErrNotFound) {
 		return index.Snapshot{}, false, "error", err
 	}
-	if have && g.proxies.fresh(key, p.referrersTTL(), now) {
+	if have && fresh(cur.CheckedAt, p.referrersTTL(), now) {
 		return cur, false, "hit", nil
 	}
 
-	next := index.Snapshot{Subject: subject, Supported: true, ObservedAt: now}
+	next := index.Snapshot{Subject: subject, Supported: true, CheckedAt: now}
 	ds, err := p.Upstream.Referrers(ctx, p.Name(name), subject, g.c.MaxManifestSize)
 	switch {
 	case errors.Is(err, flob.ErrNotExist):
@@ -275,10 +266,10 @@ func (g *Registry) referrersOutcome(ctx context.Context, p *Proxy, name string, 
 		// told so and falls back to the tag schema, which a cache serves.
 		next.Supported = false
 	case err != nil:
-		if have && now.Sub(cur.ObservedAt) <= p.referrersMaxStale() {
+		if have && servable(cur.CheckedAt, p.referrersMaxStale(), now) {
 			log.From(ctx).WarnContext(ctx, "pull-through: upstream unavailable, serving the referrers it last listed",
 				slog.String("repo", name), slog.String("subject", subject.String()),
-				slog.Time("observed", cur.ObservedAt), slog.String("err", err.Error()))
+				slog.Time("checked", cur.CheckedAt), slog.String("err", err.Error()))
 			return cur, true, "stale", nil
 		}
 		return index.Snapshot{}, false, "error", err
@@ -304,7 +295,6 @@ func (g *Registry) referrersOutcome(ctx context.Context, p *Proxy, name string, 
 	if err != nil {
 		return index.Snapshot{}, false, "error", err
 	}
-	g.proxies.mark(key, now)
 	switch {
 	case !have:
 		return next, false, "miss", nil
@@ -323,7 +313,7 @@ func sameAnswer(a, b index.Snapshot) bool {
 }
 
 // fetch copies one manifest from upstream into the cache, and points tag at
-// it when tag is not empty. What the manifest holds is recorded without being
+// it when tag is not empty, recording that the upstream was just asked. What the manifest holds is recorded without being
 // fetched: the blobs come when a client asks for them.
 func (g *Registry) fetch(ctx context.Context, p *Proxy, name, remote, reference, tag string) error {
 	ctx = index.Waiting(ctx, "cache fetch")
@@ -371,10 +361,13 @@ func (g *Registry) fetch(ctx context.Context, p *Proxy, name, remote, reference,
 		} else if !errors.Is(err, index.ErrNotFound) {
 			return err
 		}
-		if from == d {
-			return nil
+		if from != d {
+			if err := ix.Tag().Set(ctx, name, tag, d, from); err != nil {
+				return err
+			}
 		}
-		return ix.Tag().Set(ctx, name, tag, d, from)
+		// Fetched by the tag, so the upstream has just said where it points.
+		return ix.Tag().Check(ctx, name, tag, d, rec.CreatedAt)
 	})
 	if err != nil {
 		return err

@@ -413,6 +413,9 @@ func toTag(v *ent.Tag) index.Tag {
 	if v.DatePulled != nil {
 		t.PulledAt = *v.DatePulled
 	}
+	if v.DateChecked != nil {
+		t.CheckedAt = *v.DateChecked
+	}
 	return t
 }
 
@@ -483,6 +486,19 @@ func (r tags) Erase(ctx context.Context, repo, name string) error {
 	return nil
 }
 
+func (r tags) Check(ctx context.Context, repo, name string, d digest.Digest, at time.Time) error {
+	at = at.UTC()
+	return r.ix.client.Tag.Update().
+		Where(
+			tag.Repo(repo),
+			tag.Name(name),
+			tag.Digest(d.String()),
+			tag.Or(tag.DateCheckedIsNil(), tag.DateCheckedLT(at)),
+		).
+		SetDateChecked(at).
+		Exec(ctx)
+}
+
 func (r tags) List(ctx context.Context, repo string, p index.Page) ([]string, error) {
 	q := r.ix.client.Tag.Query().Where(tag.Repo(repo), tag.NameGT(p.Last)).Order(tag.ByName())
 	if p.N > 0 {
@@ -527,7 +543,7 @@ func (r tags) Newest(ctx context.Context, repo string) (index.Tag, error) {
 }
 
 func toSnapshot(v *ent.ReferrersSnapshot) (index.Snapshot, error) {
-	s := index.Snapshot{Subject: digest.Digest(v.Subject), Supported: v.Supported, ObservedAt: v.DateObserved}
+	s := index.Snapshot{Subject: digest.Digest(v.Subject), Supported: v.Supported, CheckedAt: v.DateChecked}
 	if len(v.Descriptors) > 0 {
 		if err := json.Unmarshal(v.Descriptors, &s.Descriptors); err != nil {
 			return index.Snapshot{}, fmt.Errorf("referrers snapshot of %s: %w", v.Subject, err)
@@ -549,14 +565,14 @@ func (r snapshots) Put(ctx context.Context, repo string, s index.Snapshot) error
 		return err
 	}
 	now := r.ix.now()
-	observed := s.ObservedAt.UTC()
+	checked := s.CheckedAt.UTC()
 
 	update := func() (int, error) {
 		return c.ReferrersSnapshot.Update().
 			Where(referrerssnapshot.Repo(repo), referrerssnapshot.Subject(s.Subject.String())).
 			SetSupported(s.Supported).
 			SetDescriptors(b).
-			SetDateObserved(observed).
+			SetDateChecked(checked).
 			SetDateUpdated(now).
 			Save(ctx)
 	}
@@ -570,7 +586,7 @@ func (r snapshots) Put(ctx context.Context, repo string, s index.Snapshot) error
 		SetSubject(s.Subject.String()).
 		SetSupported(s.Supported).
 		SetDescriptors(b).
-		SetDateObserved(observed).
+		SetDateChecked(checked).
 		SetDateCreated(now).
 		SetDateUpdated(now).
 		Save(ctx)

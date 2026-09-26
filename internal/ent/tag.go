@@ -28,6 +28,8 @@ type Tag struct {
 	DateMoved time.Time `json:"date_moved,omitempty"`
 	// DatePulled holds the value of the "date_pulled" field.
 	DatePulled *time.Time `json:"date_pulled,omitempty"`
+	// DateChecked holds the value of the "date_checked" field.
+	DateChecked *time.Time `json:"date_checked,omitempty"`
 	// DateUpdated holds the value of the "date_updated" field.
 	DateUpdated time.Time `json:"date_updated,omitempty"`
 	// DateCreated holds the value of the "date_created" field.
@@ -42,7 +44,7 @@ func (*Tag) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case tag.FieldName, tag.FieldRepo, tag.FieldDigest:
 			values[i] = new(sql.NullString)
-		case tag.FieldDateMoved, tag.FieldDatePulled, tag.FieldDateUpdated, tag.FieldDateCreated:
+		case tag.FieldDateMoved, tag.FieldDatePulled, tag.FieldDateChecked, tag.FieldDateUpdated, tag.FieldDateCreated:
 			values[i] = new(sql.NullTime)
 		case tag.FieldId:
 			values[i] = new(uuid.UUID)
@@ -97,6 +99,13 @@ func (_m *Tag) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.DatePulled = new(time.Time)
 				*_m.DatePulled = value.Time
+			}
+		case tag.FieldDateChecked:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field date_checked", values[i])
+			} else if value.Valid {
+				_m.DateChecked = new(time.Time)
+				*_m.DateChecked = value.Time
 			}
 		case tag.FieldDateUpdated:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -160,6 +169,11 @@ func (_m *Tag) String() string {
 	builder.WriteString(", ")
 	if v := _m.DatePulled; v != nil {
 		builder.WriteString("date_pulled=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.DateChecked; v != nil {
+		builder.WriteString("date_checked=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteString(", ")

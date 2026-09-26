@@ -26,7 +26,7 @@ func (ReferrersSnapshot) Fields() []ent.Field {
 			Immutable(),
 		field.Bool("supported"),
 		field.Bytes("descriptors"),
-		field.Time("date_observed").
+		field.Time("date_checked").
 			Optional(),
 		field.Time("date_updated"),
 		field.Time("date_created").

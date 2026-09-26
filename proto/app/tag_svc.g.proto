@@ -48,6 +48,7 @@ message TagSelect {
   bool digest = 9;
   bool date_moved = 10;
   bool date_pulled = 11;
+  bool date_checked = 12;
   bool date_updated = 13;
   bool date_created = 15;
 }

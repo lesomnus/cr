@@ -19,8 +19,8 @@ const (
 	FieldSupported = "supported"
 	// FieldDescriptors holds the string denoting the descriptors field in the database.
 	FieldDescriptors = "descriptors"
-	// FieldDateObserved holds the string denoting the date_observed field in the database.
-	FieldDateObserved = "date_observed"
+	// FieldDateChecked holds the string denoting the date_checked field in the database.
+	FieldDateChecked = "date_checked"
 	// FieldDateUpdated holds the string denoting the date_updated field in the database.
 	FieldDateUpdated = "date_updated"
 	// FieldDateCreated holds the string denoting the date_created field in the database.
@@ -36,7 +36,7 @@ var Columns = []string{
 	FieldSubject,
 	FieldSupported,
 	FieldDescriptors,
-	FieldDateObserved,
+	FieldDateChecked,
 	FieldDateUpdated,
 	FieldDateCreated,
 }
@@ -74,9 +74,9 @@ func BySupported(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSupported, opts...).ToFunc()
 }
 
-// ByDateObserved orders the results by the date_observed field.
-func ByDateObserved(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldDateObserved, opts...).ToFunc()
+// ByDateChecked orders the results by the date_checked field.
+func ByDateChecked(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDateChecked, opts...).ToFunc()
 }
 
 // ByDateUpdated orders the results by the date_updated field.

@@ -402,6 +402,7 @@ type TagSelect struct {
 	xxx_hidden_Digest      bool                   `protobuf:"varint,9,opt,name=digest"`
 	xxx_hidden_DateMoved   bool                   `protobuf:"varint,10,opt,name=date_moved,json=dateMoved"`
 	xxx_hidden_DatePulled  bool                   `protobuf:"varint,11,opt,name=date_pulled,json=datePulled"`
+	xxx_hidden_DateChecked bool                   `protobuf:"varint,12,opt,name=date_checked,json=dateChecked"`
 	xxx_hidden_DateUpdated bool                   `protobuf:"varint,13,opt,name=date_updated,json=dateUpdated"`
 	xxx_hidden_DateCreated bool                   `protobuf:"varint,15,opt,name=date_created,json=dateCreated"`
 	XXX_raceDetectHookData protoimpl.RaceDetectHookData
@@ -477,6 +478,13 @@ func (x *TagSelect) GetDatePulled() bool {
 	return false
 }
 
+func (x *TagSelect) GetDateChecked() bool {
+	if x != nil {
+		return x.xxx_hidden_DateChecked
+	}
+	return false
+}
+
 func (x *TagSelect) GetDateUpdated() bool {
 	if x != nil {
 		return x.xxx_hidden_DateUpdated
@@ -493,42 +501,47 @@ func (x *TagSelect) GetDateCreated() bool {
 
 func (x *TagSelect) SetAll(v bool) {
 	x.xxx_hidden_All = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 8)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 9)
 }
 
 func (x *TagSelect) SetName(v bool) {
 	x.xxx_hidden_Name = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 8)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 9)
 }
 
 func (x *TagSelect) SetRepo(v bool) {
 	x.xxx_hidden_Repo = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 8)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 9)
 }
 
 func (x *TagSelect) SetDigest(v bool) {
 	x.xxx_hidden_Digest = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 8)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 9)
 }
 
 func (x *TagSelect) SetDateMoved(v bool) {
 	x.xxx_hidden_DateMoved = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 8)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 9)
 }
 
 func (x *TagSelect) SetDatePulled(v bool) {
 	x.xxx_hidden_DatePulled = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 5, 8)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 5, 9)
+}
+
+func (x *TagSelect) SetDateChecked(v bool) {
+	x.xxx_hidden_DateChecked = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 6, 9)
 }
 
 func (x *TagSelect) SetDateUpdated(v bool) {
 	x.xxx_hidden_DateUpdated = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 6, 8)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 7, 9)
 }
 
 func (x *TagSelect) SetDateCreated(v bool) {
 	x.xxx_hidden_DateCreated = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 7, 8)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 8, 9)
 }
 
 func (x *TagSelect) HasAll() bool {
@@ -573,18 +586,25 @@ func (x *TagSelect) HasDatePulled() bool {
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 5)
 }
 
-func (x *TagSelect) HasDateUpdated() bool {
+func (x *TagSelect) HasDateChecked() bool {
 	if x == nil {
 		return false
 	}
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 6)
 }
 
-func (x *TagSelect) HasDateCreated() bool {
+func (x *TagSelect) HasDateUpdated() bool {
 	if x == nil {
 		return false
 	}
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 7)
+}
+
+func (x *TagSelect) HasDateCreated() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 8)
 }
 
 func (x *TagSelect) ClearAll() {
@@ -617,13 +637,18 @@ func (x *TagSelect) ClearDatePulled() {
 	x.xxx_hidden_DatePulled = false
 }
 
-func (x *TagSelect) ClearDateUpdated() {
+func (x *TagSelect) ClearDateChecked() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 6)
+	x.xxx_hidden_DateChecked = false
+}
+
+func (x *TagSelect) ClearDateUpdated() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 7)
 	x.xxx_hidden_DateUpdated = false
 }
 
 func (x *TagSelect) ClearDateCreated() {
-	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 7)
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 8)
 	x.xxx_hidden_DateCreated = false
 }
 
@@ -636,6 +661,7 @@ type TagSelect_builder struct {
 	Digest      *bool
 	DateMoved   *bool
 	DatePulled  *bool
+	DateChecked *bool
 	DateUpdated *bool
 	DateCreated *bool
 }
@@ -645,35 +671,39 @@ func (b0 TagSelect_builder) Build() *TagSelect {
 	b, x := &b0, m0
 	_, _ = b, x
 	if b.All != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 8)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 9)
 		x.xxx_hidden_All = *b.All
 	}
 	if b.Name != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 8)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 9)
 		x.xxx_hidden_Name = *b.Name
 	}
 	if b.Repo != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 8)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 9)
 		x.xxx_hidden_Repo = *b.Repo
 	}
 	if b.Digest != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 8)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 9)
 		x.xxx_hidden_Digest = *b.Digest
 	}
 	if b.DateMoved != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 8)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 9)
 		x.xxx_hidden_DateMoved = *b.DateMoved
 	}
 	if b.DatePulled != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 5, 8)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 5, 9)
 		x.xxx_hidden_DatePulled = *b.DatePulled
 	}
+	if b.DateChecked != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 6, 9)
+		x.xxx_hidden_DateChecked = *b.DateChecked
+	}
 	if b.DateUpdated != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 6, 8)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 7, 9)
 		x.xxx_hidden_DateUpdated = *b.DateUpdated
 	}
 	if b.DateCreated != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 7, 8)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 8, 9)
 		x.xxx_hidden_DateCreated = *b.DateCreated
 	}
 	return m0
@@ -1284,7 +1314,7 @@ const file_app_tag_svc_g_proto_rawDesc = "" +
 	"\x03key\"8\n" +
 	"\x0eTagRefByByName\x12\x12\n" +
 	"\x04repo\x18\b \x01(\tR\x04repo\x12\x12\n" +
-	"\x04name\x18\x05 \x01(\tR\x04name\"\xe3\x01\n" +
+	"\x04name\x18\x05 \x01(\tR\x04name\"\x86\x02\n" +
 	"\tTagSelect\x12\x10\n" +
 	"\x03all\x18\x01 \x01(\bR\x03all\x12\x12\n" +
 	"\x04name\x18\x05 \x01(\bR\x04name\x12\x12\n" +
@@ -1295,6 +1325,7 @@ const file_app_tag_svc_g_proto_rawDesc = "" +
 	" \x01(\bR\tdateMoved\x12\x1f\n" +
 	"\vdate_pulled\x18\v \x01(\bR\n" +
 	"datePulled\x12!\n" +
+	"\fdate_checked\x18\f \x01(\bR\vdateChecked\x12!\n" +
 	"\fdate_updated\x18\r \x01(\bR\vdateUpdated\x12!\n" +
 	"\fdate_created\x18\x0f \x01(\bR\vdateCreated\"r\n" +
 	"\x0eTagListRequest\x12(\n" +

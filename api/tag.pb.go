@@ -32,6 +32,7 @@ type Tag struct {
 	xxx_hidden_Digest      string                 `protobuf:"bytes,9,opt,name=digest"`
 	xxx_hidden_DateMoved   *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=date_moved,json=dateMoved"`
 	xxx_hidden_DatePulled  *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=date_pulled,json=datePulled"`
+	xxx_hidden_DateChecked *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=date_checked,json=dateChecked"`
 	xxx_hidden_DateUpdated *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=date_updated,json=dateUpdated"`
 	xxx_hidden_DateCreated *timestamppb.Timestamp `protobuf:"bytes,15,opt,name=date_created,json=dateCreated"`
 	unknownFields          protoimpl.UnknownFields
@@ -105,6 +106,13 @@ func (x *Tag) GetDatePulled() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *Tag) GetDateChecked() *timestamppb.Timestamp {
+	if x != nil {
+		return x.xxx_hidden_DateChecked
+	}
+	return nil
+}
+
 func (x *Tag) GetDateUpdated() *timestamppb.Timestamp {
 	if x != nil {
 		return x.xxx_hidden_DateUpdated
@@ -146,6 +154,10 @@ func (x *Tag) SetDatePulled(v *timestamppb.Timestamp) {
 	x.xxx_hidden_DatePulled = v
 }
 
+func (x *Tag) SetDateChecked(v *timestamppb.Timestamp) {
+	x.xxx_hidden_DateChecked = v
+}
+
 func (x *Tag) SetDateUpdated(v *timestamppb.Timestamp) {
 	x.xxx_hidden_DateUpdated = v
 }
@@ -166,6 +178,13 @@ func (x *Tag) HasDatePulled() bool {
 		return false
 	}
 	return x.xxx_hidden_DatePulled != nil
+}
+
+func (x *Tag) HasDateChecked() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_DateChecked != nil
 }
 
 func (x *Tag) HasDateUpdated() bool {
@@ -190,6 +209,10 @@ func (x *Tag) ClearDatePulled() {
 	x.xxx_hidden_DatePulled = nil
 }
 
+func (x *Tag) ClearDateChecked() {
+	x.xxx_hidden_DateChecked = nil
+}
+
 func (x *Tag) ClearDateUpdated() {
 	x.xxx_hidden_DateUpdated = nil
 }
@@ -210,7 +233,12 @@ type Tag_builder struct {
 	// by. Not the version: that moves on any write, a pull included.
 	DateMoved *timestamppb.Timestamp
 	// Written in batches, after the fact; see `index.Pulled`.
-	DatePulled  *timestamppb.Timestamp
+	DatePulled *timestamppb.Timestamp
+	// When the upstream of a pull-through cache last confirmed where the tag
+	// points, which is what decides whether it is asked again; empty for a
+	// tag that was pushed. Kept here rather than in a process so that every
+	// replica shares one answer to "is it due".
+	DateChecked *timestamppb.Timestamp
 	DateUpdated *timestamppb.Timestamp
 	DateCreated *timestamppb.Timestamp
 }
@@ -225,6 +253,7 @@ func (b0 Tag_builder) Build() *Tag {
 	x.xxx_hidden_Digest = b.Digest
 	x.xxx_hidden_DateMoved = b.DateMoved
 	x.xxx_hidden_DatePulled = b.DatePulled
+	x.xxx_hidden_DateChecked = b.DateChecked
 	x.xxx_hidden_DateUpdated = b.DateUpdated
 	x.xxx_hidden_DateCreated = b.DateCreated
 	return m0
@@ -234,7 +263,7 @@ var File_app_tag_proto protoreflect.FileDescriptor
 
 const file_app_tag_proto_rawDesc = "" +
 	"\n" +
-	"\rapp/tag.proto\x12\x03app\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\torm.proto\x1a\fpayday.proto\"\xb9\x05\n" +
+	"\rapp/tag.proto\x12\x03app\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\torm.proto\x1a\fpayday.proto\"\x80\x06\n" +
 	"\x03Tag\x12\x1b\n" +
 	"\x02id\x18\x01 \x01(\fB\v\xea\x82\x16\a\x10@(\x01\x82\x01\x00R\x02id\x12\x1a\n" +
 	"\x04name\x18\x05 \x01(\tB\x06\xea\x82\x16\x02@\x01R\x04name\x12\x1a\n" +
@@ -244,7 +273,8 @@ const file_app_tag_proto_rawDesc = "" +
 	"date_moved\x18\n" +
 	" \x01(\v2\x1a.google.protobuf.TimestampB\a\xea\x82\x16\x03\x82\x01\x00R\tdateMoved\x12C\n" +
 	"\vdate_pulled\x18\v \x01(\v2\x1a.google.protobuf.TimestampB\x06\xea\x82\x16\x028\x01R\n" +
-	"datePulled\x12F\n" +
+	"datePulled\x12E\n" +
+	"\fdate_checked\x18\f \x01(\v2\x1a.google.protobuf.TimestampB\x06\xea\x82\x16\x028\x01R\vdateChecked\x12F\n" +
 	"\fdate_updated\x18\r \x01(\v2\x1a.google.protobuf.TimestampB\a\xea\x82\x16\x03\x8a\x01\x00R\vdateUpdated\x12H\n" +
 	"\fdate_created\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampB\t\xea\x82\x16\x05@\x01\x82\x01\x00R\vdateCreated:\xa9\x02\xca\xfc\x15\xdd\x01\x12\x11\x10\x01\x82\x01\x02\b\x01\x92\x01\x02\b\x01\x9a\x01\x02\b\x01\x1a \x12\x04page\x1a\x10\n" +
 	"\fdate_created\x10\x0f\x1a\x06\n" +
@@ -281,13 +311,14 @@ var file_app_tag_proto_goTypes = []any{
 var file_app_tag_proto_depIdxs = []int32{
 	1, // 0: app.Tag.date_moved:type_name -> google.protobuf.Timestamp
 	1, // 1: app.Tag.date_pulled:type_name -> google.protobuf.Timestamp
-	1, // 2: app.Tag.date_updated:type_name -> google.protobuf.Timestamp
-	1, // 3: app.Tag.date_created:type_name -> google.protobuf.Timestamp
-	4, // [4:4] is the sub-list for method output_type
-	4, // [4:4] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	1, // 2: app.Tag.date_checked:type_name -> google.protobuf.Timestamp
+	1, // 3: app.Tag.date_updated:type_name -> google.protobuf.Timestamp
+	1, // 4: app.Tag.date_created:type_name -> google.protobuf.Timestamp
+	5, // [5:5] is the sub-list for method output_type
+	5, // [5:5] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_app_tag_proto_init() }
