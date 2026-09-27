@@ -115,15 +115,22 @@ answered `307` with a URL signed for `public_endpoint`, so the bytes go from the
 bucket to the client, which has to be able to reach that endpoint. `HEAD` and
 manifests are always answered by cr.
 
-Every blob is written **whole** to a file in `spool_dir` before it goes to the
-bucket, because the upload is signed with its hash. That is every push, and
-every blob a pull-through cache fills. The directory therefore holds the
-largest blob times however many are being added at once. Put it on a disk: if
-it is a tmpfs -- `/tmp` in many images, or a Kubernetes `emptyDir` with
-`medium: Memory` -- those files are memory charged to cr, and a few concurrent
-cold pulls of large layers can take a container past its limit while cr's own
-memory looks small. Empty is the system's temporary directory, `$TMPDIR` or
-`/tmp`.
+A blob a pull-through cache fills, whose digest and size the upstream gave,
+is streamed to the bucket as it is read, with its SHA-256 as
+`x-amz-checksum-sha256` so that the service refuses bytes that do not match.
+Some S3-compatible services ignore that header, so the first such upload
+checks: it writes a probe object under `<prefix>probe/` with a wrong checksum,
+which must be refused, and with the right one, and deletes it.
+
+Anything else is written **whole** to a file in `spool_dir` before it goes to
+the bucket, because the upload is signed with its hash: a push, and a fill
+before the probe has answered or on a service that ignores the header. The
+directory holds the largest such blob times however many are being added at
+once. Put it on a disk: if it is a tmpfs -- `/tmp` in many images, or a
+Kubernetes `emptyDir` with `medium: Memory` -- those files are memory charged
+to cr, and a few concurrent large uploads can take a container past its limit
+while cr's own memory looks small. Empty is the system's temporary directory,
+`$TMPDIR` or `/tmp`.
 
 On S3 a delete removes a repository's reference to a blob and leaves the one
 shared copy in the bucket, so neither deleting nor collecting garbage shrinks
@@ -335,9 +342,11 @@ The repositories under `prefix` are a cache of `upstream`, read on demand at
 every level. A tag's manifest is fetched when a client asks for the tag; for a
 multi-platform image that is the index alone, and one platform's manifest
 follows when the client asks for it, and only that platform's layers after it.
-A blob streams from the upstream while it fills the store, and clients asking
-for the same blob meanwhile wait for that one fill rather than asking the
-upstream again. The cache asks the upstream for every manifest type cr stores,
+A blob is fetched from the upstream once, and every client asking for it
+while it arrives -- the first and any that join -- reads the fill as it
+lands, from its first byte, rather than waiting for the whole blob or asking
+the upstream again. On `os` and `memory` storage that is; on `s3` a client
+that joins waits for the fill to finish. The cache asks the upstream for every manifest type cr stores,
 whatever the client accepts, so a tag is one manifest in the cache for every
 client.
 
