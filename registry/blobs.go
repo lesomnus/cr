@@ -196,7 +196,9 @@ func (g *Registry) putBlob(w http.ResponseWriter, r *http.Request, name, arg str
 		return
 	}
 
-	_, err = g.store(name).Add(ctx, flob.Meta{Digest: flob.Digest(d)}, r.Body)
+	// The request's length is the blob's: a store that can stream an upload
+	// needs to know it before the first byte. Unknown is -1, given as none.
+	_, err = g.store(name).Add(ctx, flob.Meta{Digest: flob.Digest(d), Size: max(r.ContentLength, 0)}, r.Body)
 	switch {
 	case err == nil:
 		g.upload(ctx, "completed")
@@ -292,7 +294,7 @@ func (g *Registry) mount(w http.ResponseWriter, r *http.Request, name string) {
 		}
 	}
 
-	rc, _, err := src.Open(ctx, flob.Digest(d))
+	rc, info, err := src.Open(ctx, flob.Digest(d))
 	if errors.Is(err, flob.ErrNotExist) {
 		g.beginUpload(w, r, name)
 		return
@@ -302,7 +304,7 @@ func (g *Registry) mount(w http.ResponseWriter, r *http.Request, name string) {
 		return
 	}
 	defer rc.Close()
-	if _, err := dst.Add(ctx, flob.Meta{Digest: flob.Digest(d)}, rc); err != nil && !errors.Is(err, flob.ErrAlreadyExists) {
+	if _, err := dst.Add(ctx, flob.Meta{Digest: flob.Digest(d), Size: sizeOf(ctx, info)}, rc); err != nil && !errors.Is(err, flob.ErrAlreadyExists) {
 		g.fail(w, r, err)
 		return
 	}
@@ -516,6 +518,16 @@ func (g *Registry) putUpload(w http.ResponseWriter, r *http.Request, name, id st
 // here, since a blob of that digest may also have been pushed on purpose.
 // Rare, and twice the I/O; a client that says `digest-algorithm` on the POST
 // never comes here.
+// sizeOf is info's size, or none when the store cannot say: a size given to
+// Add has to be the blob's, and none is always safe.
+func sizeOf(ctx context.Context, info flob.Info) int64 {
+	n, err := info.Size(ctx)
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
+}
+
 func (g *Registry) rehash(ctx context.Context, name string, stage flob.Stage, d digest.Digest) error {
 	meta, err := stage.Commit(ctx, flob.Meta{})
 	if err != nil {
@@ -527,7 +539,7 @@ func (g *Registry) rehash(ctx context.Context, name string, stage flob.Stage, d 
 		return err
 	}
 	defer rc.Close()
-	_, err = s.Add(ctx, flob.Meta{Digest: flob.Digest(d)}, rc)
+	_, err = s.Add(ctx, flob.Meta{Digest: flob.Digest(d), Size: meta.Size}, rc)
 	if errors.Is(err, flob.ErrAlreadyExists) {
 		return nil
 	}
