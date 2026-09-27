@@ -357,7 +357,11 @@ A tag is answered from the cache for `tag_ttl`, then checked with a `HEAD`
 upstream, which Docker Hub does not count against its pull limits, and fetched
 again only when it moved. When a tag was last checked is kept in the database
 beside the tag, so replicas share it: the upstream is asked once per
-`tag_ttl` however many there are, and a replica that starts is not cold. A
+`tag_ttl` however many there are, and a replica that starts is not cold.
+Requests for one manifest that arrive together -- a fleet of CI jobs starting
+on the same cold base image -- make one check or fetch between them in each
+replica, and the rest wait for it; Docker Hub counts every manifest `GET`. A
+request that gives up waiting leaves the fetch to finish for the cache. A
 digest is never checked again. When the upstream cannot be reached, a tag
 already cached is served as it is, and a tag never cached fails with `504`.
 `tag_max_stale` bounds the first: past it since the last check, the pull fails
@@ -479,7 +483,7 @@ What is measured:
 | `cr.registry.errors` | every error envelope the registry answered, by `cr.error.code` -- `MANIFEST_BLOB_UNKNOWN`, `DENIED`, `NAME_UNKNOWN` and the rest -- with the route and the status: what a `400` or a `404` was |
 | `cr.repository.lock.wait`, `cr.repository.lock.timeouts` | how long a write waited for its repository's lock, and how often it gave up after `lock_wait`, by `cr.lock.for`: `manifest push`, `manifest delete`, `blob delete`, `cache fetch`, `referrers fetch`, `release`, `collection`, `sweep`, `bookkeeping`. The one thing cr serializes, measured |
 | `cr.store.operation.duration` | each call to a blob store, by `cr.store.driver` (`os`, `s3`, `memory`), `cr.store.operation` (`add`, `stat`, `open`, `label`, `erase`) and `cr.store.outcome` (`ok`, `not_found`, `exists`, `error`). `add` includes reading what it stores, so an upload's `add` is as long as the upload; mounts, presigned URLs and the collection's walk reach the store beneath and are not measured |
-| `cr.cache.requests` | manifest requests to a pull-through cache, by `cr.cache.proxy` (the prefix, `*` for the empty one) and `cr.cache.outcome`: `hit` from the cache alone, `revalidated` after the upstream said the tag had not moved, `refreshed` after it had, `miss` for what was not cached, `stale` for a cached tag served because the upstream failed, `unknown` for what the upstream does not have, `error` for the rest. `hit` over everything is the hit ratio |
+| `cr.cache.requests` | manifest requests to a pull-through cache, by `cr.cache.proxy` (the prefix, `*` for the empty one) and `cr.cache.outcome`: `hit` from the cache alone, `revalidated` after the upstream said the tag had not moved, `refreshed` after it had, `miss` for what was not cached, `joined` for a request that waited on another's check or fetch of the same manifest, `stale` for a cached tag served because the upstream failed, `unknown` for what the upstream does not have, `error` for the rest. `hit` and `joined` over everything is the hit ratio, and `miss`, `refreshed` and `revalidated` are what reached the upstream |
 | `cr.cache.referrers` | referrers requests to a pull-through cache, by `cr.cache.proxy` and `cr.cache.outcome`: `hit`, `revalidated` when the upstream listed the same, `refreshed` when it did not, `miss` for a list never asked for, `stale` for one served because the upstream failed, `error` for the rest |
 | `cr.cache.upstream.duration`, `cr.cache.upstream.bytes` | every request a cache made to its upstream, by `cr.cache.upstream` (its host), `cr.cache.operation` (`manifest head`, `manifest get`, `blob head`, `blob get`, `referrers get`) and the status, a challenge answered on the way included; and the bytes it read, manifests and blobs apart |
 | `cr.gc.runs`, `cr.gc.run.duration` | every collection, by `cr.gc.kind` (`online`, `full`), `cr.gc.trigger` (`schedule`, `admin`, `cli`) and `cr.gc.state` (`done`, `failed`), and how long each took |

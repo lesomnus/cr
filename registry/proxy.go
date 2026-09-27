@@ -143,9 +143,44 @@ func (g *Registry) pullThrough(ctx context.Context, p *Proxy, name string, ref o
 // pullThroughOutcome is pullThrough, saying how the request was answered:
 // `hit` from the cache alone, `revalidated` after the upstream said the tag
 // had not moved, `refreshed` after it had, `miss` for what was not cached,
-// `stale` for a cached tag served because the upstream failed, `unknown` for
-// what the upstream does not have, and `error` for the rest.
+// `joined` for a request that waited on another's revalidation or fetch of
+// the same, `stale` for a cached tag served because the upstream failed,
+// `unknown` for what the upstream does not have, and `error` for the rest.
+//
+// Requests for the same manifest at the same time ask the upstream once
+// between them: the upstream counts every one, and a cold base image is
+// asked for by every job that starts at once.
 func (g *Registry) pullThroughOutcome(ctx context.Context, p *Proxy, name string, ref oci.Reference) (string, error) {
+	if g.cached(ctx, p, name, ref) {
+		return "hit", nil
+	}
+	outcome, err, joined := g.flights.join(ctx, name+"\x00"+ref.String(), func(ctx context.Context) (string, error) {
+		return g.fill(ctx, p, name, ref)
+	})
+	if joined && err == nil {
+		switch outcome {
+		case "miss", "refreshed", "revalidated":
+			outcome = "joined"
+		}
+	}
+	return outcome, err
+}
+
+// cached reports whether ref is in the cache and needs no word from the
+// upstream: a digest that is there, or a tag checked within its TTL.
+func (g *Registry) cached(ctx context.Context, p *Proxy, name string, ref oci.Reference) bool {
+	if ref.IsDigest() {
+		_, err := g.c.Index.Manifest().Get(ctx, name, ref.Digest)
+		return err == nil
+	}
+	cur, err := g.c.Index.Tag().Get(ctx, name, ref.Tag)
+	return err == nil && fresh(cur.CheckedAt, p.ttl(), g.c.Now())
+}
+
+// fill is pullThroughOutcome for what the cache cannot answer alone. It asks
+// again what the cache has, since a fill that ended a moment ago may have
+// answered it.
+func (g *Registry) fill(ctx context.Context, p *Proxy, name string, ref oci.Reference) (string, error) {
 	ix := g.c.Index
 	remote := p.Name(name)
 
