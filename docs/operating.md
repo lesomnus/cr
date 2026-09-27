@@ -370,7 +370,9 @@ is what a cache is for. An upstream that answers with an
 error, or refuses the cache's credential, is `502`: a failure behind the
 registry, and not a `401` that would send the client to authenticate again.
 
-A cache takes no pushes (`405 UNSUPPORTED`); deletes are allowed and evict. A
+A cache takes no pushes (`405 UNSUPPORTED`); deletes are allowed and evict --
+an index with the manifests it lists that nothing else holds or tags, and
+their layers, without waiting for `retention` ([registry-api.md](registry-api.md#deleting)). A
 tag list is what the cache holds, not what the upstream has. The collection
 keeps a cache to `retention` by two rules that do not look at each other: a tag goes when nobody pulled it by name within `retention` and it did
 not move, and a manifest goes when nothing holds or tags it and nobody pulled

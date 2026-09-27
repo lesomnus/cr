@@ -87,7 +87,13 @@ redirected to a bucket.
   a delete would be contradicted by the next `HEAD`.
   `registry.disable_well_known` stores them like any other blob.
 
-In a pull-through cache a delete evicts.
+In a pull-through cache a delete evicts, and an index is evicted with the
+manifests it lists that nothing else in the repository holds or tags --
+however recently they were pulled, since a client fetches an index's
+children by digest -- and with the blobs only those held. A manifest another
+index lists, or a tag points at, stays. Outside a cache nothing cascades: a
+child may be referenced by its own digest, and there nothing could fetch it
+back.
 
 ## Artifacts, signatures and SBOMs
 
