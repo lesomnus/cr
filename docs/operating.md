@@ -115,22 +115,25 @@ answered `307` with a URL signed for `public_endpoint`, so the bytes go from the
 bucket to the client, which has to be able to reach that endpoint. `HEAD` and
 manifests are always answered by cr.
 
-A blob a pull-through cache fills, whose digest and size the upstream gave,
-is streamed to the bucket as it is read, with its SHA-256 as
-`x-amz-checksum-sha256` so that the service refuses bytes that do not match.
-Some S3-compatible services ignore that header, so the first such upload
-checks: it writes a probe object under `<prefix>probe/` with a wrong checksum,
-which must be refused, and with the right one, and deletes it.
+A blob whose digest and size cr knows before it reads it is streamed to the
+bucket as it is read, with its SHA-256 as `x-amz-checksum-sha256` so that the
+service refuses bytes that do not match. That is every blob a pull-through
+cache fills, a monolithic upload that sends its `Content-Length`, a manifest,
+and a blob copied from another repository. Some S3-compatible services ignore
+that header, so the first such upload checks: it writes a probe object under
+`<prefix>probe/` with a wrong checksum, which must be refused, and with the
+right one, and deletes it.
 
 Anything else is written **whole** to a file in `spool_dir` before it goes to
-the bucket, because the upload is signed with its hash: a push, and a fill
-before the probe has answered or on a service that ignores the header. The
-directory holds the largest such blob times however many are being added at
-once. Put it on a disk: if it is a tmpfs -- `/tmp` in many images, or a
-Kubernetes `emptyDir` with `medium: Memory` -- those files are memory charged
-to cr, and a few concurrent large uploads can take a container past its limit
-while cr's own memory looks small. Empty is the system's temporary directory,
-`$TMPDIR` or `/tmp`.
+the bucket, because the upload is signed with its hash: an upload that sends
+no length, and any upload before the probe has answered or on a service that
+ignores the header. The directory holds the largest such blob times however
+many are being added at once. Put it on a disk: if it is a tmpfs -- `/tmp` in
+many images, or a Kubernetes `emptyDir` with `medium: Memory` -- those files
+are memory charged to cr, and a few concurrent large uploads can take a
+container past its limit while cr's own memory looks small. Empty is the
+system's temporary directory, `$TMPDIR` or `/tmp`. A chunked upload is
+neither: it goes to the bucket a part at a time, `part_size` in memory each.
 
 On S3 a delete removes a repository's reference to a blob and leaves the one
 shared copy in the bucket, so neither deleting nor collecting garbage shrinks

@@ -330,7 +330,7 @@ func (g *Registry) fetch(ctx context.Context, p *Proxy, name, remote, reference,
 	}
 
 	s := g.store(name)
-	if _, err := s.Add(ctx, flob.Meta{Digest: flob.Digest(d)}, bytes.NewReader(body)); err != nil && !errors.Is(err, flob.ErrAlreadyExists) {
+	if _, err := s.Add(ctx, flob.Meta{Digest: flob.Digest(d), Size: int64(len(body))}, bytes.NewReader(body)); err != nil && !errors.Is(err, flob.ErrAlreadyExists) {
 		return err
 	}
 	rec := index.Manifest{
