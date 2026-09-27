@@ -1,4 +1,4 @@
-# A workflow in the same repository that the binding in `oidc-e2e.yml` does not
+# A workflow in the same repository that the match in `oidc-e2e.yml` does not
 # name: the same steps, a real ID token for the same repository, and a push
 # that is refused.
 name: oidc-sibling

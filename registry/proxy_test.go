@@ -231,17 +231,13 @@ func TestProxyAnswersWhatItFetchedWhateverTheAccept(t *testing.T) {
 }
 
 func TestProxyUpstreamAuth(t *testing.T) {
-	st := auth.NewPolicyStore(time.Hour, auth.Static{Bindings: []auth.Binding{
-		{Subject: "ci", Repo: "*", Actions: []auth.Action{auth.ActionAll}},
-	}})
+	st := auth.NewPolicyStore(time.Hour, everything("ci"))
 	require.NoError(t, st.Refresh(context.Background()))
-	tokens, err := auth.NewTokens([]auth.StaticToken{{Name: "ci", Token: "ci-secret"}})
-	require.NoError(t, err)
 	k, err := auth.GenerateKey()
 	require.NoError(t, err)
 	issuer, err := auth.NewIssuer("upstream", "upstream", time.Minute, k)
 	require.NoError(t, err)
-	up := newUpstream(t, &auth.Guard{Authenticator: auth.Chain{tokens}, Policy: st, Issuer: issuer})
+	up := newUpstream(t, &auth.Guard{Authenticator: auth.Chain{people{"ci": {"sub": "ci"}}}, Policy: st, Issuer: issuer})
 
 	ci := basic("ci")
 	body, m := up.imageAs(ci, "private/app", "secret layer")
@@ -253,7 +249,7 @@ func TestProxyUpstreamAuth(t *testing.T) {
 	res := anonymous.do("GET", "/v2/docker.io/private/app/manifests/latest", nil)
 	require.Equal(t, http.StatusBadGateway, res.StatusCode)
 
-	c := newCache(t, up, "whoever", "ci-secret")
+	c := newCache(t, up, "ci", "ci-secret")
 	res = c.do("GET", "/v2/docker.io/private/app/manifests/latest", nil)
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	require.Equal(t, body, read(t, res))

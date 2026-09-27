@@ -1,175 +1,184 @@
 # Access
 
-Who may use the registry and what they may do: credentials and tokens,
-bindings, tag rules, OpenID Connect, roster, and the management API.
+Who may use the registry and what they may do: providers, permissions and
+matches, the globs they are written in, tokens, tag rules, and the management
+API.
 
 ## Turning the guard on
 
 With no `auth:` block the registry is open: every request may pull, push and
-delete, and the log says so at startup. Anything configured below turns the
-guard on, and `auth.enabled: true` turns it on when every binding is a row in
-the database.
+delete, and the log says so at startup. Any provider, permission, match or tag
+rule turns the guard on, and `auth.enabled: true` turns it on when every tag
+rule is a row in the database.
 
 ```yaml
 auth:
-  htpasswd:
-    path: /etc/cr/htpasswd      # htpasswd -B; read again when it changes
-    groups:
-      alice: [release]
-  static:                       # long-lived tokens, for CI without roster
-    - name: ci
-      token_sha256: 5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8
-      groups: [ci]
   token:
-    service: cr.example.com     # the tokens' audience; `cr` by default
-    issuer: cr.example.com      # their `iss`; `cr` by default
-    realm: https://cr.example.com/token
     keys: [/etc/cr/token.pem]   # P-256; the first signs, all verify
     ttl: 5m
-  bindings:
-    - subject: anonymous        # everyone
-      repo: "library/*"
+  exchange:
+    ttl: 1h
+
+  providers:
+    github:
+      kind: oidc
+      issuer: https://token.actions.githubusercontent.com
+      audience: cr.example.com
+
+  permissions:
+    library-read:
+      repos:
+        - "library/**"
+        - "!library/busybox"
       actions: [pull]
-    - group: ci
-      repo: "acme/*"
+    cr-release:
+      repos:
+        - "lesomnus/cr"
+        - "lesomnus/cr/**"
       actions: [pull, push, tag]
-    - subject: alice
-      repo: "*"
-      actions: ["*"]
+
+  matches:
+    public:
+      for: anyone
+      grant: [library-read]
+    cr-release:
+      for: github
+      grant: [cr-release]
+      when:
+        repository_id: "123456789"
+        workflow_ref: "lesomnus/cr/.github/workflows/release.yml@refs/heads/main"
+
   tag_rules:
     - name: releases
-      repo: "*"
+      repo: "**"
       tag: "v*"
       kind: immutable
 ```
 
-## Credentials and tokens
+Three things, each by name:
 
-`docker login` sends a username and a password, and the authenticators that
-are configured are asked in turn; the first that knows the credential decides.
+- **A provider** vouches for a caller: who they are, and what their credential
+  says about them.
+- **A permission** is actions on repositories.
+- **A match** grants permissions to the callers a provider vouches for, when
+  their credential says what `when` asks.
 
-| | the password | the subject, and its groups |
-| --- | --- | --- |
-| `htpasswd` | checked with bcrypt against the file | the username; `htpasswd.groups` |
-| `static` | one of the tokens, with any username | the token's `name`; its `groups` |
-| `oidc` | an ID token from a configured provider | the `sub` claim, or `subject_claim`; `groups_claim` |
-| `roster` | an `rt_` key, or the roster password of `tenant/holder` | the holder; its tenant and teams |
-| the exchange | a token `POST /token/exchange` issued | whoever it was exchanged for |
+What a caller may do is the union of what every match it is under grants.
+Matches only add; a caller under none may do nothing.
 
-A static token is written as `token`, or as `token_sha256`, its SHA-256 in hex,
-which is what a file that is not itself secret should carry.
+The configuration is checked when `cr serve` starts, and it does not start
+when something does not check: a provider of a kind there is not, two
+providers with one issuer, a match `for` a provider there is not or that grants
+a permission there is not, a match for a provider with no `when` or for
+`anyone` with one, an action there is not, a glob that does not parse, or a
+permission whose every pattern takes away.
 
-The registry answers `/v2/` with a challenge naming `/token`, even where
-anonymous pulls are allowed, since that answer is how a client learns where
-tokens come from and how `docker login` checks a password. Clients fetch a
-token from `/token` with their credentials, and every later request is checked
-offline against it; `/v2/` also takes Basic credentials directly. A token says
-what it grants and what was asked for and refused, so a request for an action
-the token was never asked for is answered `401` with `insufficient_scope` --
-the client fetches a token that asks -- and one that was refused is `403
-DENIED`. The public keys are at `/.well-known/jwks.json`.
+## Providers
 
-Without `token.keys` a key is made at startup. Tokens then die with the
-process and no second replica accepts them, so a real deployment names one:
-
-```sh
-openssl ecparam -name prime256v1 -genkey -noout -out token.pem
+```yaml
+providers:
+  github:
+    kind: oidc
+    issuer: https://token.actions.githubusercontent.com
+    audience: cr.example.com
+    subject_claim: sub          # the default
 ```
 
-## Bindings
+The name is what a match's `for` names it by, and what goes in front of every
+subject it vouches for in the logs: `github:repo:acme/app:ref:refs/heads/main`.
+It is lowercase letters, digits, `-` and `_`, and it is not `anyone`.
 
-A binding grants `actions` on the repositories `repo` matches to a `subject`
-or a `group` -- and, with `when`, only to a credential whose claims match.
+`oidc` is the kind there is. A caller gives an ID token the provider issued as
+the password, and cr checks it offline, against the keys the provider
+publishes: its signature, its `iss`, that its `aud` is `audience`, and that it
+has not expired. `audience` is required: without it, a token the provider
+issued for any other service would be good here. Every claim of the token is
+the caller's, for a match's `when`.
 
-- **Bindings add and never subtract.** There is no deny: a caller may do
-  whatever any binding matching it grants.
-- **`anonymous` is everyone**, with a credential or without, so logging in never
-  takes away what a public repository allows. A repository is public by a
-  binding to `anonymous`; there is no separate visibility setting. The group
-  `authenticated` is every caller whose credential checked.
-- **A glob's `*` matches any run of characters, slashes included**: `acme/*`
-  covers `acme/team/app`.
-- **The actions** are `pull`, `push`, `delete`, `tag` (create or move a tag; a
-  push without it is by digest only), `catalog`, `search`, `admin` (move a
-  protected tag, and the operator's endpoints), and `*` for all of them.
-  Distribution clients know nothing of `tag`, so a token request that asks for
-  `push` gets `tag` asked for too.
-- **`catalog`, `search` and registry-wide `admin` come only from a binding over
-  `*`.** `admin` over `acme/*` moves protected tags in `acme/*` and reaches
-  nothing registry-wide.
-- **A mount** needs `push` on the target and `pull` on the source, or it
-  becomes an ordinary upload.
+## Permissions
 
-## Tag rules
+```yaml
+permissions:
+  library-read:
+    repos:
+      - "library/**"
+      - "!library/busybox"
+    actions: [pull]
+```
 
-Tag rules are checked on a manifest push and delete before anything is
-written, whoever the caller is:
+`repos` are globs read in order, and the last that matches a repository
+decides, as in a `.gitignore`: one with `!` in front takes back what it
+matches, and one after that can give it again. A permission is read on its
+own, and what it gives is what it gives wherever it is granted; a `!` never
+takes away what another permission gives.
 
-| kind | refuses |
+**The actions** are `pull`, `push`, `delete`, `tag` (create or move a tag; a
+push without it is by digest only), `catalog`, `search`, `admin` (move a
+protected tag, and the operator's endpoints), and `*` for all of them.
+Distribution clients know nothing of `tag`, so a token request that asks for
+`push` gets `tag` asked for too.
+
+**`catalog`, `search` and registry-wide `admin` come only from a permission
+whose `repos` is `**` and nothing else.** `admin` over `acme/**` moves
+protected tags in `acme/**` and reaches nothing registry-wide.
+
+**A mount** needs `push` on the target and `pull` on the source, or it becomes
+an ordinary upload.
+
+## Matches
+
+```yaml
+matches:
+  public:
+    for: anyone
+    grant: [library-read]
+  cr-release:
+    for: github
+    grant: [cr-release]
+    when:
+      repository_id: "123456789"
+      workflow_ref: "lesomnus/cr/.github/workflows/release.yml@refs/heads/main"
+```
+
+- **`for`** is a provider, or `anyone`: every caller, with a credential or
+  without, so logging in never takes away what a public repository allows. A
+  repository is public by a match for `anyone`; there is no separate
+  visibility setting.
+- **`grant`** is the permissions granted, by name.
+- **`when`** is claims of the credential that must all hold, each value a
+  glob. A claim that is a list holds when any of its values does, and a number
+  or a boolean is matched as it is written. A match for a provider must have
+  one -- without it, every credential the provider issues to anybody is under
+  it -- and one for `anyone` cannot, since a caller with no credential has no
+  claims.
+
+## Globs
+
+Repositories, tags and the values of `when` are all globs, and a glob is the
+same everywhere:
+
+| | |
 | --- | --- |
-| `immutable` | moving or deleting a tag once it is set; pushing the same digest again is fine |
-| `protected` | moving or deleting, unless the caller has `admin` or is in `groups` |
-| `pattern` | creating or moving a tag that does not wholly match `pattern` (RE2) |
-| `retention` | nothing at push; garbage collection keeps the newest `keep` |
+| `*` | any run of characters within one `/`-separated segment, none included |
+| `**` | a segment of its own: any number of whole segments -- none in the middle or at the start, at least one at the end |
+| `\` | makes the character after it plain: `\*` is a star |
+| anything else | itself; a glob matches a name whole, and case matters |
 
-A delete by digest removes the tags pointing at the manifest, and is refused
-when any of them may not be deleted. A `pattern` that does not compile refuses
-every tag it covers. Retention deletes a tag only when every `retention` rule
-matching it agrees, and never an `immutable` one. Tags that clients use to
-store signatures are tags like any other; see
-[registry-api.md](registry-api.md#artifacts-signatures-and-sboms).
+| glob | matches | does not match |
+| --- | --- | --- |
+| `acme/*` | `acme/app` | `acme`, `acme/team/app` |
+| `acme/**` | `acme/app`, `acme/team/app` | `acme` |
+| `acme/**/app` | `acme/app`, `acme/x/y/app` | `acme/apps` |
+| `**` | every repository | |
+| `v*` | `v1`, `v1.2.3` | `1.2.3` |
+| `refs/heads/*` | `refs/heads/main` | `refs/heads/feature/x` |
 
-## Rows beside the configuration
-
-Bindings and tag rules can also be rows in the database, written through the
-management API. On the host, `cr` reaches that API in-process as the holder
-`management.as` names (`@operator/admin` by default, which `cr init` puts up):
-
-```sh
-cr binding add @operator/ci-push '{"group": "ci", "repo": "acme/*", "actions": ["pull", "push", "tag"]}'
-cr tag-rule add @operator/semver '{"repo": "acme/*", "tag": "*", "kind": "pattern", "pattern": "v\\d+\\.\\d+\\.\\d+|latest"}'
-cr binding ls -o table
-cr binding erase @operator/ci-push
-```
-
-The registry reads rows again every `auth.refresh` (five seconds). A decision
-never waits on the database: requests read a snapshot, and when a reload
-fails, the snapshot in force stays in force.
-
-The configuration and the rows are two sources of one policy, and a binding in
-either is in force. The configuration's are read once, when `cr serve` starts:
-they never become rows, `cr binding ls` does not show them, and removing one
-from the file takes effect when every replica has restarted without it. A row
-takes effect, or stops, within `auth.refresh`. A binding written in both places
-is in force until it is gone from both, and a token `/token` already issued
-keeps the access it was issued with until it expires, `auth.token.ttl` at the
-latest.
+A repository and what is under it is two globs: `acme/app` and `acme/app/**`.
 
 ## CI without secrets: OpenID Connect
 
-```yaml
-auth:
-  oidc:
-    - issuer: https://token.actions.githubusercontent.com
-      audience: cr.example.com
-      subject_claim: sub          # the default
-      groups_claim: ""            # a claim holding groups, when the provider has one
-      prefix: "github:"           # in front of every subject from this provider
-  exchange:
-    ttl: 1h
-  bindings:
-    - group: authenticated
-      repo: acme/app
-      actions: [pull, push, tag]
-      when:
-        repository: acme/app
-        workflow_ref: acme/app/.github/workflows/release.yml@refs/heads/main
-```
-
 A job asks its provider for an ID token for cr's audience and gives it as the
-password; cr checks it offline against the keys the provider publishes, and
-every claim of it is the subject's for a binding's `when`, whose values are
-globs. That is what lets one workflow, and no other, push a repository:
+password:
 
 ```yaml
 permissions:
@@ -189,80 +198,108 @@ login=$(curl -sS -X POST -H "Authorization: Bearer $token" https://cr.example.co
 echo "$login" | docker login cr.example.com -u oidc --password-stdin
 ```
 
-What comes back is a token cr signed that stands for the same subject with the
-same claims for `exchange.ttl`. It is a password and never an access token,
-and it cannot be exchanged again, or it would never expire. The exchange also
-takes the credential as Basic, or as an RFC 8693 `subject_token`.
+What comes back is a token cr signed that stands for the same caller, from the
+same provider with the same claims, for `exchange.ttl`. It is a password and
+never an access token, and it cannot be exchanged again, or it would never
+expire. The exchange also takes the credential as Basic, or as an RFC 8693
+`subject_token`.
 
-**What to pin.** A binding is only as narrow as its `when`:
+**What to pin.** cr checks that every claim in `when` holds, and nothing more:
+which claims to ask for is the configuration's to say. A match is only as
+narrow as its `when`:
 
+- **Identifiers as well as names.** A repository or an owner can be renamed
+  and the old name taken by somebody else; `repository_id` and
+  `repository_owner_id` cannot, so a `when` naming them stays with the
+  repository it was written for.
 - **The ref, not only the file.** `workflow_ref` is the workflow file at the
-  ref it ran from. With `release.yml@*`, anybody who can push a branch can edit
-  `release.yml` on that branch and push images with it; pin `@refs/heads/main`
-  or `@refs/tags/v*`, and protect those refs.
+  ref it ran from. With `release.yml@refs/**`, anybody who can push a branch
+  can edit `release.yml` on that branch and push images with it; pin
+  `@refs/heads/main` or `@refs/tags/v*`, and protect those refs.
 - **The caller, or the reusable workflow.** When a workflow calls a reusable
   one, `workflow_ref` names the caller and `job_workflow_ref` names the
   reusable workflow. To trust a shared build workflow wherever it is called
-  from, bind `job_workflow_ref`.
-- **Identifiers as well as names.** A repository or an owner can be renamed and
-  the old name taken by somebody else; `repository_id` and
-  `repository_owner_id` cannot, so a `when` naming them stays with the
-  repository it was written for.
-- **One binding per mapping.** `repo` and `when` are matched separately, and
-  nothing carries a claim's value into `repo`: `repo: acme/*` with
-  `repository: acme/*` lets the workflows of every `acme` repository push to
-  every `acme/*` repository here. A workflow that should reach only its own
-  repository needs a binding that names both.
+  from, match `job_workflow_ref`.
+- **An environment.** `environment: production` makes GitHub's approvals and
+  protection rules for that environment a condition too.
+- **One match per mapping.** A permission's `repos` and a match's `when` are
+  read separately, and nothing carries a claim's value into a repository: a
+  permission over `acme/**` granted `for` every `acme` repository lets the
+  workflows of each push to all of them. A workflow that should reach only its
+  own repository needs a permission and a match of its own.
 
-## roster
+## Tokens
+
+The registry answers `/v2/` with a challenge naming `/token`, even where
+anonymous pulls are allowed, since that answer is how a client learns where
+tokens come from and how `docker login` checks a password. Clients fetch a
+token from `/token` with their credentials, and every later request is checked
+offline against it; `/v2/` also takes Basic credentials directly. A token says
+what it grants and what was asked for and refused, so a request for an action
+the token was never asked for is answered `401` with `insufficient_scope` --
+the client fetches a token that asks -- and one that was refused is `403
+DENIED`. The public keys are at `/.well-known/jwks.json`.
 
 ```yaml
 auth:
-  roster:
-    url: https://roster.example.com   # roster's data plane over HTTP, its `server.http`
-    key: rk_...
-    remember: 1m
-management:
-  roster:
-    url: https://roster.example.com
-    key: rk_...
-    remember: 1m
+  token:
+    service: cr.example.com     # the tokens' audience; `cr` by default
+    issuer: cr.example.com      # their `iss`; `cr` by default
+    realm: https://cr.example.com/token
+    keys: [/etc/cr/token.pem]
+    ttl: 5m
 ```
 
-cr calls roster where roster's people and apps do, with a key made for cr as a
-service:
+Without `token.keys` a key is made at startup. Tokens then die with the
+process and no second replica accepts them, so a real deployment names one:
 
 ```sh
-roster key add --service cr --allow '/payday.TokenService/Introspect,/roster.VouchService/Verify,/roster.HolderService/Get,/roster.TenantService/Get,/roster.TeamMembershipService/List,/roster.TeamService/Get,/roster.SiteService/Get,/roster.SyncService/Watch'
+openssl ecparam -name prime256v1 -genkey -noout -out token.pem
 ```
 
-A robot is a roster holder with an `rt_` key, which is its password:
+A token cr issued keeps the access it was issued with until it expires, so a
+match removed from the configuration stops granting within `auth.token.ttl`
+of every replica having restarted without it, and an exchanged token stands
+for its caller for `exchange.ttl`.
+
+## Tag rules
+
+Tag rules are checked on a manifest push and delete before anything is
+written, whoever the caller is:
+
+| kind | refuses |
+| --- | --- |
+| `immutable` | moving or deleting a tag once it is set; pushing the same digest again is fine |
+| `protected` | moving or deleting, unless the caller has `admin` |
+| `pattern` | creating or moving a tag that does not wholly match `pattern` (RE2) |
+| `retention` | nothing at push; garbage collection keeps the newest `keep` |
+
+A delete by digest removes the tags pointing at the manifest, and is refused
+when any of them may not be deleted. A `pattern` that does not compile, and a
+`repo` or `tag` glob that does not parse, refuse every tag they cover, except
+in a `retention` rule, which then deletes nothing. Retention deletes a tag only
+when every `retention` rule matching it agrees, and never an `immutable` one.
+Tags that clients use to store signatures are tags like any other; see
+[registry-api.md](registry-api.md#artifacts-signatures-and-sboms).
+
+A `protected` rule's `groups` is from before there were providers: there are no
+groups to name, so the configuration refuses one, and a row's is not read.
+
+Tag rules can also be rows in the database, written through the management
+API. On the host, `cr` reaches that API in-process as the holder
+`management.as` names (`@operator/admin` by default, which `cr init` puts up):
 
 ```sh
-roster holder add @acme/ci
-RT=$(roster key add --tenant acme --holder ci --name docker --allow '/cr.Registry/*')
-echo "$RT" | docker login cr.example.com -u ci --password-stdin
+cr tag-rule add @operator/semver '{"repo": "acme/**", "tag": "*", "kind": "pattern", "pattern": "v\\d+\\.\\d+\\.\\d+|latest"}'
+cr tag-rule ls -o table
+cr tag-rule erase @operator/semver
 ```
 
-A key is used for what it was made for. The registry's actions go by method
-names a key can list -- `/cr.Registry/Pull`, `Push`, `Tag`, `Delete`,
-`Catalog`, `Search` and `Admin` -- and `/cr.Registry/*` is all of them. A key
-made with `--allow /cr.Registry/Pull` pulls whatever the bindings let its
-holder pull and pushes nothing, and a key that allows none of them is refused
-at login. The bindings still decide; a key only narrows, and the narrowing
-holds through the tokens and the exchange.
-
-A person signs in with `acme/alice` and their roster password, and is the whole
-of themselves. With a second factor, which a password prompt cannot carry, they
-use an `rt_` key instead, and `roster sign-in` mints one from the terminal.
-
-The subject is the holder's identifier, and `@acme/alice` is its alias. Its
-groups are `@acme` and one for each team it is in: `@acme/eu/ops` for the team
-`ops` in the site `eu`, since a team's name is unique only within its site, and
-the team's identifier for a team in no site, which roster names by identifier
-alone. What roster accepted is remembered for `remember`, and forgotten at once
-when roster's sync stream says the holder changed, so a revoked key stops
-working within `remember` at the latest.
+The registry reads rows again every `auth.refresh` (five seconds). A decision
+never waits on the database: requests read a snapshot, and when a reload
+fails, the snapshot in force stays in force. The configuration's rules and the
+rows are both in force; the configuration's are read once, when `cr serve`
+starts, and never become rows.
 
 ## The management API
 
@@ -279,20 +316,32 @@ management:
 ```
 
 ```sh
-curl -sX POST https://cr.example.com/app.BindingService/List \
+curl -sX POST https://cr.example.com/app.TagRuleService/List \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' -H 'Connect-Protocol-Version: 1' -d '{}'
 ```
 
 With no tokens and no roster, nothing over the network may use it; `cr <entity>
-...` on the host still can. With `management.roster`, a key roster issued is a
-caller too, for the methods it allows -- `/app.BindingService/*` and the like --
-and the tenant and holder it names are put up here the first time they are
-seen, which is how bindings come to belong to roster's tenants.
+...` on the host still can. With `management.roster`, a key
+[roster](https://github.com/lesomnus/roster) issued is a caller too, for the
+methods it allows -- `/app.TagRuleService/*` and the like -- and the tenant and
+holder it names are put up here the first time they are seen, which is how
+tag rules come to belong to roster's tenants:
 
-Bindings and tag rules are written through it. Repositories, manifests, tags
-and collection runs are the registry's to write, and read-only there, except a
-repository's description:
+```yaml
+management:
+  roster:
+    url: https://roster.example.com   # roster's data plane over HTTP, its `server.http`
+    key: rk_...
+```
+
+```sh
+roster key add --service cr --allow '/payday.TokenService/Introspect,/roster.HolderService/Get,/roster.TenantService/Get'
+```
+
+Tag rules are written through it. Repositories, manifests, tags and collection
+runs are the registry's to write, and read-only there, except a repository's
+description:
 
 ```sh
 cr repository ls -o table
@@ -302,8 +351,8 @@ cr repository patch <id> '{"desc": "the storefront"}'
 ## The management page
 
 `ts/` holds a page over the management API: repositories and their
-descriptions, bindings, tag rules, and collection runs, with a button that
-starts a full collection. It is not part of the image, and it is not yet
-something to point at a deployment: it signs in with payday's development
-scheme, which takes the caller's word for who they are and which `cr serve`
-does not accept. See [development.md](development.md#the-page).
+descriptions, tag rules, and collection runs, with a button that starts a full
+collection. It is not part of the image, and it is not yet something to point
+at a deployment: it signs in with payday's development scheme, which takes the
+caller's word for who they are and which `cr serve` does not accept. See
+[development.md](development.md#the-page).

@@ -20,14 +20,13 @@ import (
 // for its keys once and again when a token names one it did not have, and the
 // token is checked offline against them.
 //
-// Every claim of the token is the subject's, for a binding's `when`: that is
+// Every claim of the token is the subject's, for a match's `when`: that is
 // what lets one GitHub workflow, and no other, push a repository.
 type OIDC struct {
+	name     string
 	issuer   string
 	audience string
 	subject  string
-	groups   string
-	prefix   string
 
 	client *http.Client
 	now    func() time.Time
@@ -39,6 +38,10 @@ type OIDC struct {
 }
 
 type OIDCConfig struct {
+	// Name is the provider's, what a match's `for` names it by and what goes
+	// in front of every subject it vouches for: `github:repo:acme/app:...`.
+	Name string
+
 	// Issuer is the provider, as its tokens name it:
 	// `https://token.actions.githubusercontent.com`.
 	Issuer string
@@ -49,16 +52,12 @@ type OIDCConfig struct {
 
 	// SubjectClaim is the claim the subject is read from; empty is `sub`.
 	SubjectClaim string
-
-	// GroupsClaim is a claim holding the subject's groups; empty reads none.
-	GroupsClaim string
-
-	// Prefix goes in front of every subject from this issuer, so that one
-	// cannot be mistaken for a subject another authenticator names.
-	Prefix string
 }
 
 func NewOIDC(c OIDCConfig) (*OIDC, error) {
+	if c.Name == "" {
+		return nil, errors.New("oidc: no name")
+	}
 	if c.Issuer == "" || c.Audience == "" {
 		return nil, errors.New("oidc: issuer and audience are both required")
 	}
@@ -67,11 +66,10 @@ func NewOIDC(c OIDCConfig) (*OIDC, error) {
 		subject = "sub"
 	}
 	return &OIDC{
+		name:     c.Name,
 		issuer:   strings.TrimSuffix(c.Issuer, "/"),
 		audience: c.Audience,
 		subject:  subject,
-		groups:   c.GroupsClaim,
-		prefix:   c.Prefix,
 		client:   &http.Client{Timeout: 10 * time.Second},
 		now:      time.Now,
 	}, nil
@@ -122,21 +120,11 @@ func (o *OIDC) Authenticate(ctx context.Context, username, password string) (Sub
 	if sub == "" {
 		return Subject{}, fmt.Errorf("%w: no %q claim", ErrUnauthenticated, o.subject)
 	}
-	s := Subject{ID: o.prefix + sub, Claims: claims}
-	if o.groups != "" {
-		switch v := claims[o.groups].(type) {
-		case string:
-			s.Groups = []string{v}
-		case []any:
-			for _, g := range v {
-				if g, ok := g.(string); ok {
-					s.Groups = append(s.Groups, g)
-				}
-			}
-		}
-	}
-	return s, nil
+	return Subject{ID: o.name + ":" + sub, Provider: o.name, Claims: claims}, nil
 }
+
+// Issuer is the provider's `iss`.
+func (o *OIDC) Issuer() string { return o.issuer }
 
 // key is the provider's key named kid, asking the provider again when it is
 // not among the keys already had, but not more than once a minute.

@@ -145,7 +145,7 @@ func (c *Caller) CheckTag(repo, tag string, op TagOp) error {
 	if c.open() {
 		return nil
 	}
-	return c.policy.CheckTag(c.Subject, c.Allowed(repo, ActionAdmin), repo, tag, op)
+	return c.policy.CheckTag(c.Allowed(repo, ActionAdmin), repo, tag, op)
 }
 
 // Caller reads a request's credential. None is the anonymous caller; one that
@@ -163,7 +163,7 @@ func (g *Guard) Caller(r *http.Request) (*Caller, error) {
 		if err != nil {
 			return nil, ErrUnauthenticated
 		}
-		return &Caller{Subject: Subject{ID: c.Subject, Aliases: c.Aliases, Groups: c.Groups, Only: only(c.Narrowed, c.Only)}, claims: c, policy: p}, nil
+		return &Caller{Subject: c.Who(), claims: c, policy: p}, nil
 	case "basic":
 		user, pass, ok := r.BasicAuth()
 		if !ok {

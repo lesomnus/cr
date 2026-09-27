@@ -7,6 +7,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"maps"
+	"regexp"
+	"slices"
 
 	"github.com/lesomnus/otx/log"
 
@@ -29,46 +32,19 @@ func Guard(ctx context.Context, c *cmd.Config, s *cmd.Server) (*auth.Guard, erro
 		return nil, nil
 	}
 
-	chain := auth.Chain{}
-	if a.Htpasswd.Path != "" {
-		h, err := auth.NewHtpasswd(a.Htpasswd.Path, a.Htpasswd.Groups)
-		if err != nil {
-			return nil, fmt.Errorf("auth.htpasswd: %w", err)
-		}
-		chain = append(chain, h)
+	chain, err := providers(a.Providers)
+	if err != nil {
+		return nil, err
 	}
-	if len(a.Static) > 0 {
-		ts := make([]auth.StaticToken, 0, len(a.Static))
-		for _, v := range a.Static {
-			ts = append(ts, auth.StaticToken{Name: v.Name, Token: v.Token, TokenSHA256: v.TokenSha256, Groups: v.Groups})
+	for name, m := range a.Matches {
+		if _, ok := a.Providers[m.For]; !ok && m.For != auth.Anyone {
+			return nil, fmt.Errorf("auth.matches.%s: for %q: no such provider", name, m.For)
 		}
-		t, err := auth.NewTokens(ts)
-		if err != nil {
-			return nil, fmt.Errorf("auth.static: %w", err)
-		}
-		chain = append(chain, t)
 	}
-	for i, o := range a.Oidc {
-		v, err := auth.NewOIDC(auth.OIDCConfig{
-			Issuer:       o.Issuer,
-			Audience:     o.Audience,
-			SubjectClaim: o.SubjectClaim,
-			GroupsClaim:  o.GroupsClaim,
-			Prefix:       o.Prefix,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("auth.oidc[%d]: %w", i, err)
+	for i, r := range a.TagRules {
+		if len(r.Groups) > 0 {
+			return nil, fmt.Errorf("auth.tag_rules[%d]: groups: there are no groups to name; a caller with admin moves a protected tag", i)
 		}
-		chain = append(chain, v)
-	}
-	if a.Roster.Url != "" {
-		client, err := roster.NewClient(a.Roster.Url, a.Roster.Key)
-		if err != nil {
-			return nil, fmt.Errorf("auth.roster: %w", err)
-		}
-		r := roster.New(client, a.Roster.Remember)
-		chain = append(chain, r)
-		s.Spin = append(s.Spin, r)
 	}
 
 	var keys []*ecdsa.PrivateKey
@@ -109,7 +85,7 @@ func Guard(ctx context.Context, c *cmd.Config, s *cmd.Server) (*auth.Guard, erro
 	}
 	s.Spin = append(s.Spin, policy)
 
-	log.From(ctx).InfoContext(ctx, "auth", slog.Int("authenticators", len(chain)), slog.String("service", service))
+	log.From(ctx).InfoContext(ctx, "auth", slog.Int("providers", len(a.Providers)), slog.String("service", service))
 	g := &auth.Guard{Authenticator: chain, Policy: policy, Issuer: issuer, Realm: a.Token.Realm, Exchange: a.Exchange.Ttl}
 	return g.Measure(meterOf(ctx)), nil
 }
@@ -165,17 +141,62 @@ func Management(c *cmd.Config, s *cmd.Server) (pdauth.Handler, error) {
 	})), nil
 }
 
-// staticPolicy is the bindings and tag rules the configuration writes.
+// providerName is what a provider may be called: it is written in front of
+// every subject it vouches for, `github:...`, so it has no colon.
+var providerName = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
+
+// providers builds the authenticators `auth.providers` names, in the order of
+// their names. Two with one issuer are refused, so that which provider
+// vouched for a caller is never a question.
+func providers(ps map[string]cmd.ProviderConfig) (auth.Chain, error) {
+	chain := auth.Chain{}
+	issuers := map[string]string{}
+	for _, name := range slices.Sorted(maps.Keys(ps)) {
+		p := ps[name]
+		if name == auth.Anyone || !providerName.MatchString(name) {
+			return nil, fmt.Errorf("auth.providers.%s: a provider is named with lowercase letters, digits, `-` and `_`, and is not %q", name, auth.Anyone)
+		}
+		switch p.Kind {
+		case "oidc":
+			o, err := auth.NewOIDC(auth.OIDCConfig{
+				Name:         name,
+				Issuer:       p.Issuer,
+				Audience:     p.Audience,
+				SubjectClaim: p.SubjectClaim,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("auth.providers.%s: %w", name, err)
+			}
+			if other, ok := issuers[o.Issuer()]; ok {
+				return nil, fmt.Errorf("auth.providers.%s: issuer %q is %s's as well", name, p.Issuer, other)
+			}
+			issuers[o.Issuer()] = name
+			chain = append(chain, o)
+		case "":
+			return nil, fmt.Errorf("auth.providers.%s: no kind", name)
+		default:
+			return nil, fmt.Errorf("auth.providers.%s: kind %q: the kind there is is oidc", name, p.Kind)
+		}
+	}
+	return chain, nil
+}
+
+// staticPolicy is the permissions, matches and tag rules the configuration
+// writes.
 func staticPolicy(a cmd.AuthConfig) auth.Static {
-	static := auth.Static{}
-	for _, b := range a.Bindings {
-		static.Bindings = append(static.Bindings, auth.Binding{
-			Subject: b.Subject,
-			Group:   b.Group,
-			Repo:    b.Repo,
-			Actions: auth.ParseActions(b.Actions),
-			When:    b.When,
-		})
+	static := auth.Static{
+		Permissions: map[string]auth.Permission{},
+		Matches:     map[string]auth.Match{},
+	}
+	for name, p := range a.Permissions {
+		as := make([]auth.Action, len(p.Actions))
+		for i, v := range p.Actions {
+			as[i] = auth.Action(v)
+		}
+		static.Permissions[name] = auth.Permission{Repos: p.Repos, Actions: as}
+	}
+	for name, m := range a.Matches {
+		static.Matches[name] = auth.Match{For: m.For, When: m.When, Grant: m.Grant}
 	}
 	for _, r := range a.TagRules {
 		static.TagRules = append(static.TagRules, auth.TagRule{
@@ -184,7 +205,6 @@ func staticPolicy(a cmd.AuthConfig) auth.Static {
 			Tag:     r.Tag,
 			Kind:    auth.TagRuleKind(r.Kind),
 			Pattern: r.Pattern,
-			Groups:  r.Groups,
 			Keep:    r.Keep,
 		})
 	}

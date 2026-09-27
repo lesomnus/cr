@@ -14,8 +14,6 @@ type Tx struct {
 	config
 	// Audit is the client for interacting with the Audit builders.
 	Audit *AuditClient
-	// Binding is the client for interacting with the Binding builders.
-	Binding *BindingClient
 	// GcRun is the client for interacting with the GcRun builders.
 	GcRun *GcRunClient
 	// Holder is the client for interacting with the Holder builders.
@@ -168,7 +166,6 @@ func (tx *Tx) Client() *Client {
 
 func (tx *Tx) init() {
 	tx.Audit = NewAuditClient(tx.config)
-	tx.Binding = NewBindingClient(tx.config)
 	tx.GcRun = NewGcRunClient(tx.config)
 	tx.Holder = NewHolderClient(tx.config)
 	tx.Manifest = NewManifestClient(tx.config)

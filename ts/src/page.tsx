@@ -1,10 +1,10 @@
 /**
- * The management side of cr: what the registry holds, who may do what to it,
- * the rules on tags, and what garbage collection did.
+ * The management side of cr: what the registry holds, the rules on tags, and
+ * what garbage collection did.
  *
  * Repositories, manifests and tags are the registry's rows and are only read
- * here, except a repository's description. Bindings and tag rules are written
- * here and are in force within seconds. A full collection is started through
+ * here, except a repository's description. Tag rules are written here and are
+ * in force within seconds. A full collection is started through
  * `POST /admin/gc`, which a sandbox, having no registry, does not serve.
  *
  * @module
@@ -15,8 +15,6 @@ import { useState } from 'react'
 import { useCall, useQuery } from '@lesomnus/payday/react'
 import { key } from '@lesomnus/payday/store'
 
-import type { Binding } from '../gen/app/binding_pb.js'
-import { BindingService } from '../gen/app/binding_svc_pb.js'
 import type { GcRun } from '../gen/app/gc_run_pb.js'
 import { GcRunService } from '../gen/app/gc_run_svc_pb.js'
 import type { Manifest } from '../gen/app/manifest_pb.js'
@@ -29,13 +27,13 @@ import { TagRuleService } from '../gen/app/tag_rule_svc_pb.js'
 import { TagService } from '../gen/app/tag_svc_pb.js'
 import { TenantService } from '../gen/app/payday/tenant_svc_pb.js'
 
-type Tab = 'repositories' | 'bindings' | 'tag rules' | 'collections'
+type Tab = 'repositories' | 'tag rules' | 'collections'
 
 export function Page(props: { who: string; onSignOut: () => void }): React.ReactNode {
 	const [tab, setTab] = useState<Tab>('repositories')
 
 	// `@acme/admin` -- the tenant this credential is inside, which is whose
-	// bindings and tag rules a write here makes.
+	// tag rules a write here makes.
 	const alias = props.who.replace(/^@/, '').split('/')[0] ?? ''
 	const tenant = useQuery(TenantService.method.get, { ref: { key: { case: 'alias', value: alias } } })
 
@@ -44,7 +42,7 @@ export function Page(props: { who: string; onSignOut: () => void }): React.React
 			<header>
 				<h1>cr</h1>
 				<nav>
-					{(['repositories', 'bindings', 'tag rules', 'collections'] as const).map((t) => (
+					{(['repositories', 'tag rules', 'collections'] as const).map((t) => (
 						<button key={t} className={t === tab ? 'selected' : undefined} onClick={() => setTab(t)}>
 							{t}
 						</button>
@@ -56,13 +54,11 @@ export function Page(props: { who: string; onSignOut: () => void }): React.React
 
 			{tab === 'repositories' && <Repositories />}
 			{tab === 'collections' && <Collections />}
-			{(tab === 'bindings' || tab === 'tag rules') &&
+			{tab === 'tag rules' &&
 				(tenant.state === 'error' ? (
 					<p className="bad">{String(tenant.error)}</p>
 				) : tenant.data === undefined ? (
 					<p>...</p>
-				) : tab === 'bindings' ? (
-					<Bindings tenant={tenant.data.id} />
 				) : (
 					<TagRules tenant={tenant.data.id} />
 				))}
@@ -182,142 +178,6 @@ function RepositoryDetail(props: { name: string }): React.ReactNode {
 				</table>
 			)}
 		</section>
-	)
-}
-
-const actions = ['pull', 'push', 'delete', 'tag', 'catalog', 'search', 'admin', '*']
-
-/** when reads `claim=glob` lines into a binding's conditions. */
-function parseWhen(text: string): { [key: string]: string } {
-	const out: { [key: string]: string } = {}
-	for (const line of text.split('\n')) {
-		const i = line.indexOf('=')
-		if (i > 0) out[line.slice(0, i).trim()] = line.slice(i + 1).trim()
-	}
-	return out
-}
-
-function Bindings(props: { tenant: Uint8Array }): React.ReactNode {
-	const { state, data, error } = useQuery(BindingService.method.list, { filters: [] })
-
-	return (
-		<section>
-			<h2>bindings</h2>
-			<p className="dim">
-				Who may do what where. Bindings only add; a caller nothing matches may do nothing.
-			</p>
-			<AddBinding tenant={props.tenant} />
-			{state === 'error' ? (
-				<Failure error={error} />
-			) : data === undefined ? (
-				<p>...</p>
-			) : (
-				<table>
-					<thead>
-						<tr>
-							<th>name</th>
-							<th>who</th>
-							<th>repositories</th>
-							<th>actions</th>
-							<th>when</th>
-							<th />
-						</tr>
-					</thead>
-					<tbody>
-						{data.items.map((v: Binding) => (
-							<BindingRow key={key(v.id)} binding={v} />
-						))}
-					</tbody>
-				</table>
-			)}
-		</section>
-	)
-}
-
-function BindingRow(props: { binding: Binding }): React.ReactNode {
-	const erase = useCall(BindingService.method.erase)
-	const b = props.binding
-	return (
-		<tr>
-			<td>{b.alias}</td>
-			<td>{b.subject !== '' ? b.subject : `group ${b.group}`}</td>
-			<td>{b.repo}</td>
-			<td>{b.actions.join(', ')}</td>
-			<td className="dim">
-				{Object.entries(b.when)
-					.map(([k, v]) => `${k}=${v}`)
-					.join(' ')}
-			</td>
-			<td>
-				<button
-					disabled={erase.state === 'pending'}
-					onClick={() => erase.call({ key: { case: 'id', value: b.id } }).catch(() => {})}
-				>
-					erase
-				</button>
-			</td>
-		</tr>
-	)
-}
-
-function AddBinding(props: { tenant: Uint8Array }): React.ReactNode {
-	const [alias, setAlias] = useState('')
-	const [who, setWho] = useState('')
-	const [isGroup, setIsGroup] = useState(false)
-	const [repo, setRepo] = useState('')
-	const [chosen, setChosen] = useState<string[]>(['pull'])
-	const [when, setWhen] = useState('')
-	const add = useCall(BindingService.method.add)
-
-	return (
-		<form
-			className="add"
-			onSubmit={(e) => {
-				e.preventDefault()
-				if (alias === '' || who === '' || repo === '') return
-				add.call({
-					tenant: { key: { case: 'id', value: props.tenant } },
-					alias,
-					subject: isGroup ? '' : who,
-					group: isGroup ? who : '',
-					repo,
-					actions: chosen,
-					when: parseWhen(when),
-				})
-					.then(() => {
-						setAlias('')
-						setWho('')
-						setRepo('')
-						setWhen('')
-					})
-					.catch(() => {})
-			}}
-		>
-			<input value={alias} placeholder="name" onChange={(e) => setAlias(e.target.value)} />
-			<select value={isGroup ? 'group' : 'subject'} onChange={(e) => setIsGroup(e.target.value === 'group')}>
-				<option value="subject">subject</option>
-				<option value="group">group</option>
-			</select>
-			<input value={who} placeholder={isGroup ? 'authenticated, @acme/devs' : 'anonymous, alice, @acme/ci'} onChange={(e) => setWho(e.target.value)} />
-			<input value={repo} placeholder="acme/*" onChange={(e) => setRepo(e.target.value)} />
-			<span>
-				{actions.map((a) => (
-					<label key={a}>
-						<input
-							type="checkbox"
-							checked={chosen.includes(a)}
-							onChange={(e) => setChosen(e.target.checked ? [...chosen, a] : chosen.filter((c) => c !== a))}
-						/>
-						{a}
-					</label>
-				))}
-			</span>
-			<textarea value={when} placeholder={'claim=glob, one per line\nworkflow_ref=acme/app/.github/workflows/release.yml@*'} onChange={(e) => setWhen(e.target.value)} />
-			<button type="submit" disabled={add.state === 'pending'}>
-				add
-			</button>
-			{add.state === 'error' && <span className="bad">{String(add.error)}</span>}
-		</form>
 	)
 }
 

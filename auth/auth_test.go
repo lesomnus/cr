@@ -2,20 +2,15 @@ package auth
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"golang.org/x/crypto/bcrypt"
 )
 
 func TestGlob(t *testing.T) {
@@ -23,22 +18,53 @@ func TestGlob(t *testing.T) {
 		pattern, s string
 		want       bool
 	}{
-		{"*", "", true},
-		{"*", "acme/app", true},
-		{"acme/*", "acme/app", true},
-		{"acme/*", "acme/team/app", true},
-		{"acme/*", "acmeapp", false},
 		{"acme/app", "acme/app", true},
 		{"acme/app", "acme/apps", false},
+
+		// A star stays within its segment.
+		{"acme/*", "acme/app", true},
+		{"acme/*", "acme/team/app", false},
+		{"acme/*", "acme", false},
+		{"acme/*", "acmeapp", false},
+		{"*", "", true},
+		{"*", "acme/app", false},
 		{"v*", "v1.2.3", true},
-		{"v?", "v1", true},
-		{"v?", "v12", false},
 		{"*-dev", "app-dev", true},
 		{"*-dev", "app-devx", false},
 		{"a*b*c", "aXbYc", true},
 		{"a*b*c", "aXbY", false},
+		{"a*a", "a", false},
+		{"a*a", "aa", true},
+		{"refs/heads/*", "refs/heads/feature/x", false},
+
+		// Two stars are whole segments: none of them in the middle or at the
+		// start, and at least one at the end.
+		{"acme/**", "acme/app", true},
+		{"acme/**", "acme/team/app", true},
+		{"acme/**", "acme", false},
+		{"**", "acme/team/app", true},
+		{"**/app", "app", true},
+		{"**/app", "acme/team/app", true},
+		{"acme/**/app", "acme/app", true},
+		{"acme/**/app", "acme/a/b/app", true},
+		{"acme/**/app", "acme/a/b/apps", false},
+		{"acme/**/**/app", "acme/app", true},
+
+		// Anything else is itself.
+		{"v?", "v?", true},
+		{"v?", "v1", false},
+		{`v\*`, "v*", true},
+		{`v\*`, "v1", false},
+		{"acme/app/.github/workflows/*@refs/heads/main", "acme/app/.github/workflows/release.yml@refs/heads/main", true},
 	} {
-		require.Equal(t, c.want, Glob(c.pattern, c.s), "%q %q", c.pattern, c.s)
+		g, err := ParseGlob(c.pattern)
+		require.NoError(t, err, c.pattern)
+		require.Equal(t, c.want, g.Match(c.s), "%q %q", c.pattern, c.s)
+	}
+
+	for _, bad := range []string{"acme/**app", "a**", `trailing\`} {
+		_, err := ParseGlob(bad)
+		require.Error(t, err, bad)
 	}
 }
 
@@ -63,23 +89,56 @@ func TestParseScope(t *testing.T) {
 	require.Error(t, err)
 }
 
+// users is an authenticator for the tests: a password is the subject it
+// names.
+type users map[string]Subject
+
+func (u users) Authenticate(ctx context.Context, username, password string) (Subject, error) {
+	s, ok := u[password]
+	if !ok {
+		return Subject{}, ErrNotMine
+	}
+	return s, nil
+}
+
+// job is a GitHub job of acme/app, running workflow.
+func job(workflow string) Subject {
+	return Subject{ID: "github:repo:acme/app:ref:refs/heads/main", Provider: "github", Claims: map[string]any{
+		"repository_id": "42",
+		"workflow_ref":  "acme/app/.github/workflows/" + workflow + "@refs/heads/main",
+		"groups":        []any{"ci", "release"},
+	}}
+}
+
+func rules() Rules {
+	return Rules{
+		Permissions: map[string]Permission{
+			"library": {Repos: []string{"library/**", "!library/busybox"}, Actions: []Action{ActionPull}},
+			"catalog": {Repos: []string{"**"}, Actions: []Action{ActionCatalog}},
+			"app":     {Repos: []string{"acme/app", "acme/app/**"}, Actions: []Action{ActionPull, ActionPush, ActionTag}},
+			"read":    {Repos: []string{"acme/*"}, Actions: []Action{ActionPull}},
+			"admin":   {Repos: []string{"**"}, Actions: []Action{ActionAll}},
+			"back":    {Repos: []string{"x/**", "!x/private/**", "x/private/shared"}, Actions: []Action{ActionPull}},
+		},
+		Matches: map[string]Match{
+			"public": {For: Anyone, Grant: []string{"library", "catalog", "back"}},
+			"release": {For: "github", Grant: []string{"app"}, When: map[string]string{
+				"repository_id": "42",
+				"workflow_ref":  "acme/app/.github/workflows/release.yml@refs/heads/main",
+			}},
+			"acme": {For: "github", Grant: []string{"read"}, When: map[string]string{"repository_id": "42"}},
+			"ops":  {For: "github", Grant: []string{"admin"}, When: map[string]string{"groups": "ops"}},
+		},
+		TagRules: []TagRule{
+			{Name: "releases", Repo: "acme/**", Tag: "v*", Kind: TagImmutable},
+			{Name: "latest", Repo: "acme/**", Tag: "latest", Kind: TagProtected},
+			{Name: "semver", Repo: "strict/*", Tag: "*", Kind: TagPattern, Pattern: `v\d+\.\d+\.\d+`},
+		},
+	}
+}
+
 func policy(t *testing.T) *Policy {
-	p, err := NewPolicy([]Binding{
-		{Subject: Anonymous, Repo: "library/*", Actions: []Action{ActionPull}},
-		{Subject: Anonymous, Repo: "*", Actions: []Action{ActionCatalog}},
-		{Group: "ci", Repo: "acme/*", Actions: []Action{ActionPull, ActionPush}},
-		{Subject: "alice", Repo: "acme/app", Actions: []Action{ActionAll}},
-		{Group: Authenticated, Repo: "shared/*", Actions: []Action{ActionPull}},
-		{Group: "ci", Repo: "gh/app", Actions: []Action{ActionPush, ActionTag}, When: map[string]string{
-			"repository":   "acme/app",
-			"workflow_ref": "acme/app/.github/workflows/release.yml@refs/heads/*",
-		}},
-		{Subject: "ops", Repo: "*", Actions: []Action{ActionAdmin}},
-	}, []TagRule{
-		{Name: "releases", Repo: "acme/*", Tag: "v*", Kind: TagImmutable},
-		{Name: "latest", Repo: "acme/*", Tag: "latest", Kind: TagProtected, Groups: []string{"release"}},
-		{Name: "semver", Repo: "strict/*", Tag: "*", Kind: TagPattern, Pattern: `v\d+\.\d+\.\d+`},
-	})
+	p, err := NewPolicy(rules())
 	require.NoError(t, err)
 	return p
 }
@@ -87,83 +146,150 @@ func policy(t *testing.T) *Policy {
 func TestAllow(t *testing.T) {
 	p := policy(t)
 	anon := Subject{ID: Anonymous}
-	ci := Subject{ID: "runner", Groups: []string{"ci"}}
-	alice := Subject{ID: "alice"}
+	release, sibling := job("release.yml"), job("test.yml")
+	all := []Action{ActionPull, ActionPush, ActionTag, ActionDelete}
 
-	require.Equal(t, []Action{ActionPull}, p.Allow(anon, "library/ubuntu", []Action{ActionPull, ActionPush}))
-	require.Empty(t, p.Allow(anon, "acme/app", []Action{ActionPull}))
+	require.Equal(t, []Action{ActionPull}, p.Allow(anon, "library/ubuntu", all))
+	require.Equal(t, []Action{ActionPull}, p.Allow(anon, "library/team/tool", all))
+	require.Empty(t, p.Allow(anon, "library", all), "library/** is what is under library")
+	require.Empty(t, p.Allow(anon, "library/busybox", all), "taken back by a later pattern")
+	require.Empty(t, p.Allow(anon, "acme/app", all))
 
-	// Everybody is anonymous too.
-	require.Equal(t, []Action{ActionPull}, p.Allow(alice, "library/ubuntu", []Action{ActionPull}))
+	// The last pattern that matches decides.
+	require.Equal(t, []Action{ActionPull}, p.Allow(anon, "x/a", all))
+	require.Empty(t, p.Allow(anon, "x/private/a", all))
+	require.Equal(t, []Action{ActionPull}, p.Allow(anon, "x/private/shared", all))
 
-	require.Equal(t, []Action{ActionPull, ActionPush}, p.Allow(ci, "acme/web", []Action{ActionPull, ActionPush, ActionDelete}))
-	require.Equal(t, []Action{ActionPull, ActionPush, ActionDelete}, p.Allow(alice, "acme/app", []Action{ActionPull, ActionPush, ActionDelete}))
-	require.Empty(t, p.Allow(alice, "acme/web", []Action{ActionPush}))
+	// Everybody is under anyone too.
+	require.Equal(t, []Action{ActionPull}, p.Allow(release, "library/ubuntu", all))
 
-	require.Equal(t, []Action{ActionPull}, p.Allow(alice, "shared/x", []Action{ActionPull}))
-	require.Empty(t, p.Allow(anon, "shared/x", []Action{ActionPull}))
+	// A match with `when` holds only for the credential whose claims match,
+	// and matches add: the release workflow is under both of acme/app's.
+	require.Equal(t, []Action{ActionPull, ActionPush, ActionTag}, p.Allow(release, "acme/app", all))
+	require.Equal(t, []Action{ActionPull, ActionPush, ActionTag}, p.Allow(release, "acme/app/cache", all))
+	require.Equal(t, []Action{ActionPull}, p.Allow(sibling, "acme/app", all))
+	require.Equal(t, []Action{ActionPull}, p.Allow(release, "acme/web", all))
+	require.Empty(t, p.Allow(release, "acme/web/cache", all))
 
-	// A binding with `when` holds only for the credential whose claims match.
-	release := Subject{ID: "gh", Groups: []string{"ci"}, Claims: map[string]any{
-		"repository":   "acme/app",
-		"workflow_ref": "acme/app/.github/workflows/release.yml@refs/heads/main",
-	}}
-	sibling := Subject{ID: "gh", Groups: []string{"ci"}, Claims: map[string]any{
-		"repository":   "acme/app",
-		"workflow_ref": "acme/app/.github/workflows/test.yml@refs/heads/main",
-	}}
-	require.Equal(t, []Action{ActionPush}, p.Allow(release, "gh/app", []Action{ActionPush}))
-	require.Empty(t, p.Allow(sibling, "gh/app", []Action{ActionPush}))
+	// Only the provider a match is for.
+	gitlab := release
+	gitlab.Provider = "gitlab"
+	require.Empty(t, p.Allow(gitlab, "acme/app", all))
 
-	// A credential made for less than its holder may do is used for that
-	// alone, whatever the bindings grant.
-	narrow := Subject{ID: "alice", Only: []Action{ActionPull}}
-	require.Equal(t, []Action{ActionPull}, p.Allow(narrow, "acme/app", []Action{ActionPull, ActionPush, ActionDelete}))
-	require.Empty(t, p.Allow(Subject{ID: "alice", Only: []Action{}}, "acme/app", []Action{ActionPull}))
-	require.Empty(t, p.AllowRegistry(Subject{ID: "ops", Only: []Action{ActionPull}}, []Action{ActionAdmin}))
+	// A list claim holds when any of its values does.
+	ops := job("ops.yml")
+	ops.Claims["groups"] = []any{"ci", "ops"}
+	require.Equal(t, all, p.Allow(ops, "anything/at/all", all))
 
+	// Only a permission over `**` alone reaches the registry.
 	require.Equal(t, []Action{ActionCatalog}, p.AllowRegistry(anon, []Action{ActionCatalog, ActionSearch}))
-	require.Equal(t, []Action{ActionAdmin}, p.AllowRegistry(Subject{ID: "ops"}, []Action{ActionAdmin}))
-	// A binding narrower than `*` grants nothing registry-wide.
-	require.Empty(t, p.AllowRegistry(alice, []Action{ActionAdmin}))
+	require.Equal(t, []Action{ActionAdmin}, p.AllowRegistry(ops, []Action{ActionAdmin}))
+	require.Empty(t, p.AllowRegistry(release, []Action{ActionAdmin}))
+
+}
+
+func TestPolicyRefusesWhatDoesNotCheck(t *testing.T) {
+	anon := Subject{ID: Anonymous}
+	for name, c := range map[string]struct {
+		edit func(*Rules)
+		want string
+	}{
+		"a match for a provider with no when": {
+			func(r *Rules) { r.Matches["m"] = Match{For: "github", Grant: []string{"library"}} },
+			"no `when`",
+		},
+		"a match for anyone with when": {
+			func(r *Rules) {
+				r.Matches["m"] = Match{For: Anyone, Grant: []string{"library"}, When: map[string]string{"sub": "x"}}
+			},
+			"`when` for anyone",
+		},
+		"a grant of nothing there is": {
+			func(r *Rules) { r.Matches["m"] = Match{For: Anyone, Grant: []string{"nope"}} },
+			`no permission "nope"`,
+		},
+		"a match that grants nothing": {
+			func(r *Rules) { r.Matches["m"] = Match{For: Anyone} },
+			"grants nothing",
+		},
+		"an action there is not": {
+			func(r *Rules) {
+				r.Permissions["library"] = Permission{Repos: []string{"library/**"}, Actions: []Action{"pul"}}
+			},
+			`no action "pul"`,
+		},
+		"a glob that does not parse": {
+			func(r *Rules) {
+				r.Permissions["library"] = Permission{Repos: []string{"library**"}, Actions: []Action{ActionPull}}
+			},
+			"must be a segment of its own",
+		},
+		"only patterns that take away": {
+			func(r *Rules) {
+				r.Permissions["library"] = Permission{Repos: []string{"!library/busybox"}, Actions: []Action{ActionPull}}
+			},
+			"none gives",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := rules()
+			c.edit(&r)
+			p, err := NewPolicy(r)
+			require.ErrorContains(t, err, c.want)
+
+			// What does not check grants nothing, and nor does a match that
+			// grants it, but the rest stands.
+			require.Empty(t, p.Allow(anon, "library/busybox", []Action{ActionPull}))
+			require.Equal(t, []Action{ActionPull}, p.Allow(job("test.yml"), "acme/web", []Action{ActionPull}))
+		})
+	}
 }
 
 func TestCheckTag(t *testing.T) {
 	p := policy(t)
-	dev := Subject{ID: "dev"}
 
-	require.NoError(t, p.CheckTag(dev, nil, "acme/app", "v1.0.0", TagCreate))
+	require.NoError(t, p.CheckTag(nil, "acme/app", "v1.0.0", TagCreate))
 	var e *TagRuleError
-	require.ErrorAs(t, p.CheckTag(dev, nil, "acme/app", "v1.0.0", TagMove), &e)
+	require.ErrorAs(t, p.CheckTag(nil, "acme/app", "v1.0.0", TagMove), &e)
 	require.Equal(t, TagImmutable, e.Kind)
-	require.Error(t, p.CheckTag(dev, []Action{ActionAdmin}, "acme/app", "v1.0.0", TagDelete))
-	require.NoError(t, p.CheckTag(dev, nil, "other/app", "v1.0.0", TagMove))
+	require.Error(t, p.CheckTag([]Action{ActionAdmin}, "acme/app", "v1.0.0", TagDelete))
+	require.NoError(t, p.CheckTag(nil, "other/app", "v1.0.0", TagMove))
+	require.Error(t, p.CheckTag(nil, "acme/team/app", "v1.0.0", TagMove))
 
-	require.NoError(t, p.CheckTag(dev, nil, "acme/app", "latest", TagCreate))
-	require.Error(t, p.CheckTag(dev, nil, "acme/app", "latest", TagMove))
-	require.NoError(t, p.CheckTag(dev, []Action{ActionAdmin}, "acme/app", "latest", TagMove))
-	require.NoError(t, p.CheckTag(Subject{ID: "rel", Groups: []string{"release"}}, nil, "acme/app", "latest", TagDelete))
+	require.NoError(t, p.CheckTag(nil, "acme/app", "latest", TagCreate))
+	require.Error(t, p.CheckTag(nil, "acme/app", "latest", TagMove))
+	require.NoError(t, p.CheckTag([]Action{ActionAdmin}, "acme/app", "latest", TagMove))
 
-	require.NoError(t, p.CheckTag(dev, nil, "strict/app", "v1.2.3", TagCreate))
-	require.Error(t, p.CheckTag(dev, nil, "strict/app", "latest", TagCreate))
-	require.Error(t, p.CheckTag(dev, nil, "strict/app", "v1.2.3-rc", TagMove))
-	require.NoError(t, p.CheckTag(dev, nil, "strict/app", "whatever", TagDelete))
+	require.NoError(t, p.CheckTag(nil, "strict/app", "v1.2.3", TagCreate))
+	require.Error(t, p.CheckTag(nil, "strict/app", "latest", TagCreate))
+	require.Error(t, p.CheckTag(nil, "strict/app", "v1.2.3-rc", TagMove))
+	require.NoError(t, p.CheckTag(nil, "strict/app", "whatever", TagDelete))
 
 	// A rule that cannot be evaluated refuses.
-	bad, err := NewPolicy(nil, []TagRule{{Repo: "*", Tag: "*", Kind: TagPattern, Pattern: "("}})
+	bad, err := NewPolicy(Rules{TagRules: []TagRule{{Repo: "**", Tag: "*", Kind: TagPattern, Pattern: "("}}})
 	require.Error(t, err)
-	require.Error(t, bad.CheckTag(dev, nil, "any", "thing", TagCreate))
+	require.Error(t, bad.CheckTag(nil, "any", "thing", TagCreate))
+	bad, err = NewPolicy(Rules{TagRules: []TagRule{
+		{Repo: "a**", Tag: "*", Kind: TagImmutable},
+		{Repo: "a**", Tag: "*", Kind: TagRetention},
+	}})
+	require.Error(t, err)
+	require.Error(t, bad.CheckTag(nil, "any", "thing", TagMove))
+	require.Empty(t, bad.Retention("any"), "a retention rule that cannot be evaluated deletes nothing")
 }
 
 func TestPolicyStoreKeepsWhatItHadOnFailure(t *testing.T) {
 	ctx := context.Background()
 	calls := 0
-	src := sourceFunc(func(context.Context) ([]Binding, []TagRule, error) {
+	src := sourceFunc(func(context.Context) (Rules, error) {
 		calls++
 		if calls > 1 {
-			return nil, nil, context.DeadlineExceeded
+			return Rules{}, context.DeadlineExceeded
 		}
-		return []Binding{{Subject: Anonymous, Repo: "*", Actions: []Action{ActionPull}}}, nil, nil
+		return Rules{
+			Permissions: map[string]Permission{"all": {Repos: []string{"**"}, Actions: []Action{ActionPull}}},
+			Matches:     map[string]Match{"all": {For: Anyone, Grant: []string{"all"}}},
+		}, nil
 	})
 	st := NewPolicyStore(time.Hour, src)
 	require.Empty(t, st.Current().Allow(Subject{}, "x", []Action{ActionPull}))
@@ -173,72 +299,9 @@ func TestPolicyStoreKeepsWhatItHadOnFailure(t *testing.T) {
 	require.Len(t, st.Current().Allow(Subject{}, "x", []Action{ActionPull}), 1)
 }
 
-type sourceFunc func(context.Context) ([]Binding, []TagRule, error)
+type sourceFunc func(context.Context) (Rules, error)
 
-func (f sourceFunc) Load(ctx context.Context) ([]Binding, []TagRule, error) { return f(ctx) }
-
-func writeHtpasswd(t *testing.T, path string, users map[string]string) {
-	var b strings.Builder
-	for u, p := range users {
-		h, err := bcrypt.GenerateFromPassword([]byte(p), bcrypt.MinCost)
-		require.NoError(t, err)
-		b.WriteString(u + ":" + string(h) + "\n")
-	}
-	require.NoError(t, os.WriteFile(path, []byte(b.String()), 0o600))
-}
-
-func TestHtpasswd(t *testing.T) {
-	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "htpasswd")
-	writeHtpasswd(t, path, map[string]string{"alice": "wonderland"})
-
-	h, err := NewHtpasswd(path, map[string][]string{"alice": {"dev"}})
-	require.NoError(t, err)
-
-	s, err := h.Authenticate(ctx, "alice", "wonderland")
-	require.NoError(t, err)
-	require.Equal(t, Subject{ID: "alice", Groups: []string{"dev"}}, s)
-
-	_, err = h.Authenticate(ctx, "alice", "wrong")
-	require.ErrorIs(t, err, ErrUnauthenticated)
-	_, err = h.Authenticate(ctx, "bob", "x")
-	require.ErrorIs(t, err, ErrNotMine)
-
-	// A changed file is read again, and a remembered password with it.
-	writeHtpasswd(t, path, map[string]string{"bob": "builder"})
-	future := time.Now().Add(time.Hour)
-	os.Chtimes(path, future, future)
-	h.now = func() time.Time { return time.Now().Add(2 * time.Second) }
-	_, err = h.Authenticate(ctx, "alice", "wonderland")
-	require.ErrorIs(t, err, ErrNotMine)
-	_, err = h.Authenticate(ctx, "bob", "builder")
-	require.NoError(t, err)
-
-	_, err = NewHtpasswd(filepath.Join(t.TempDir(), "missing"), nil)
-	require.Error(t, err)
-}
-
-func TestTokens(t *testing.T) {
-	ctx := context.Background()
-	sum := sha256.Sum256([]byte("hashed-secret"))
-	ts, err := NewTokens([]StaticToken{
-		{Name: "ci", Token: "plain-secret", Groups: []string{"ci"}},
-		{Name: "deploy", TokenSHA256: hex.EncodeToString(sum[:])},
-	})
-	require.NoError(t, err)
-
-	s, err := ts.Authenticate(ctx, "whoever", "plain-secret")
-	require.NoError(t, err)
-	require.Equal(t, "ci", s.ID)
-	s, err = ts.Authenticate(ctx, "", "hashed-secret")
-	require.NoError(t, err)
-	require.Equal(t, "deploy", s.ID)
-	_, err = ts.Authenticate(ctx, "ci", "nope")
-	require.ErrorIs(t, err, ErrNotMine)
-
-	_, err = NewTokens([]StaticToken{{Name: "x"}})
-	require.Error(t, err)
-}
+func (f sourceFunc) Load(ctx context.Context) (Rules, error) { return f(ctx) }
 
 func issuer(t *testing.T) *Issuer {
 	k, err := GenerateKey()
@@ -250,13 +313,14 @@ func issuer(t *testing.T) *Issuer {
 
 func TestIssuer(t *testing.T) {
 	i := issuer(t)
-	token, _, err := i.Issue(Subject{ID: "alice", Groups: []string{"dev"}}, []Access{{Type: TypeRepository, Name: "acme/app", Actions: []string{"pull"}}})
+	s := job("release.yml")
+	token, _, err := i.Issue(s, []Access{{Type: TypeRepository, Name: "acme/app", Actions: []string{"pull"}}})
 	require.NoError(t, err)
 
 	c, err := i.Verify(token)
 	require.NoError(t, err)
-	require.Equal(t, "alice", c.Subject)
-	require.Equal(t, []string{"dev"}, c.Groups)
+	require.Equal(t, s.ID, c.Subject)
+	require.Equal(t, s, c.Who())
 	require.Equal(t, "acme/app", c.Access[0].Name)
 
 	// Another issuer's key, another service, a later time.
@@ -281,14 +345,9 @@ func TestIssuer(t *testing.T) {
 }
 
 func TestServeToken(t *testing.T) {
-	st := NewPolicyStore(time.Hour, Static{Bindings: []Binding{
-		{Subject: Anonymous, Repo: "library/*", Actions: []Action{ActionPull}},
-		{Subject: "ci", Repo: "acme/*", Actions: []Action{ActionAll}},
-	}})
+	st := NewPolicyStore(time.Hour, Static(rules()))
 	require.NoError(t, st.Refresh(context.Background()))
-	ts, err := NewTokens([]StaticToken{{Name: "ci", Token: "secret"}})
-	require.NoError(t, err)
-	g := &Guard{Authenticator: Chain{ts}, Policy: st, Issuer: issuer(t)}
+	g := &Guard{Authenticator: Chain{users{"release": job("release.yml")}}, Policy: st, Issuer: issuer(t)}
 
 	get := func(q string, user, pass string) (int, *Claims) {
 		req := httptest.NewRequest("GET", "/token?service=registry.test&"+q, nil)
@@ -308,9 +367,9 @@ func TestServeToken(t *testing.T) {
 		return w.Code, c
 	}
 
-	code, c := get("scope="+url.QueryEscape("repository:acme/app:pull,push"), "ci", "secret")
+	code, c := get("scope="+url.QueryEscape("repository:acme/app:pull,push"), "ci", "release")
 	require.Equal(t, http.StatusOK, code)
-	require.Equal(t, "ci", c.Subject)
+	require.Equal(t, job("release.yml").ID, c.Subject)
 	require.Equal(t, []string{"pull", "push", "tag"}, c.Access[0].Actions)
 
 	code, c = get("scope="+url.QueryEscape("repository:acme/app:pull,push")+"&scope="+url.QueryEscape("repository:library/ubuntu:pull"), "", "")
@@ -322,7 +381,7 @@ func TestServeToken(t *testing.T) {
 	code, _ = get("", "ci", "wrong")
 	require.Equal(t, http.StatusUnauthorized, code)
 
-	form := url.Values{"grant_type": {"password"}, "username": {"x"}, "password": {"secret"}, "scope": {"repository:acme/app:*"}}
+	form := url.Values{"grant_type": {"password"}, "username": {"x"}, "password": {"release"}, "scope": {"repository:acme/app:*"}}
 	req := httptest.NewRequest("POST", "/token", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
@@ -330,8 +389,29 @@ func TestServeToken(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
-func TestActionMethod(t *testing.T) {
-	require.Equal(t, "/cr.Registry/Pull", ActionPull.Method())
-	require.Equal(t, "/cr.Registry/Catalog", ActionCatalog.Method())
-	require.Equal(t, "/cr.Registry/*", ActionAll.Method())
+// A caller that came with a token is the subject it was issued to, provider
+// and claims and all, for what a token's access cannot say: which
+// repositories a list shows.
+func TestTokenCarriesTheSubject(t *testing.T) {
+	is := issuer(t)
+	st := NewPolicyStore(time.Hour, Static(rules()))
+	require.NoError(t, st.Refresh(context.Background()))
+	g := &Guard{Policy: st, Issuer: is}
+
+	s := job("release.yml")
+	login, _, err := is.IssueLogin(s, time.Hour)
+	require.NoError(t, err)
+	back, err := is.VerifyLogin(login)
+	require.NoError(t, err)
+	require.Equal(t, s, back)
+
+	access, _, err := is.Issue(s, nil)
+	require.NoError(t, err)
+	req := httptest.NewRequest("GET", "/v2/", nil)
+	req.Header.Set("Authorization", "Bearer "+access)
+	c, err := g.Caller(req)
+	require.NoError(t, err)
+	require.Equal(t, s, c.Subject)
+	require.True(t, c.CanPull("acme/web"))
+	require.False(t, c.CanPull("other/web"))
 }

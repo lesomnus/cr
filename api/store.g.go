@@ -26,12 +26,11 @@ import (
 )
 
 type Server interface {
-	Tenant() TenantServiceServer
-	Binding() BindingServiceServer
 	GcRun() GcRunServiceServer
 	Manifest() ManifestServiceServer
 	ManifestBlob() ManifestBlobServiceServer
 	Audit() AuditServiceServer
+	Tenant() TenantServiceServer
 	Holder() HolderServiceServer
 	Outbox() OutboxServiceServer
 	ReferrersSnapshot() ReferrersSnapshotServiceServer
@@ -45,12 +44,11 @@ type Server interface {
 // It takes a [grpc.ServiceRegistrar] rather than a *grpc.Server so that a
 // server which is not gRPC's own can be handed the same set of services.
 func RegisterServer(g grpc.ServiceRegistrar, s Server) {
-	RegisterTenantServiceServer(g, s.Tenant())
-	RegisterBindingServiceServer(g, s.Binding())
 	RegisterGcRunServiceServer(g, s.GcRun())
 	RegisterManifestServiceServer(g, s.Manifest())
 	RegisterManifestBlobServiceServer(g, s.ManifestBlob())
 	RegisterAuditServiceServer(g, s.Audit())
+	RegisterTenantServiceServer(g, s.Tenant())
 	RegisterHolderServiceServer(g, s.Holder())
 	RegisterOutboxServiceServer(g, s.Outbox())
 	RegisterReferrersSnapshotServiceServer(g, s.ReferrersSnapshot())
@@ -60,12 +58,11 @@ func RegisterServer(g grpc.ServiceRegistrar, s Server) {
 }
 
 type UnimplementedServer struct {
-	TenantServer            TenantServiceServer
-	BindingServer           BindingServiceServer
 	GcRunServer             GcRunServiceServer
 	ManifestServer          ManifestServiceServer
 	ManifestBlobServer      ManifestBlobServiceServer
 	AuditServer             AuditServiceServer
+	TenantServer            TenantServiceServer
 	HolderServer            HolderServiceServer
 	OutboxServer            OutboxServiceServer
 	ReferrersSnapshotServer ReferrersSnapshotServiceServer
@@ -74,9 +71,7 @@ type UnimplementedServer struct {
 	TagRuleServer           TagRuleServiceServer
 }
 
-func (UnimplementedServer) Tenant() TenantServiceServer   { return UnimplementedTenantServiceServer{} }
-func (UnimplementedServer) Binding() BindingServiceServer { return UnimplementedBindingServiceServer{} }
-func (UnimplementedServer) GcRun() GcRunServiceServer     { return UnimplementedGcRunServiceServer{} }
+func (UnimplementedServer) GcRun() GcRunServiceServer { return UnimplementedGcRunServiceServer{} }
 func (UnimplementedServer) Manifest() ManifestServiceServer {
 	return UnimplementedManifestServiceServer{}
 }
@@ -84,6 +79,7 @@ func (UnimplementedServer) ManifestBlob() ManifestBlobServiceServer {
 	return UnimplementedManifestBlobServiceServer{}
 }
 func (UnimplementedServer) Audit() AuditServiceServer   { return UnimplementedAuditServiceServer{} }
+func (UnimplementedServer) Tenant() TenantServiceServer { return UnimplementedTenantServiceServer{} }
 func (UnimplementedServer) Holder() HolderServiceServer { return UnimplementedHolderServiceServer{} }
 func (UnimplementedServer) Outbox() OutboxServiceServer { return UnimplementedOutboxServiceServer{} }
 func (UnimplementedServer) ReferrersSnapshot() ReferrersSnapshotServiceServer {
@@ -96,12 +92,11 @@ func (UnimplementedServer) Tag() TagServiceServer         { return Unimplemented
 func (UnimplementedServer) TagRule() TagRuleServiceServer { return UnimplementedTagRuleServiceServer{} }
 
 type StaticServer struct {
-	TenantServer            TenantServiceServer
-	BindingServer           BindingServiceServer
 	GcRunServer             GcRunServiceServer
 	ManifestServer          ManifestServiceServer
 	ManifestBlobServer      ManifestBlobServiceServer
 	AuditServer             AuditServiceServer
+	TenantServer            TenantServiceServer
 	HolderServer            HolderServiceServer
 	OutboxServer            OutboxServiceServer
 	ReferrersSnapshotServer ReferrersSnapshotServiceServer
@@ -110,12 +105,11 @@ type StaticServer struct {
 	TagRuleServer           TagRuleServiceServer
 }
 
-func (s StaticServer) Tenant() TenantServiceServer             { return s.TenantServer }
-func (s StaticServer) Binding() BindingServiceServer           { return s.BindingServer }
 func (s StaticServer) GcRun() GcRunServiceServer               { return s.GcRunServer }
 func (s StaticServer) Manifest() ManifestServiceServer         { return s.ManifestServer }
 func (s StaticServer) ManifestBlob() ManifestBlobServiceServer { return s.ManifestBlobServer }
 func (s StaticServer) Audit() AuditServiceServer               { return s.AuditServer }
+func (s StaticServer) Tenant() TenantServiceServer             { return s.TenantServer }
 func (s StaticServer) Holder() HolderServiceServer             { return s.HolderServer }
 func (s StaticServer) Outbox() OutboxServiceServer             { return s.OutboxServer }
 func (s StaticServer) ReferrersSnapshot() ReferrersSnapshotServiceServer {
@@ -126,12 +120,11 @@ func (s StaticServer) Tag() TagServiceServer               { return s.TagServer 
 func (s StaticServer) TagRule() TagRuleServiceServer       { return s.TagRuleServer }
 
 type Client interface {
-	Tenant() TenantServiceClient
-	Binding() BindingServiceClient
 	GcRun() GcRunServiceClient
 	Manifest() ManifestServiceClient
 	ManifestBlob() ManifestBlobServiceClient
 	Audit() AuditServiceClient
+	Tenant() TenantServiceClient
 	Holder() HolderServiceClient
 	Outbox() OutboxServiceClient
 	ReferrersSnapshot() ReferrersSnapshotServiceClient
@@ -142,12 +135,11 @@ type Client interface {
 
 func NewClient(c *grpc.ClientConn) Client {
 	return &client{
-		_Tenant:            NewTenantServiceClient(c),
-		_Binding:           NewBindingServiceClient(c),
 		_GcRun:             NewGcRunServiceClient(c),
 		_Manifest:          NewManifestServiceClient(c),
 		_ManifestBlob:      NewManifestBlobServiceClient(c),
 		_Audit:             NewAuditServiceClient(c),
+		_Tenant:            NewTenantServiceClient(c),
 		_Holder:            NewHolderServiceClient(c),
 		_Outbox:            NewOutboxServiceClient(c),
 		_ReferrersSnapshot: NewReferrersSnapshotServiceClient(c),
@@ -158,12 +150,11 @@ func NewClient(c *grpc.ClientConn) Client {
 }
 
 type client struct {
-	_Tenant            TenantServiceClient
-	_Binding           BindingServiceClient
 	_GcRun             GcRunServiceClient
 	_Manifest          ManifestServiceClient
 	_ManifestBlob      ManifestBlobServiceClient
 	_Audit             AuditServiceClient
+	_Tenant            TenantServiceClient
 	_Holder            HolderServiceClient
 	_Outbox            OutboxServiceClient
 	_ReferrersSnapshot ReferrersSnapshotServiceClient
@@ -172,12 +163,11 @@ type client struct {
 	_TagRule           TagRuleServiceClient
 }
 
-func (c *client) Tenant() TenantServiceClient                       { return c._Tenant }
-func (c *client) Binding() BindingServiceClient                     { return c._Binding }
 func (c *client) GcRun() GcRunServiceClient                         { return c._GcRun }
 func (c *client) Manifest() ManifestServiceClient                   { return c._Manifest }
 func (c *client) ManifestBlob() ManifestBlobServiceClient           { return c._ManifestBlob }
 func (c *client) Audit() AuditServiceClient                         { return c._Audit }
+func (c *client) Tenant() TenantServiceClient                       { return c._Tenant }
 func (c *client) Holder() HolderServiceClient                       { return c._Holder }
 func (c *client) Outbox() OutboxServiceClient                       { return c._Outbox }
 func (c *client) ReferrersSnapshot() ReferrersSnapshotServiceClient { return c._ReferrersSnapshot }
@@ -255,7 +245,7 @@ func SinkOf(s Server) Server {
 //		Overlay
 //	}
 //
-//	func (s Server) Tenant() TenantServiceServer { ... }
+//	func (s Server) GcRun() GcRunServiceServer { ... }
 type Overlay struct {
 	Server
 }

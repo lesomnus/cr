@@ -14,7 +14,6 @@
 import type { EntityDesc } from '@lesomnus/payday/store'
 
 import { AuditSchema } from './app/payday/audit_pb.js'
-import { BindingSchema } from './app/binding_pb.js'
 import { GcRunSchema } from './app/gc_run_pb.js'
 import { HolderSchema } from './app/payday/holder_pb.js'
 import { ManifestSchema } from './app/manifest_pb.js'
@@ -26,7 +25,6 @@ import { TagSchema } from './app/tag_pb.js'
 import { TagRuleSchema } from './app/tag_rule_pb.js'
 import { TenantSchema } from './app/payday/tenant_pb.js'
 import { AuditService } from './app/payday/audit_svc_pb.js'
-import { BindingService } from './app/binding_svc_pb.js'
 import { GcRunService } from './app/gc_run_svc_pb.js'
 import { HolderService } from './app/payday/holder_svc_pb.js'
 import { ManifestService } from './app/manifest_svc_pb.js'
@@ -46,19 +44,6 @@ export const Audit = {
 	key: "id",
 	ids: ["id", "tenantId", "actorId", "objectId", "actorTenantId", "counterpartTenantId"],
 	service: AuditService,
-} as const satisfies EntityDesc
-
-/** app.Binding, as the store holds it. */
-export const Binding = {
-	typeName: "app.Binding",
-	schema: BindingSchema,
-	domain: 12,
-	version: "dateUpdated",
-	refs: [{ field: "tenant", to: "app.Tenant" }],
-	alias: "alias",
-	key: "id",
-	ids: ["id"],
-	service: BindingService,
 } as const satisfies EntityDesc
 
 /** app.GcRun, as the store holds it. */
@@ -175,5 +160,5 @@ export const Tenant = {
 } as const satisfies EntityDesc
 
 /** Every entity of this app, which is what a store is opened over. */
-export const entities = [Audit, Binding, GcRun, Holder, Manifest, ManifestBlob, Outbox, ReferrersSnapshot, Repository, Tag, TagRule, Tenant] as const
+export const entities = [Audit, GcRun, Holder, Manifest, ManifestBlob, Outbox, ReferrersSnapshot, Repository, Tag, TagRule, Tenant] as const
 

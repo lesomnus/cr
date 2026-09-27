@@ -347,7 +347,7 @@ func (c *Collector) retention(ctx context.Context, repo string, p *auth.Policy) 
 	for _, rule := range rules {
 		var ts []index.Tag
 		for _, t := range tags {
-			if auth.Glob(rule.Tag, t.Name) {
+			if rule.MatchesTag(t.Name) {
 				ts = append(ts, t)
 			}
 		}
@@ -371,7 +371,7 @@ func (c *Collector) retention(ctx context.Context, repo string, p *auth.Policy) 
 		if !matched[t.Name] || kept[t.Name] {
 			continue
 		}
-		if err := p.CheckTag(auth.Subject{ID: "gc"}, []auth.Action{auth.ActionAdmin}, repo, t.Name, auth.TagDelete); err != nil {
+		if err := p.CheckTag([]auth.Action{auth.ActionAdmin}, repo, t.Name, auth.TagDelete); err != nil {
 			continue
 		}
 		erased := false

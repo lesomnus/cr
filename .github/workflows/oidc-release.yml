@@ -1,4 +1,4 @@
-# The workflow the binding in `oidc-e2e.yml` names, so its push goes through.
+# The workflow the match in `oidc-e2e.yml` names, so its push goes through.
 name: oidc-release
 
 on:

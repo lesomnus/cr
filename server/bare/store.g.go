@@ -9,7 +9,6 @@ import (
 	api "github.com/lesomnus/cr/api"
 	ent "github.com/lesomnus/cr/internal/ent"
 	audit "github.com/lesomnus/cr/internal/ent/audit"
-	binding "github.com/lesomnus/cr/internal/ent/binding"
 	gcrun "github.com/lesomnus/cr/internal/ent/gcrun"
 	holder "github.com/lesomnus/cr/internal/ent/holder"
 	manifest "github.com/lesomnus/cr/internal/ent/manifest"
@@ -319,12 +318,11 @@ func record(ctx context.Context, rec Recorder, db *ent.Client, c Change) error {
 // Embed [Unscoped] to write out only the entities there is something to
 // say about.
 type Scope interface {
-	TenantScope(ctx context.Context) (predicate.Tenant, error)
-	BindingScope(ctx context.Context) (predicate.Binding, error)
 	GcRunScope(ctx context.Context) (predicate.GcRun, error)
 	ManifestScope(ctx context.Context) (predicate.Manifest, error)
 	ManifestBlobScope(ctx context.Context) (predicate.ManifestBlob, error)
 	AuditScope(ctx context.Context) (predicate.Audit, error)
+	TenantScope(ctx context.Context) (predicate.Tenant, error)
 	HolderScope(ctx context.Context) (predicate.Holder, error)
 	OutboxScope(ctx context.Context) (predicate.Outbox, error)
 	ReferrersSnapshotScope(ctx context.Context) (predicate.ReferrersSnapshot, error)
@@ -345,12 +343,6 @@ type Unscoped struct{}
 
 var _ Scope = Unscoped{}
 
-func (Unscoped) TenantScope(_ context.Context) (predicate.Tenant, error) {
-	return nil, nil
-}
-func (Unscoped) BindingScope(_ context.Context) (predicate.Binding, error) {
-	return nil, nil
-}
 func (Unscoped) GcRunScope(_ context.Context) (predicate.GcRun, error) {
 	return nil, nil
 }
@@ -361,6 +353,9 @@ func (Unscoped) ManifestBlobScope(_ context.Context) (predicate.ManifestBlob, er
 	return nil, nil
 }
 func (Unscoped) AuditScope(_ context.Context) (predicate.Audit, error) {
+	return nil, nil
+}
+func (Unscoped) TenantScope(_ context.Context) (predicate.Tenant, error) {
 	return nil, nil
 }
 func (Unscoped) HolderScope(_ context.Context) (predicate.Holder, error) {
@@ -400,46 +395,6 @@ func (Unscoped) TagRuleScope(_ context.Context) (predicate.TagRule, error) {
 type Scopes []Scope
 
 var _ Scope = Scopes{}
-
-func (ss Scopes) TenantScope(ctx context.Context) (predicate.Tenant, error) {
-	ps := make([]predicate.Tenant, 0, len(ss))
-	for _, s := range ss {
-		p, err := s.TenantScope(ctx)
-		if err != nil {
-			return nil, err
-		}
-		if p == nil {
-			continue
-		}
-
-		ps = append(ps, p)
-	}
-	if len(ps) == 0 {
-		return nil, nil
-	}
-
-	return tenant.And(ps...), nil
-}
-
-func (ss Scopes) BindingScope(ctx context.Context) (predicate.Binding, error) {
-	ps := make([]predicate.Binding, 0, len(ss))
-	for _, s := range ss {
-		p, err := s.BindingScope(ctx)
-		if err != nil {
-			return nil, err
-		}
-		if p == nil {
-			continue
-		}
-
-		ps = append(ps, p)
-	}
-	if len(ps) == 0 {
-		return nil, nil
-	}
-
-	return binding.And(ps...), nil
-}
 
 func (ss Scopes) GcRunScope(ctx context.Context) (predicate.GcRun, error) {
 	ps := make([]predicate.GcRun, 0, len(ss))
@@ -519,6 +474,26 @@ func (ss Scopes) AuditScope(ctx context.Context) (predicate.Audit, error) {
 	}
 
 	return audit.And(ps...), nil
+}
+
+func (ss Scopes) TenantScope(ctx context.Context) (predicate.Tenant, error) {
+	ps := make([]predicate.Tenant, 0, len(ss))
+	for _, s := range ss {
+		p, err := s.TenantScope(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if p == nil {
+			continue
+		}
+
+		ps = append(ps, p)
+	}
+	if len(ps) == 0 {
+		return nil, nil
+	}
+
+	return tenant.And(ps...), nil
 }
 
 func (ss Scopes) HolderScope(ctx context.Context) (predicate.Holder, error) {
@@ -721,7 +696,7 @@ func (s Store) now() time.Time {
 // is rendered for that dialect, not just what this server writes.
 //
 // That set is also what a soft erasure needs, so this is the whole
-// check. Binding, Holder and TagRule free the names they held when a row
+// check. Holder and TagRule free the names they held when a row
 // is erased, which is a unique index covering only the rows that are
 // still there -- a partial index, and the dialects above are the ones
 // that have one. MySQL does not, and ent writes the annotation out for
@@ -759,14 +734,13 @@ func (s Server) WithDriver(drv dialect.Driver) (api.Server, error) {
 	return s, nil
 }
 
-func (s Server) Tenant() api.TenantServiceServer     { return TenantServiceServer{Store: s.Store} }
-func (s Server) Binding() api.BindingServiceServer   { return BindingServiceServer{Store: s.Store} }
 func (s Server) GcRun() api.GcRunServiceServer       { return GcRunServiceServer{Store: s.Store} }
 func (s Server) Manifest() api.ManifestServiceServer { return ManifestServiceServer{Store: s.Store} }
 func (s Server) ManifestBlob() api.ManifestBlobServiceServer {
 	return ManifestBlobServiceServer{Store: s.Store}
 }
 func (s Server) Audit() api.AuditServiceServer   { return AuditServiceServer{Store: s.Store} }
+func (s Server) Tenant() api.TenantServiceServer { return TenantServiceServer{Store: s.Store} }
 func (s Server) Holder() api.HolderServiceServer { return HolderServiceServer{Store: s.Store} }
 func (s Server) Outbox() api.OutboxServiceServer { return OutboxServiceServer{Store: s.Store} }
 func (s Server) ReferrersSnapshot() api.ReferrersSnapshotServiceServer {
