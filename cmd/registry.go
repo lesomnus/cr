@@ -141,6 +141,12 @@ type S3StorageConfig struct {
 
 	// PartSize is how much of an upload is buffered per part; zero is 16 MiB.
 	PartSize int64 `yaml:"part_size"`
+
+	// SpoolDir is where a blob is written in full before it is uploaded,
+	// which every push and every pull-through fill does; empty is the
+	// system's temporary directory. It holds the largest blob times the
+	// uploads in flight, and on a memory-backed filesystem that is memory.
+	SpoolDir string `yaml:"spool_dir"`
 }
 
 // UploadConfig is how long a chunked upload lives.

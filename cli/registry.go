@@ -148,6 +148,7 @@ func backend(at string, driver string, o cmd.OsStorageConfig, s cmd.S3StorageCon
 			Client:         s3Client(),
 			Stage:          stage,
 			StagePartSize:  s.PartSize,
+			SpoolDir:       s.SpoolDir,
 			Endpoint:       s.Endpoint,
 			PublicEndpoint: s.PublicEndpoint,
 			Region:         s.Region,
