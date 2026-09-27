@@ -23,9 +23,11 @@ package cli
 
 import (
 	"context"
+	"os"
 
 	"github.com/lesomnus/xli"
 	"github.com/lesomnus/xli/flg"
+	"github.com/lesomnus/xli/mode"
 
 	"github.com/lesomnus/payday/pdcmd"
 
@@ -72,10 +74,31 @@ func Cmd(c *cmd.Config) *xli.Command {
 			NewCmdGc(c),
 			NewCmdIndex(c),
 			NewCmdExport(c),
+			NewCmdAuth(),
 		}, t.Commands()...),
 
-		Handler: xli.Chain(pdcmd.Load(cmd.Loader, c), xli.RequireSubcommand()),
+		Handler: xli.Chain(pdcmd.Load(cmd.Loader, c), located(c), xli.RequireSubcommand()),
 	}
+}
+
+// located writes down the file the configuration was read from, chosen the
+// way the loader chose it -- the one `--config` names, or the first of the
+// loader's paths that is there -- so that the files it names beside it are
+// found there.
+func located(c *cmd.Config) xli.Handler {
+	return xli.On(mode.Run, func(ctx context.Context, self *xli.Command, next xli.Next) error {
+		if p, _ := flg.Find[string](self, pdcmd.ConfigName); p != "" {
+			c.From = p
+			return next(ctx)
+		}
+		for _, p := range cmd.Loader.Paths() {
+			if _, err := os.Stat(p); err == nil {
+				c.From = p
+				break
+			}
+		}
+		return next(ctx)
+	})
 }
 
 // Migrate brings the database s runs on into the shape this app's schema says.

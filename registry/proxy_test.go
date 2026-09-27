@@ -231,13 +231,13 @@ func TestProxyAnswersWhatItFetchedWhateverTheAccept(t *testing.T) {
 }
 
 func TestProxyUpstreamAuth(t *testing.T) {
-	st := auth.NewPolicyStore(time.Hour, everything("ci"))
+	st := auth.NewPolicyStore(time.Hour, everything(people{"ci": {"sub": "ci"}}, "ci"))
 	require.NoError(t, st.Refresh(context.Background()))
 	k, err := auth.GenerateKey()
 	require.NoError(t, err)
 	issuer, err := auth.NewIssuer("upstream", "upstream", time.Minute, k)
 	require.NoError(t, err)
-	up := newUpstream(t, &auth.Guard{Authenticator: auth.Chain{people{"ci": {"sub": "ci"}}}, Policy: st, Issuer: issuer})
+	up := newUpstream(t, &auth.Guard{Policy: st, Issuer: issuer})
 
 	ci := basic("ci")
 	body, m := up.imageAs(ci, "private/app", "secret layer")

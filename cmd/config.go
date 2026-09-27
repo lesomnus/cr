@@ -38,4 +38,8 @@ type Config struct {
 	Registry   RegistryConfig   `yaml:"registry"`
 	Auth       AuthConfig       `yaml:"auth"`
 	Management ManagementConfig `yaml:"management"`
+
+	// From is the file this configuration was read from, and empty when
+	// there was none: where the files it names relative to it are.
+	From string `yaml:"-"`
 }

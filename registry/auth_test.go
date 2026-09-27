@@ -39,16 +39,23 @@ func (p people) Authenticate(_ context.Context, user, pass string) (auth.Subject
 
 func (people) Kind() string { return "test" }
 
-// everything is a policy under which the user `test` names may do anything.
-func everything(user string) auth.Static {
+// everything is a policy under which user, of users, may do anything.
+func everything(users people, user string) auth.Static {
 	return auth.Static{
+		Providers:   []auth.Provider{{Name: "test", Authenticator: users}},
 		Permissions: map[string]auth.Permission{"all": {Repos: []string{"**"}, Actions: []auth.Action{auth.ActionAll}}},
 		Matches:     map[string]auth.Match{user: {For: "test", Grant: []string{"all"}, When: map[string]string{"sub": user}}},
 	}
 }
 
 func newGuarded(t *testing.T) *guarded {
+	users := people{
+		"alice": {"sub": "alice"},
+		"bob":   {"sub": "bob"},
+		"carol": {"sub": "carol", "groups": []any{"dev"}},
+	}
 	st := auth.NewPolicyStore(time.Hour, auth.Static{
+		Providers: []auth.Provider{{Name: "test", Authenticator: users}},
 		Permissions: map[string]auth.Permission{
 			"public":  {Repos: []string{"public/*"}, Actions: []auth.Action{auth.ActionPull}},
 			"catalog": {Repos: []string{"**"}, Actions: []auth.Action{auth.ActionCatalog}},
@@ -66,17 +73,12 @@ func newGuarded(t *testing.T) *guarded {
 		},
 	})
 	require.NoError(t, st.Refresh(context.Background()))
-	users := people{
-		"alice": {"sub": "alice"},
-		"bob":   {"sub": "bob"},
-		"carol": {"sub": "carol", "groups": []any{"dev"}},
-	}
 	k, err := auth.GenerateKey()
 	require.NoError(t, err)
 	issuer, err := auth.NewIssuer("cr", "registry.test", time.Minute, k)
 	require.NoError(t, err)
 
-	g := &auth.Guard{Authenticator: auth.Chain{users}, Policy: st, Issuer: issuer}
+	g := &auth.Guard{Policy: st, Issuer: issuer}
 	return &guarded{
 		harness: &harness{t: t, h: registry.New(registry.Config{
 			Stores: flob.NewMemStores(),

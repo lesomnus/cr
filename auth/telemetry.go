@@ -50,14 +50,25 @@ func (g *Guard) Denied(ctx context.Context, at string, actions []Action) {
 }
 
 // Measure reports the store with m: `cr.auth.policy.age`, the seconds since
-// the bindings and tag rules were last loaded, and
-// `cr.auth.policy.refresh.errors`, the loads that failed. A load that fails
-// keeps the policy in force, and the age is how that shows. It answers st.
+// the policy was last loaded, `cr.auth.policy.refresh.errors`, the loads that
+// failed, and `cr.auth.policy.revision`, 1 with the revision in force as
+// `cr.auth.policy.revision`, so replicas can be seen to agree. A load that
+// fails keeps the policy in force, and the age is how that shows. It answers
+// st.
 func (st *PolicyStore) Measure(m metric.Meter) *PolicyStore {
-	st.refreshErrors = telemetry.Counter(m, "cr.auth.policy.refresh.errors", "{load}", "Loads of the bindings and tag rules that failed.")
+	st.refreshErrors = telemetry.Counter(m, "cr.auth.policy.refresh.errors", "{load}", "Loads of the policy that failed.")
+	telemetry.Meter(m).Int64ObservableGauge("cr.auth.policy.revision",
+		metric.WithDescription("1, with the revision of the policy in force as an attribute."),
+		metric.WithInt64Callback(func(_ context.Context, o metric.Int64Observer) error {
+			if rev := st.Revision(); rev != "" {
+				o.Observe(1, metric.WithAttributes(attribute.String("cr.auth.policy.revision", rev)))
+			}
+			return nil
+		}),
+	)
 	telemetry.Meter(m).Int64ObservableGauge("cr.auth.policy.age",
 		metric.WithUnit("s"),
-		metric.WithDescription("Seconds since the bindings and tag rules were last loaded."),
+		metric.WithDescription("Seconds since the policy was last loaded."),
 		metric.WithInt64Callback(func(_ context.Context, o metric.Int64Observer) error {
 			if last := st.last.Load(); last != 0 {
 				o.Observe(int64(time.Since(time.Unix(0, last)).Seconds()))

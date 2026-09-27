@@ -115,6 +115,7 @@ func TestOIDCWhen(t *testing.T) {
 	require.NoError(t, err)
 
 	st := NewPolicyStore(time.Hour, Static{
+		Providers: []Provider{{Name: "github", Authenticator: o}, {Name: "gitlab"}},
 		Permissions: map[string]Permission{
 			"app": {Repos: []string{"acme/app"}, Actions: []Action{ActionPull, ActionPush, ActionTag}},
 		},
@@ -128,7 +129,7 @@ func TestOIDCWhen(t *testing.T) {
 		},
 	})
 	require.NoError(t, st.Refresh(context.Background()))
-	g := &Guard{Authenticator: Chain{o}, Policy: st, Issuer: issuer(t)}
+	g := &Guard{Policy: st, Issuer: issuer(t)}
 
 	token := func(idToken string) *Claims {
 		req := httptest.NewRequest("GET", "/token?scope="+url.QueryEscape("repository:acme/app:pull,push"), nil)

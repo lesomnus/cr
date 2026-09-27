@@ -47,26 +47,46 @@ jobs:
               driver: os
               os:
                 root: ./data
-          auth:
-            providers:
-              github:
-                kind: oidc
-                issuer: https://token.actions.githubusercontent.com
-                audience: cr
-            permissions:
-              ci-push:
-                repos: ["ci/*"]
-                actions: [pull, push, tag]
-            matches:
-              release:
-                for: github
-                grant: [ci-push]
-                when:
-                  repository_id: "${{ github.repository_id }}"
-                  workflow_ref: "${{ github.repository }}/.github/workflows/oidc-release.yml@refs/**"
-            exchange:
-              ttl: 1h
           EOF
+          cat > cr.auth.yaml <<EOF
+          providers:
+            github:
+              kind: oidc
+              issuer: https://token.actions.githubusercontent.com
+              audience: cr
+              exchange: 1h
+          permissions:
+            ci-push:
+              repos: ["ci/*"]
+              actions: [pull, push, tag]
+          matches:
+            release:
+              for: github
+              grant: [ci-push]
+              when:
+                repository_id: "${{ github.repository_id }}"
+                workflow_ref: "${{ github.repository }}/.github/workflows/oidc-release.yml@refs/**"
+          EOF
+          cat > cr.auth.test.yaml <<EOF
+          cases:
+            - name: the release workflow pushes
+              as:
+                provider: github
+                claims:
+                  repository_id: "${{ github.repository_id }}"
+                  workflow_ref: "${{ github.repository }}/.github/workflows/oidc-release.yml@refs/heads/main"
+              repo: ci/app
+              allow: [pull, push, tag]
+            - name: its sibling does not
+              as:
+                provider: github
+                claims:
+                  repository_id: "${{ github.repository_id }}"
+                  workflow_ref: "${{ github.repository }}/.github/workflows/oidc-sibling.yml@refs/heads/main"
+              repo: ci/app
+              deny: [pull, push]
+          EOF
+          ./cr auth test cr.auth.yaml cr.auth.test.yaml
           ./cr --config cr.yaml serve > cr.log 2>&1 &
           for _ in $(seq 1 100); do
             curl -fsS http://127.0.0.1:5000/healthz >/dev/null 2>&1 && break

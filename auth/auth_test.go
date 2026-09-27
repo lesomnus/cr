@@ -112,6 +112,7 @@ func job(workflow string) Subject {
 
 func rules() Rules {
 	return Rules{
+		Providers: []Provider{{Name: "github", Authenticator: users{"release": job("release.yml")}}},
 		Permissions: map[string]Permission{
 			"library": {Repos: []string{"library/**", "!library/busybox"}, Actions: []Action{ActionPull}},
 			"catalog": {Repos: []string{"**"}, Actions: []Action{ActionCatalog}},
@@ -208,6 +209,33 @@ func TestPolicyRefusesWhatDoesNotCheck(t *testing.T) {
 			func(r *Rules) { r.Matches["m"] = Match{For: Anyone, Grant: []string{"nope"}} },
 			`no permission "nope"`,
 		},
+		"a match for a provider there is not": {
+			func(r *Rules) {
+				r.Matches["m"] = Match{For: "gitlab", Grant: []string{"library"}, When: map[string]string{"sub": "x"}}
+			},
+			`for "gitlab": no such provider`,
+		},
+		"a provider called anyone": {
+			func(r *Rules) { r.Providers = append(r.Providers, Provider{Name: Anyone}) },
+			`is not "anyone"`,
+		},
+		"a provider with a colon in its name": {
+			func(r *Rules) { r.Providers = append(r.Providers, Provider{Name: "git:lab"}) },
+			"lowercase letters",
+		},
+		"a provider written twice": {
+			func(r *Rules) { r.Providers = append(r.Providers, Provider{Name: "github"}) },
+			`provider "github" is written twice`,
+		},
+		"two providers with one issuer": {
+			func(r *Rules) {
+				for _, name := range []string{"a", "b"} {
+					o, _ := NewOIDC(OIDCConfig{Name: name, Issuer: "https://token.actions.githubusercontent.com", Audience: "cr"})
+					r.Providers = append(r.Providers, Provider{Name: name, Authenticator: o})
+				}
+			},
+			"is a's as well",
+		},
 		"a match that grants nothing": {
 			func(r *Rules) { r.Matches["m"] = Match{For: Anyone} },
 			"grants nothing",
@@ -243,6 +271,37 @@ func TestPolicyRefusesWhatDoesNotCheck(t *testing.T) {
 			require.Equal(t, []Action{ActionPull}, p.Allow(job("test.yml"), "acme/web", []Action{ActionPull}))
 		})
 	}
+}
+
+func TestExplain(t *testing.T) {
+	p := policy(t)
+
+	e := p.Explain(job("test.yml"), "acme/app")
+	require.Equal(t, []Action{ActionPull}, e.Granted)
+	byName := map[string]MatchExplanation{}
+	for _, m := range e.Matches {
+		byName[m.Name] = m
+	}
+	require.True(t, byName["acme"].Holds)
+	require.Equal(t, []GrantExplanation{{Permission: "read", Over: true, By: "acme/*", Actions: []Action{ActionPull}}}, byName["acme"].Grants)
+	require.False(t, byName["release"].Holds)
+	require.Contains(t, byName["release"].Why, "claim workflow_ref is acme/app/.github/workflows/test.yml@refs/heads/main")
+	require.Equal(t, "claim groups is [ci release], not ops", byName["ops"].Why)
+
+	// What took a repository back is what decided.
+	e = p.Explain(Subject{ID: Anonymous}, "library/busybox")
+	require.Empty(t, e.Granted)
+	for _, m := range e.Matches {
+		if m.Name == "public" {
+			require.Equal(t, GrantExplanation{Permission: "library", By: "!library/busybox", Actions: []Action{ActionPull}}, m.Grants[0])
+		} else {
+			require.Equal(t, "for github, and the caller gave no credential", m.Why)
+		}
+	}
+
+	// Without a repository, the registry as a whole.
+	e = p.Explain(Subject{ID: Anonymous}, "")
+	require.Equal(t, []Action{ActionCatalog}, e.Granted)
 }
 
 func TestCheckTag(t *testing.T) {
@@ -347,7 +406,7 @@ func TestIssuer(t *testing.T) {
 func TestServeToken(t *testing.T) {
 	st := NewPolicyStore(time.Hour, Static(rules()))
 	require.NoError(t, st.Refresh(context.Background()))
-	g := &Guard{Authenticator: Chain{users{"release": job("release.yml")}}, Policy: st, Issuer: issuer(t)}
+	g := &Guard{Policy: st, Issuer: issuer(t)}
 
 	get := func(q string, user, pass string) (int, *Claims) {
 		req := httptest.NewRequest("GET", "/token?service=registry.test&"+q, nil)

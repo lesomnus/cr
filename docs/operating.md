@@ -41,8 +41,9 @@ registry:
       root: /var/lib/cr/data
 ```
 
-With no `auth:` block the registry is open to every request, and the log says
-so at startup; [access.md](access.md) turns the guard on.
+With no policy file -- `cr.auth.yaml` beside `cr.yaml` -- the registry is open
+to every request, and the log says so at startup; [access.md](access.md) turns
+the guard on.
 
 `init` puts up the tenant `operator` and the holder `admin` in it (`--tenant`,
 `--holder`). They own what the management plane writes -- tag rules -- and `cr <entity> ...` acts as that holder.
@@ -489,7 +490,8 @@ What is measured:
 | `cr.uploads` | blob uploads that ended, by `cr.upload.outcome`: `completed`, `exists` for a digest the repository already had, `mounted` from another repository, `cancelled`. The ones that expired are `cr.gc.reclaimed` with `cr.gc.what=uploads` |
 | `cr.auth.logins` | credentials checked, by `cr.auth.authenticator` (`oidc`, `exchange`, or `none` when nobody accepted) and `cr.auth.outcome` (`ok`, `refused`); a burst of refusals is a leaked key or a broken configuration |
 | `cr.auth.denied` | actions refused, by `cr.auth.action` and `cr.auth.at`: `token` when a token was issued without them, `request` when a request asked for them without a token |
-| `cr.auth.policy.age`, `cr.auth.policy.refresh.errors` | seconds since the permissions, matches and tag rules were last loaded, and the loads that failed; a load that fails keeps the policy in force, and the age is how that shows |
+| `cr.auth.policy.age`, `cr.auth.policy.refresh.errors` | seconds since the policy file and the tag rules in the database were last loaded, and the loads that failed; a load that fails keeps the policy in force, and the age is how that shows |
+| `cr.auth.policy.revision` | 1, with the revision of the policy file in force as `cr.auth.policy.revision`: replicas with different ones have not all read the same file yet |
 | `go.memory.*`, `go.goroutine.count`, and the rest of OpenTelemetry's Go runtime instrumentation | the process itself |
 | `rpc.server.call.duration` | the management API's calls, over gRPC and Connect alike, by service, method and status code: the OpenTelemetry gRPC instrumentation's own |
 | spans | one server span per registry request, named for its route, and one per management call, continuing a trace the client started |

@@ -7,9 +7,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
-	"maps"
-	"regexp"
-	"slices"
 
 	"github.com/lesomnus/otx/log"
 
@@ -22,29 +19,18 @@ import (
 	"github.com/lesomnus/cr/cmd"
 )
 
-// Guard builds who may use the registry from `auth:`, and nil when the
-// configuration turns nothing on -- which is said in the log, loudly, because
-// it means anybody who can reach the port may push.
+// Guard builds who may use the registry from the policy file, and nil when
+// there is none and nothing asks for one -- which is said in the log, loudly,
+// because it means anybody who can reach the port may push.
 func Guard(ctx context.Context, c *cmd.Config, s *cmd.Server) (*auth.Guard, error) {
 	a := c.Auth
-	if !a.On() {
-		log.From(ctx).WarnContext(ctx, "auth is off: every request may pull, push and delete; configure auth to turn it on")
-		return nil, nil
-	}
-
-	chain, err := providers(a.Providers)
+	file, err := policySource(c)
 	if err != nil {
 		return nil, err
 	}
-	for name, m := range a.Matches {
-		if _, ok := a.Providers[m.For]; !ok && m.For != auth.Anyone {
-			return nil, fmt.Errorf("auth.matches.%s: for %q: no such provider", name, m.For)
-		}
-	}
-	for i, r := range a.TagRules {
-		if len(r.Groups) > 0 {
-			return nil, fmt.Errorf("auth.tag_rules[%d]: groups: there are no groups to name; a caller with admin moves a protected tag", i)
-		}
+	if file == nil {
+		log.From(ctx).WarnContext(ctx, "auth is off: every request may pull, push and delete; write a policy file to turn it on", slog.String("policy", policyPathOf(c)))
+		return nil, nil
 	}
 
 	var keys []*ecdsa.PrivateKey
@@ -74,19 +60,15 @@ func Guard(ctx context.Context, c *cmd.Config, s *cmd.Server) (*auth.Guard, erro
 	if err != nil {
 		return nil, fmt.Errorf("auth.token: %w", err)
 	}
-	if a.Exchange.Ttl > 0 {
-		chain = append(chain, auth.LoginTokens{Issuer: issuer})
-	}
 
-	static := staticPolicy(a)
-	policy := auth.NewPolicyStore(a.Refresh, static, entpolicy.New(s.Ent)).Measure(meterOf(ctx))
+	policy := auth.NewPolicyStore(a.Refresh, file, entpolicy.New(s.Ent)).Measure(meterOf(ctx))
 	if err := policy.Refresh(ctx); err != nil {
-		return nil, fmt.Errorf("auth: policy: %w", err)
+		return nil, fmt.Errorf("auth: %w", err)
 	}
 	s.Spin = append(s.Spin, policy)
 
-	log.From(ctx).InfoContext(ctx, "auth", slog.Int("providers", len(a.Providers)), slog.String("service", service))
-	g := &auth.Guard{Authenticator: chain, Policy: policy, Issuer: issuer, Realm: a.Token.Realm, Exchange: a.Exchange.Ttl}
+	log.From(ctx).InfoContext(ctx, "auth", slog.String("policy", file.path), slog.String("service", service))
+	g := &auth.Guard{Policy: policy, Issuer: issuer, Realm: a.Token.Realm}
 	return g.Measure(meterOf(ctx)), nil
 }
 
@@ -139,74 +121,4 @@ func Management(c *cmd.Config, s *cmd.Server) (pdauth.Handler, error) {
 		}
 		return pdauth.Identity{}, pdauth.ErrUnknownToken
 	})), nil
-}
-
-// providerName is what a provider may be called: it is written in front of
-// every subject it vouches for, `github:...`, so it has no colon.
-var providerName = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
-
-// providers builds the authenticators `auth.providers` names, in the order of
-// their names. Two with one issuer are refused, so that which provider
-// vouched for a caller is never a question.
-func providers(ps map[string]cmd.ProviderConfig) (auth.Chain, error) {
-	chain := auth.Chain{}
-	issuers := map[string]string{}
-	for _, name := range slices.Sorted(maps.Keys(ps)) {
-		p := ps[name]
-		if name == auth.Anyone || !providerName.MatchString(name) {
-			return nil, fmt.Errorf("auth.providers.%s: a provider is named with lowercase letters, digits, `-` and `_`, and is not %q", name, auth.Anyone)
-		}
-		switch p.Kind {
-		case "oidc":
-			o, err := auth.NewOIDC(auth.OIDCConfig{
-				Name:         name,
-				Issuer:       p.Issuer,
-				Audience:     p.Audience,
-				SubjectClaim: p.SubjectClaim,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("auth.providers.%s: %w", name, err)
-			}
-			if other, ok := issuers[o.Issuer()]; ok {
-				return nil, fmt.Errorf("auth.providers.%s: issuer %q is %s's as well", name, p.Issuer, other)
-			}
-			issuers[o.Issuer()] = name
-			chain = append(chain, o)
-		case "":
-			return nil, fmt.Errorf("auth.providers.%s: no kind", name)
-		default:
-			return nil, fmt.Errorf("auth.providers.%s: kind %q: the kind there is is oidc", name, p.Kind)
-		}
-	}
-	return chain, nil
-}
-
-// staticPolicy is the permissions, matches and tag rules the configuration
-// writes.
-func staticPolicy(a cmd.AuthConfig) auth.Static {
-	static := auth.Static{
-		Permissions: map[string]auth.Permission{},
-		Matches:     map[string]auth.Match{},
-	}
-	for name, p := range a.Permissions {
-		as := make([]auth.Action, len(p.Actions))
-		for i, v := range p.Actions {
-			as[i] = auth.Action(v)
-		}
-		static.Permissions[name] = auth.Permission{Repos: p.Repos, Actions: as}
-	}
-	for name, m := range a.Matches {
-		static.Matches[name] = auth.Match{For: m.For, When: m.When, Grant: m.Grant}
-	}
-	for _, r := range a.TagRules {
-		static.TagRules = append(static.TagRules, auth.TagRule{
-			Name:    r.Name,
-			Repo:    r.Repo,
-			Tag:     r.Tag,
-			Kind:    auth.TagRuleKind(r.Kind),
-			Pattern: r.Pattern,
-			Keep:    r.Keep,
-		})
-	}
-	return static
 }

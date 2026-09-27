@@ -89,7 +89,13 @@ func NewCmdGc(c *cmd.Config) *xli.Command {
 			if err != nil {
 				return err
 			}
-			policy := auth.NewPolicyStore(0, staticPolicy(c.Auth), entpolicy.New(s.Ent))
+			sources := []auth.Source{entpolicy.New(s.Ent)}
+			if file, err := policySource(c); err != nil {
+				return err
+			} else if file != nil {
+				sources = append(sources, file)
+			}
+			policy := auth.NewPolicyStore(0, sources...)
 			if err := policy.Refresh(ctx); err != nil {
 				return err
 			}

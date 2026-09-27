@@ -25,14 +25,14 @@ func TestGuardIsMeasured(t *testing.T) {
 	ctx := h.Into(context.Background())
 	meter := otx.From(ctx).Meter()
 
-	st := auth.NewPolicyStore(time.Hour, everything("alice")).Measure(meter)
-	require.NoError(t, st.Refresh(ctx))
 	users := people{"alice": {"sub": "alice"}, "bob": {"sub": "bob"}}
+	st := auth.NewPolicyStore(time.Hour, everything(users, "alice")).Measure(meter)
+	require.NoError(t, st.Refresh(ctx))
 	k, err := auth.GenerateKey()
 	require.NoError(t, err)
 	issuer, err := auth.NewIssuer("cr", "registry.test", time.Minute, k)
 	require.NoError(t, err)
-	g := (&auth.Guard{Authenticator: auth.Chain{users}, Policy: st, Issuer: issuer}).Measure(meter)
+	g := (&auth.Guard{Policy: st, Issuer: issuer}).Measure(meter)
 	mux := http.NewServeMux()
 	mux.Handle("/v2/", registry.New(registry.Config{Stores: flob.NewMemStores(), Index: memindex.New(), Guard: g, Meter: meter}))
 	mux.HandleFunc("/token", g.ServeToken)

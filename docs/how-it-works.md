@@ -107,11 +107,9 @@ Two tiers, and neither stops the registry.
   repository globs -- to the callers a provider vouches for, when their
   credential's claims match; they only add, and nothing denies. Tag rules
   constrain what happens to tags, whoever asks.
-- **Decisions never wait on the database.** Permissions, matches and tag
-  rules, from the configuration and, for tag rules, from the database, are
-  loaded into a snapshot every `auth.refresh`, and requests read the
-  snapshot. A reload that fails keeps the
-  policy in force.
+- **Decisions never wait on the database.** The policy file, and the tag
+  rules in the database, are loaded into a snapshot every `auth.refresh`, and
+  requests read the snapshot. A reload that fails keeps the policy in force.
 - **Tokens are verified offline.** cr signs ES256 JWTs saying what was granted
   and what was refused, and publishes the keys.
 
@@ -124,7 +122,9 @@ Several replicas are supported on **PostgreSQL and S3**, and on nothing else.
   background work run on whichever replica takes the lock for that run.
 - On S3 an upload that a load balancer sends to another replica continues
   there, and two replicas filling a cache with the same blob both succeed.
-- Tokens verify on any replica that has the same `auth.token.keys`.
+- Tokens verify on any replica that has the same `auth.token.keys`, and a
+  policy is the same on every replica that reads the same policy file; each
+  reads its own, and `cr.auth.policy.revision` says which it has.
 
 With SQLite, the lock and the choice of who collects are inside the process,
 so exactly one process may use a database. The `os` store on a shared
