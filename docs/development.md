@@ -13,7 +13,7 @@ the short version of this page; the rest of `docs/` is for people running cr.
 | `registry/` | the `/v2/`, `/v1/` and `/admin/` handlers, written against `flob.Stores` and `index.Index` |
 | `blob/` | what wraps flob: the prefix router, the upstream store and cache for pull-through, the constant blobs |
 | `index/` | the `Index` port: `entindex` over the generated ent client, `memindex` in memory, `indextest` the suite both pass, `rebuild` |
-| `auth/` | providers, permissions and matches, globs, tag rules, the token issuer; `entpolicy` reads rows, `roster` reads the management API's roster tokens |
+| `auth/` | providers, permissions and matches, globs, tag rules, the token issuer; `entpolicy` reads rows, `roster` reads the management API's roster tokens. The policy file, and `cr auth`, are `cli/policy.go` and `cli/authcmd.go` |
 | `gc/` | the online collection and the sweep; `entruns` records the runs |
 | `export/` | `cr export` |
 | `httpx/` | instrumentation and the health handlers |

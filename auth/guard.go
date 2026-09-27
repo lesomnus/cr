@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"slices"
 	"strconv"
@@ -16,18 +15,15 @@ import (
 )
 
 // Guard is the registry's front door: who a request is, and what they may do.
+// Who vouches for a caller, and what they may do, is the policy in force when
+// the request came in.
 type Guard struct {
-	Authenticator Authenticator
-	Policy        *PolicyStore
-	Issuer        *Issuer
+	Policy *PolicyStore
+	Issuer *Issuer
 
 	// Realm is where a client is sent for a token. Empty is `/token` on
 	// whatever host and scheme the request came in on.
 	Realm string
-
-	// Exchange is how long a token from `POST /token/exchange` lasts; zero
-	// serves no exchange.
-	Exchange time.Duration
 
 	// The count of logins and of refusals; see Measure. Nil counts nothing.
 	logins metric.Int64Counter
@@ -148,6 +144,12 @@ func (c *Caller) CheckTag(repo, tag string, op TagOp) error {
 	return c.policy.CheckTag(c.Allowed(repo, ActionAdmin), repo, tag, op)
 }
 
+// authenticate asks the providers of p, and then whether the password is a
+// token the exchange issued.
+func (g *Guard) authenticate(ctx context.Context, p *Policy, username, password string) (Subject, error) {
+	return Chain{p, LoginTokens{Issuer: g.Issuer}}.Authenticate(ctx, username, password)
+}
+
 // Caller reads a request's credential. None is the anonymous caller; one that
 // does not check is [ErrUnauthenticated].
 func (g *Guard) Caller(r *http.Request) (*Caller, error) {
@@ -169,12 +171,9 @@ func (g *Guard) Caller(r *http.Request) (*Caller, error) {
 		if !ok {
 			return nil, ErrUnauthenticated
 		}
-		s, err := g.Authenticator.Authenticate(r.Context(), user, pass)
+		s, err := g.authenticate(r.Context(), p, user, pass)
 		if err != nil {
 			g.login(r.Context(), "", "refused")
-			if errors.Is(err, ErrNotMine) {
-				err = ErrUnauthenticated
-			}
 			return nil, err
 		}
 		g.login(r.Context(), s.Via, "ok")
@@ -257,10 +256,11 @@ func (g *Guard) ServeToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	p := g.Policy.Current()
 	s := Subject{ID: Anonymous}
 	if given {
 		var err error
-		s, err = g.Authenticator.Authenticate(r.Context(), user, pass)
+		s, err = g.authenticate(r.Context(), p, user, pass)
 		if err != nil {
 			g.login(r.Context(), "", "refused")
 			w.Header().Set("WWW-Authenticate", `Basic realm="cr"`)
@@ -276,7 +276,6 @@ func (g *Guard) ServeToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p := g.Policy.Current()
 	access := []Access{}
 	refused := []Access{}
 	refuse := func(t, name string, want, granted []Action) {

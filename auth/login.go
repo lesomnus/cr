@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -91,17 +92,18 @@ func (l LoginTokens) Authenticate(ctx context.Context, username, password string
 	return l.Issuer.VerifyLogin(password)
 }
 
-// ServeExchange is `POST /token/exchange`: a credential the authenticators
-// accept -- a CI job's ID token, above all -- traded for a token cr issued
-// that stands for the same subject with the same claims, for as long as
-// Exchange says. That token is what goes into `docker login` when the ID
+// ServeExchange is `POST /token/exchange`: a credential a provider accepts --
+// a CI job's ID token, above all -- traded for a token cr issued that stands
+// for the same subject with the same claims, for as long as the provider's
+// `exchange` says. One whose provider says nothing is refused. That token is what goes into `docker login` when the ID
 // token behind it would expire in the middle of the job.
 //
 // The credential comes as `Authorization: Bearer`, as Basic, or as an
 // RFC 8693 `subject_token`. A login token cannot be exchanged for another,
 // or one would never expire.
 func (g *Guard) ServeExchange(w http.ResponseWriter, r *http.Request) {
-	if g.Exchange <= 0 {
+	p := g.Policy.Current()
+	if !p.Exchanges() {
 		oci.WriteError(w, oci.NewError(http.StatusNotFound, oci.CodeUnsupported, "no exchange is served"))
 		return
 	}
@@ -128,13 +130,18 @@ func (g *Guard) ServeExchange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s, err := g.Authenticator.Authenticate(r.Context(), user, secret)
+	s, err := p.Authenticate(r.Context(), user, secret)
 	if err != nil {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="cr"`)
 		oci.WriteError(w, oci.ErrUnauthorized("the credential does not check"))
 		return
 	}
-	token, exp, err := g.Issuer.IssueLogin(s, g.Exchange)
+	ttl := p.Exchange(s.Provider)
+	if ttl <= 0 {
+		oci.WriteError(w, oci.ErrDenied(fmt.Sprintf("provider %q does not exchange its credentials", s.Provider)))
+		return
+	}
+	token, exp, err := g.Issuer.IssueLogin(s, ttl)
 	if err != nil {
 		oci.WriteError(w, err)
 		return

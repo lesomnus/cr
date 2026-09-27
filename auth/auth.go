@@ -111,17 +111,24 @@ type Chain []Authenticator
 
 func (c Chain) Authenticate(ctx context.Context, username, password string) (Subject, error) {
 	for _, a := range c {
-		s, err := a.Authenticate(ctx, username, password)
-		if err == nil {
-			if k, ok := a.(interface{ Kind() string }); ok && s.Via == "" {
-				s.Via = k.Kind()
-			}
-			return s, nil
-		}
+		s, err := ask(ctx, a, username, password)
 		if errors.Is(err, ErrNotMine) {
 			continue
 		}
-		return Subject{}, err
+		return s, err
 	}
 	return Subject{}, ErrUnauthenticated
+}
+
+// ask is a's answer, with the kind of authenticator that accepted the
+// credential written on the subject.
+func ask(ctx context.Context, a Authenticator, username, password string) (Subject, error) {
+	s, err := a.Authenticate(ctx, username, password)
+	if err != nil {
+		return Subject{}, err
+	}
+	if k, ok := a.(interface{ Kind() string }); ok && s.Via == "" {
+		s.Via = k.Kind()
+	}
+	return s, nil
 }

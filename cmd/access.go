@@ -4,17 +4,35 @@ import (
 	"time"
 )
 
-// AuthConfig is who may use the registry and what they may do there.
+// AuthConfig is how the registry is guarded. What it grants, and to whom, is
+// the policy file's: see [PolicyFile].
+type AuthConfig struct {
+	// Policy is the policy file. Empty is `cr.auth.yaml` beside the file this
+	// configuration was read from, and a relative path is beside that file
+	// too. A file named here must be there; the one by default may not be,
+	// and then the registry is open, unless Enabled says it may not be.
+	Policy string `yaml:"policy"`
+
+	// Enabled refuses to start without a policy file, so that a deployment
+	// whose file did not arrive does not come up open.
+	Enabled bool `yaml:"enabled"`
+
+	Token TokenConfig `yaml:"token"`
+
+	// Refresh is how often the policy file and the tag rules in the database
+	// are read again; zero is five seconds. The file is read whole and used
+	// only when its content changed, and a read that fails keeps the policy
+	// in force.
+	Refresh time.Duration `yaml:"refresh"`
+}
+
+// PolicyFile is who may use the registry and what they may do there: the
+// policy file `auth.policy` names.
 //
 // Providers vouch for callers, permissions say what may be done where, and
 // matches grant permissions to the callers a provider vouches for. Tag rules
 // come from here and from the management plane's rows together.
-type AuthConfig struct {
-	// Enabled turns the guard on even when nothing below would, for a
-	// deployment whose tag rules are all rows. Any provider, permission,
-	// match or tag rule configured here turns it on as well.
-	Enabled bool `yaml:"enabled"`
-
+type PolicyFile struct {
 	// Providers are who vouches for a caller, by the name a match's `for`
 	// gives them. `anyone` is not one: it is every caller.
 	Providers map[string]ProviderConfig `yaml:"providers"`
@@ -27,19 +45,7 @@ type AuthConfig struct {
 	// what any match it is under grants, and nothing else.
 	Matches map[string]MatchConfig `yaml:"matches"`
 
-	Token    TokenConfig    `yaml:"token"`
-	Exchange ExchangeConfig `yaml:"exchange"`
-
 	TagRules []TagRuleConfig `yaml:"tag_rules"`
-
-	// Refresh is how often tag rules are read again from the database; zero
-	// is five seconds.
-	Refresh time.Duration `yaml:"refresh"`
-}
-
-// On reports whether the registry is guarded.
-func (c AuthConfig) On() bool {
-	return c.Enabled || len(c.Providers) > 0 || len(c.Permissions) > 0 || len(c.Matches) > 0 || len(c.TagRules) > 0
 }
 
 // ProviderConfig is one provider of credentials.
@@ -59,6 +65,11 @@ type ProviderConfig struct {
 	// SubjectClaim is the claim an ID token's subject is read from; empty is
 	// `sub`.
 	SubjectClaim string `yaml:"subject_claim"`
+
+	// Exchange is how long a token `POST /token/exchange` trades one of the
+	// provider's credentials for lasts, to be given as a password where the
+	// credential lives shorter than the job using it. Zero trades none.
+	Exchange time.Duration `yaml:"exchange"`
 }
 
 // PermissionConfig is actions on repositories.
@@ -83,14 +94,6 @@ type MatchConfig struct {
 	// When is claims of the caller's credential that must all hold, each
 	// value a glob. Required for a provider, and not allowed for anyone.
 	When map[string]string `yaml:"when"`
-}
-
-// ExchangeConfig is `POST /token/exchange`: a credential traded for a token
-// cr issued, to be given as a password where the credential behind it lives
-// shorter than the job using it.
-type ExchangeConfig struct {
-	// Ttl is how long the token lasts; zero serves no exchange.
-	Ttl time.Duration `yaml:"ttl"`
 }
 
 type TokenConfig struct {

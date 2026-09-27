@@ -19,14 +19,18 @@ func TestExchange(t *testing.T) {
 	require.NoError(t, err)
 	is := issuer(t)
 
-	st := NewPolicyStore(time.Hour, Static{
-		Permissions: map[string]Permission{"app": {Repos: []string{"acme/app"}, Actions: []Action{ActionPull, ActionPush}}},
-		Matches: map[string]Match{"release": {For: "github", Grant: []string{"app"}, When: map[string]string{
-			"workflow_ref": "acme/app/.github/workflows/release.yml@refs/heads/*",
-		}}},
-	})
-	require.NoError(t, st.Refresh(ctx))
-	g := &Guard{Authenticator: Chain{o, LoginTokens{Issuer: is}}, Policy: st, Issuer: is, Exchange: time.Hour}
+	store := func(exchange time.Duration, others ...Provider) *PolicyStore {
+		st := NewPolicyStore(time.Hour, Static{
+			Providers:   append([]Provider{{Name: "github", Authenticator: o, Exchange: exchange}}, others...),
+			Permissions: map[string]Permission{"app": {Repos: []string{"acme/app"}, Actions: []Action{ActionPull, ActionPush}}},
+			Matches: map[string]Match{"release": {For: "github", Grant: []string{"app"}, When: map[string]string{
+				"workflow_ref": "acme/app/.github/workflows/release.yml@refs/heads/*",
+			}}},
+		})
+		require.NoError(t, st.Refresh(ctx))
+		return st
+	}
+	g := &Guard{Policy: store(time.Hour), Issuer: is}
 
 	exchange := func(g *Guard, authorization string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest("POST", "/token/exchange", nil)
@@ -48,7 +52,7 @@ func TestExchange(t *testing.T) {
 
 	// Given as a password, it is the job again, from its provider and with
 	// its claims.
-	s, err := g.Authenticator.Authenticate(ctx, "anything", login)
+	s, err := g.authenticate(ctx, g.Policy.Current(), "anything", login)
 	require.NoError(t, err)
 	require.Equal(t, "github", s.Provider)
 	require.Equal(t, "acme/app/.github/workflows/release.yml@refs/heads/main", s.Claims["workflow_ref"])
@@ -71,7 +75,16 @@ func TestExchange(t *testing.T) {
 
 	require.Equal(t, http.StatusUnauthorized, exchange(g, "Bearer not-a-credential").Code)
 
-	closed := *g
-	closed.Exchange = 0
-	require.Equal(t, http.StatusNotFound, exchange(&closed, "Bearer "+p.sign(t, p.job("release.yml"))).Code)
+	// A provider that says nothing of exchange trades nothing, and with no
+	// provider that does, there is no exchange at all.
+	id := "Bearer " + p.sign(t, p.job("release.yml"))
+	other := &Guard{Policy: store(0, Provider{Name: "other", Exchange: time.Hour}), Issuer: is}
+	require.Equal(t, http.StatusForbidden, exchange(other, id).Code)
+	closed := &Guard{Policy: store(0), Issuer: is}
+	require.Equal(t, http.StatusNotFound, exchange(closed, id).Code)
+
+	// A token exchanged while it could be stands for its caller until it
+	// expires.
+	_, err = closed.authenticate(ctx, closed.Policy.Current(), "anything", login)
+	require.NoError(t, err)
 }

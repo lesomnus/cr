@@ -26,6 +26,7 @@ tool (
 
 require (
 	github.com/go-jose/go-jose/v4 v4.1.5
+	github.com/goccy/go-yaml v1.19.2
 	github.com/lesomnus/flob v0.0.0-20260927000547-220c6135a10b
 	github.com/lesomnus/grpc-dgram v0.0.0-20260912133542-a7366077bf6f
 	github.com/lesomnus/mkot/otlp v0.0.0-20260907012347-f3fd02e2da01
@@ -45,7 +46,6 @@ require (
 	go.opentelemetry.io/otel/metric v1.46.0
 	go.opentelemetry.io/otel/sdk/metric v1.46.0
 	go.opentelemetry.io/otel/trace v1.46.0
-	golang.org/x/crypto v0.57.0
 	golang.org/x/sync v0.23.0
 	google.golang.org/grpc v1.83.0
 	google.golang.org/protobuf v1.36.12
@@ -68,7 +68,6 @@ require (
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/inflect v1.0.0 // indirect
-	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/gofrs/flock v0.13.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect

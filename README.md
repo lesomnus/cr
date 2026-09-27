@@ -41,8 +41,9 @@ Every commit on `main` that passes CI is published as `ghcr.io/lesomnus/cr`:
   index, garbage collection, and what several replicas take.
 - [Operating](docs/operating.md) -- configuration, storage, deploying, garbage
   collection, rebuilding the index, pull-through caches, export.
-- [Access](docs/access.md) -- providers, permissions and matches, globs,
-  OpenID Connect, tokens, tag rules, the management API.
+- [Access](docs/access.md) -- the policy file, providers, permissions and
+  matches, globs, OpenID Connect, testing a policy, tokens, tag rules, the
+  management API.
 - [The registry API](docs/registry-api.md) -- endpoints, pushes and deletes,
   artifacts and signatures, errors.
 - [Developing](docs/development.md) -- how the code is laid out and generated.
