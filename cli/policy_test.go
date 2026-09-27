@@ -87,11 +87,17 @@ func TestPolicySource(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, filepath.Join(dir, "cr.auth.yaml"), f.path)
 
-	// What was once written under auth: is refused rather than ignored, which
-	// would leave the registry open.
-	write(t, from, "auth:\n  bindings: []\n  exchange:\n    ttl: 1h\n")
+	// A key under auth: that nothing reads is refused rather than ignored,
+	// wherever it is.
+	write(t, from, "auth:\n  enabled: true\n  bindings: []\n")
 	_, err = policySource(config(cmd.AuthConfig{}))
-	require.ErrorContains(t, err, "auth.exchange, auth.bindings: no longer read from here")
+	require.ErrorContains(t, err, `unknown field "bindings"`)
+	write(t, from, "auth:\n  token:\n    keyz: [a.pem]\n")
+	_, err = policySource(config(cmd.AuthConfig{}))
+	require.ErrorContains(t, err, `unknown field "keyz"`)
+	write(t, from, "auth:\n  refresh: 1s\n  token:\n    ttl: 5m\n")
+	_, err = policySource(config(cmd.AuthConfig{}))
+	require.NoError(t, err)
 }
 
 func TestPolicyFileReloads(t *testing.T) {
@@ -151,7 +157,7 @@ func TestReadPolicyRefuses(t *testing.T) {
 			"providers:\n" + github + "permissions:\n  p:\n    repos: [a]\n    actions: [pull]\nmatches:\n  m:\n    for: gitlab\n    grant: [p]\n    when: {sub: x}\n",
 			`for "gitlab": no such provider`,
 		},
-		"a tag rule that names groups": {"tag_rules:\n  - repo: '**'\n    tag: latest\n    kind: protected\n    groups: [release]\n", "there are no groups"},
+		"a tag rule that names groups": {"tag_rules:\n  - repo: '**'\n    tag: latest\n    kind: protected\n    groups: [release]\n", `unknown field "groups"`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := readPolicy(write(t, filepath.Join(t.TempDir(), "p.yaml"), c.file))

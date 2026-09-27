@@ -117,13 +117,12 @@ type TokenConfig struct {
 }
 
 type TagRuleConfig struct {
-	Name    string   `yaml:"name"`
-	Repo    string   `yaml:"repo"`
-	Tag     string   `yaml:"tag"`
-	Kind    string   `yaml:"kind"`
-	Pattern string   `yaml:"pattern"`
-	Groups  []string `yaml:"groups"`
-	Keep    int      `yaml:"keep"`
+	Name    string `yaml:"name"`
+	Repo    string `yaml:"repo"`
+	Tag     string `yaml:"tag"`
+	Kind    string `yaml:"kind"`
+	Pattern string `yaml:"pattern"`
+	Keep    int    `yaml:"keep"`
 }
 
 // ManagementConfig is who may use the management API, which is payday's:

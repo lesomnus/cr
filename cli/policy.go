@@ -10,11 +10,11 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/goccy/go-yaml"
 	"github.com/lesomnus/otx/log"
+	"github.com/lesomnus/payday/config"
 
 	"github.com/lesomnus/cr/auth"
 	"github.com/lesomnus/cr/cmd"
@@ -52,10 +52,8 @@ func policyPathOf(c *cmd.Config) string {
 // nothing asks for one: the registry is then open. A file that was named, or
 // asked for with `auth.enabled`, must be there.
 func policySource(c *cmd.Config) (*policyFile, error) {
-	if set, err := formerAuth(c.From); err != nil {
+	if err := strictAuth(c.From); err != nil {
 		return nil, err
-	} else if len(set) > 0 {
-		return nil, fmt.Errorf("%s: auth.%s: no longer read from here; providers, permissions, matches and tag rules are the policy file's (%s), a provider says its own exchange, and oidc is the one kind of provider: see docs/access.md", c.From, strings.Join(set, ", auth."), PolicyName)
 	}
 	path, named := policyPath(c)
 	if path == "" {
@@ -78,31 +76,33 @@ func policySource(c *cmd.Config) (*policyFile, error) {
 	return nil, nil
 }
 
-// formerAuth is what the configuration file at path still has under `auth:`
-// of what was once written there and is not any more. The loader ignores what
-// nothing reads, and ignoring these would leave the registry with no policy,
-// and open.
-func formerAuth(path string) ([]string, error) {
+// strictAuth reads `auth:` of the configuration file at path again, and
+// refuses what it has that nothing reads. The loader ignores such a key, and
+// under `auth:` an ignored key is a rule that silently is not there.
+func strictAuth(path string) error {
 	if path == "" {
-		return nil, nil
+		return nil
 	}
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var v struct {
+	var raw struct {
 		Auth map[string]any `yaml:"auth"`
 	}
-	if err := yaml.Unmarshal(b, &v); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+	if err := config.ReadFile(path, &raw); err != nil {
+		return err
 	}
-	var out []string
-	for _, k := range []string{"providers", "permissions", "matches", "tag_rules", "exchange", "htpasswd", "static", "oidc", "roster", "bindings"} {
-		if _, ok := v.Auth[k]; ok {
-			out = append(out, k)
-		}
+	if raw.Auth == nil {
+		return nil
 	}
-	return out, nil
+	b, err := yaml.Marshal(map[string]any{"auth": raw.Auth})
+	if err != nil {
+		return err
+	}
+	var v struct {
+		Auth cmd.AuthConfig `yaml:"auth"`
+	}
+	if err := yaml.UnmarshalWithOptions(b, &v, yaml.Strict()); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	return nil
 }
 
 // policyFile is [auth.Source] over a policy file. It is read whole every time
@@ -217,11 +217,7 @@ func parsePolicy(b []byte, oidcs map[oidcKey]*auth.OIDC) (auth.Rules, error) {
 	for name, m := range f.Matches {
 		r.Matches[name] = auth.Match{For: m.For, When: m.When, Grant: m.Grant}
 	}
-	for i, t := range f.TagRules {
-		if len(t.Groups) > 0 {
-			errs = append(errs, fmt.Errorf("tag_rules[%d]: groups: there are no groups to name; a caller with admin moves a protected tag", i))
-			continue
-		}
+	for _, t := range f.TagRules {
 		r.TagRules = append(r.TagRules, auth.TagRule{
 			Name:    t.Name,
 			Repo:    t.Repo,

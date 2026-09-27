@@ -99,10 +99,8 @@ is not, a match for a provider with no `when` or for `anyone` with one, an
 action there is not, a glob that does not parse, or a permission whose every
 pattern takes away. `cr auth check` says the same before the file is deployed.
 
-What `auth:` in `cr.yaml` once held -- `providers`, `permissions`, `matches`,
-`tag_rules`, `exchange`, and before those `htpasswd`, `static`, `oidc`,
-`roster` and `bindings` -- stops `cr serve` with a message saying so, rather
-than being ignored and leaving the registry open.
+A key under `auth:` in `cr.yaml` that nothing reads stops `cr serve` too,
+rather than being ignored.
 
 ## Providers
 
@@ -392,9 +390,7 @@ when every `retention` rule matching it agrees, and never an `immutable` one.
 Tags that clients use to store signatures are tags like any other; see
 [registry-api.md](registry-api.md#artifacts-signatures-and-sboms).
 
-Tag rules are the policy file's `tag_rules`. A `protected` rule's `groups` is
-from before there were providers: there are no groups to name, so the policy
-file refuses one, and a row's is not read.
+Tag rules are the policy file's `tag_rules`.
 
 Tag rules can also be rows in the database, written through the management
 API. On the host, `cr` reaches that API in-process as the holder
