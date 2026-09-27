@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/lesomnus/flob"
@@ -18,6 +19,11 @@ import (
 // and `cr.store.outcome`. It measures the [flob.Store] methods and nothing a
 // capability adds -- a mount, a presigned URL, a walk -- which reach the store
 // beneath through Unwrap as they would without it.
+//
+// The one exception is [flob.Filler], which a pull-through cache writes
+// through instead of Add: a fill is measured as the add it is, from its
+// beginning to its commit or abort, so that a cache's fills are counted the
+// same whichever way the store takes them.
 func Measured(stores flob.Stores, driver string, m metric.Meter) flob.Stores {
 	return &measured{
 		inner:  stores,
@@ -32,7 +38,16 @@ type measured struct {
 	h      metric.Float64Histogram
 }
 
-func (s *measured) Use(id string) flob.Store { return &measuredStore{inner: s.inner.Use(id), m: s} }
+func (s *measured) Use(id string) flob.Store {
+	inner := s.inner.Use(id)
+	ms := &measuredStore{inner: inner, m: s}
+	// Claimed only where the store beneath has it: a Filler found here that
+	// could not fill would take a cache off the path it can use.
+	if f, ok := flob.AsFiller(inner); ok {
+		return &measuredFiller{measuredStore: ms, filler: f}
+	}
+	return ms
+}
 
 // Unwrap is the stores beneath, which is what lists namespaces and prunes
 // uploads.
@@ -101,4 +116,46 @@ func (s *measuredStore) Erase(ctx context.Context, d flob.Digest) error {
 	err := s.inner.Erase(ctx, d)
 	s.m.record(ctx, "erase", start, err)
 	return err
+}
+
+type measuredFiller struct {
+	*measuredStore
+	filler flob.Filler
+}
+
+func (s *measuredFiller) Fill(ctx context.Context, m flob.Meta) (flob.Fill, error) {
+	start := time.Now()
+	f, err := s.filler.Fill(ctx, m)
+	if err != nil {
+		s.m.record(ctx, "add", start, err)
+		return nil, err
+	}
+	return &measuredFill{Fill: f, ctx: context.WithoutCancel(ctx), start: start, m: s.m}, nil
+}
+
+// measuredFill records its add once, when it is committed or aborted.
+type measuredFill struct {
+	flob.Fill
+	ctx   context.Context
+	start time.Time
+	m     *measured
+	once  sync.Once
+}
+
+func (f *measuredFill) done(err error) {
+	f.once.Do(func() { f.m.record(f.ctx, "add", f.start, err) })
+}
+
+func (f *measuredFill) Commit(ctx context.Context) (flob.Meta, error) {
+	m, err := f.Fill.Commit(ctx)
+	f.done(err)
+	return m, err
+}
+
+func (f *measuredFill) Abort(err error) {
+	f.Fill.Abort(err)
+	if err == nil {
+		err = errors.New("fill aborted")
+	}
+	f.done(err)
 }

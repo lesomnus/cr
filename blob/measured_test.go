@@ -8,6 +8,7 @@ import (
 	"github.com/lesomnus/flob"
 	"github.com/lesomnus/otx"
 	"github.com/lesomnus/otx/otxtest"
+	"github.com/opencontainers/go-digest"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
@@ -59,3 +60,46 @@ func TestMeasured(t *testing.T) {
 		"memory add exists":     1,
 	}, counts)
 }
+
+// TestMeasuredFill: a store beneath that can fill still can through the
+// measuring one, and a fill is counted as the add it is; one that cannot is
+// not made to look as if it could.
+func TestMeasuredFill(t *testing.T) {
+	h := otxtest.New(t)
+	ctx := h.Into(context.Background())
+	s := blob.Measured(flob.NewMemStores(), "memory", otx.From(ctx).Meter()).Use("acme/app")
+
+	fr, ok := flob.AsFiller(s)
+	require.True(t, ok, "the memory store fills, through the measuring one")
+	body := "filled"
+	f, err := fr.Fill(ctx, flob.Meta{Digest: flob.Digest(digest.FromString(body)), Size: int64(len(body))})
+	require.NoError(t, err)
+	_, err = f.Write([]byte(body))
+	require.NoError(t, err)
+	_, err = f.Commit(ctx)
+	require.NoError(t, err)
+	f.Abort(nil) // after Commit, only a release: not counted again
+
+	_, ok = flob.AsFiller(blob.Measured(noFill{flob.NewMemStores()}, "memory", otx.From(ctx).Meter()).Use("acme/app"))
+	require.False(t, ok)
+
+	counts := map[string]uint64{}
+	for _, sm := range h.Collect(ctx).ScopeMetrics {
+		for _, mt := range sm.Metrics {
+			if mt.Name != "cr.store.operation.duration" {
+				continue
+			}
+			for _, dp := range mt.Data.(metricdata.Histogram[float64]).DataPoints {
+				op, _ := dp.Attributes.Value("cr.store.operation")
+				outcome, _ := dp.Attributes.Value("cr.store.outcome")
+				counts[op.AsString()+" "+outcome.AsString()] += dp.Count
+			}
+		}
+	}
+	require.Equal(t, map[string]uint64{"add ok": 1}, counts)
+}
+
+// noFill is stores whose stores hide every capability, Filler included.
+type noFill struct{ inner flob.Stores }
+
+func (s noFill) Use(id string) flob.Store { return struct{ flob.Store }{s.inner.Use(id)} }

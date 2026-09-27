@@ -26,7 +26,7 @@ tool (
 
 require (
 	github.com/go-jose/go-jose/v4 v4.1.5
-	github.com/lesomnus/flob v0.0.0-20260926225109-a0430c10a62a
+	github.com/lesomnus/flob v0.0.0-20260927000547-220c6135a10b
 	github.com/lesomnus/grpc-dgram v0.0.0-20260912133542-a7366077bf6f
 	github.com/lesomnus/mkot/otlp v0.0.0-20260907012347-f3fd02e2da01
 	github.com/lesomnus/otx v0.0.0-20260807173743-977a5687d6ba
