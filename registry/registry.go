@@ -71,6 +71,7 @@ type Registry struct {
 	c Config
 
 	proxies proxies
+	flights flights
 
 	// errors counts every error envelope answered, by its code, and
 	// cacheRequests every manifest request to a pull-through cache, by how
