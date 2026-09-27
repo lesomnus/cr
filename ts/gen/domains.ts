@@ -15,9 +15,6 @@ import { pdid } from '@lesomnus/payday'
 /** The domain identifiers of app.Audit carry. */
 export const AuditDomain = 3
 
-/** The domain identifiers of app.Binding carry. */
-export const BindingDomain = 12
-
 /** The domain identifiers of app.GcRun carry. */
 export const GcRunDomain = 14
 
@@ -51,7 +48,6 @@ export const TenantDomain = 1
 // Registered as this module is loaded, which is why importing it is the
 // whole of what an app does with it.
 pdid.register("app.Audit", AuditDomain, "audit")
-pdid.register("app.Binding", BindingDomain, "binding")
 pdid.register("app.GcRun", GcRunDomain, "gc-run")
 pdid.register("app.Holder", HolderDomain, "holder")
 pdid.register("app.Manifest", ManifestDomain, "manifest")

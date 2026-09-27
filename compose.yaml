@@ -2,13 +2,12 @@
 # machine.
 #
 #     docker compose up -d
-#     docker login localhost:5000 -u admin -p admin
 #     docker push localhost:5000/acme/app:latest
 #     docker search localhost:5000/acme
 #
 # Blob GETs are answered with a redirect to MinIO, so a client pulling has to
-# reach localhost:9000 as well. The token key is made at startup, which is
-# right for this one replica; a second one needs `auth.token.keys`.
+# reach localhost:9000 as well. There is no `auth:`, so anybody who reaches
+# the port may push and delete; see docs/access.md for turning it on.
 
 services:
   postgres:
@@ -95,14 +94,3 @@ configs:
             upstream: https://registry-1.docker.io
             tag_ttl: 5m
             retention: 720h
-      auth:
-        static:
-          - name: admin
-            token: admin
-        bindings:
-          - subject: admin
-            repo: "*"
-            actions: ["*"]
-          - subject: anonymous
-            repo: "*"
-            actions: [pull, catalog, search]

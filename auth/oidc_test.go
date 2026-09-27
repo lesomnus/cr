@@ -65,20 +65,19 @@ func (p *provider) job(workflow string) map[string]any {
 		"exp":          now.Add(5 * time.Minute).Unix(),
 		"repository":   "acme/app",
 		"workflow_ref": "acme/app/.github/workflows/" + workflow + "@refs/heads/main",
-		"groups":       []string{"ci"},
 	}
 }
 
 func TestOIDC(t *testing.T) {
 	ctx := context.Background()
 	p := newProvider(t, "k1")
-	o, err := NewOIDC(OIDCConfig{Issuer: p.srv.URL, Audience: "cr", GroupsClaim: "groups", Prefix: "github:"})
+	o, err := NewOIDC(OIDCConfig{Name: "github", Issuer: p.srv.URL, Audience: "cr"})
 	require.NoError(t, err)
 
 	s, err := o.Authenticate(ctx, "oidc", p.sign(t, p.job("release.yml")))
 	require.NoError(t, err)
 	require.Equal(t, "github:repo:acme/app:ref:refs/heads/main", s.ID)
-	require.Equal(t, []string{"ci"}, s.Groups)
+	require.Equal(t, "github", s.Provider)
 	require.Equal(t, "acme/app", s.Claims["repository"])
 
 	with := func(k string, v any) string {
@@ -112,18 +111,22 @@ func TestOIDC(t *testing.T) {
 // same repository may not.
 func TestOIDCWhen(t *testing.T) {
 	p := newProvider(t, "k1")
-	o, err := NewOIDC(OIDCConfig{Issuer: p.srv.URL, Audience: "cr"})
+	o, err := NewOIDC(OIDCConfig{Name: "github", Issuer: p.srv.URL, Audience: "cr"})
 	require.NoError(t, err)
 
-	st := NewPolicyStore(time.Hour, Static{Bindings: []Binding{{
-		Group:   Authenticated,
-		Repo:    "acme/app",
-		Actions: []Action{ActionPull, ActionPush, ActionTag},
-		When: map[string]string{
-			"repository":   "acme/app",
-			"workflow_ref": "acme/app/.github/workflows/release.yml@*",
+	st := NewPolicyStore(time.Hour, Static{
+		Permissions: map[string]Permission{
+			"app": {Repos: []string{"acme/app"}, Actions: []Action{ActionPull, ActionPush, ActionTag}},
 		},
-	}}})
+		Matches: map[string]Match{
+			"release": {For: "github", Grant: []string{"app"}, When: map[string]string{
+				"repository":   "acme/app",
+				"workflow_ref": "acme/app/.github/workflows/release.yml@refs/heads/*",
+			}},
+			// The same claims from another provider are not these.
+			"elsewhere": {For: "gitlab", Grant: []string{"app"}, When: map[string]string{"repository": "acme/app"}},
+		},
+	})
 	require.NoError(t, st.Refresh(context.Background()))
 	g := &Guard{Authenticator: Chain{o}, Policy: st, Issuer: issuer(t)}
 

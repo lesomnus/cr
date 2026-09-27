@@ -21,18 +21,6 @@ func (f AuditFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AuditMutation", m)
 }
 
-// The BindingFunc type is an adapter to allow the use of ordinary
-// function as Binding mutator.
-type BindingFunc func(context.Context, *ent.BindingMutation) (ent.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f BindingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-	if mv, ok := m.(*ent.BindingMutation); ok {
-		return f(ctx, mv)
-	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BindingMutation", m)
-}
-
 // The GcRunFunc type is an adapter to allow the use of ordinary
 // function as GcRun mutator.
 type GcRunFunc func(context.Context, *ent.GcRunMutation) (ent.Value, error)

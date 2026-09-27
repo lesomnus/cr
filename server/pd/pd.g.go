@@ -15,7 +15,6 @@ import (
 	api "github.com/lesomnus/cr/api"
 	ent "github.com/lesomnus/cr/internal/ent"
 	audit "github.com/lesomnus/cr/internal/ent/audit"
-	binding "github.com/lesomnus/cr/internal/ent/binding"
 	gcrun "github.com/lesomnus/cr/internal/ent/gcrun"
 	holder "github.com/lesomnus/cr/internal/ent/holder"
 	manifest "github.com/lesomnus/cr/internal/ent/manifest"
@@ -86,7 +85,6 @@ func Check() error { return version.Same(Payday) }
 // number is chosen once and never given to something else.
 const (
 	AuditDomain             pdid.Domain = 3  // "audit"
-	BindingDomain           pdid.Domain = 12 // "binding"
 	GcRunDomain             pdid.Domain = 14 // "gc-run"
 	HolderDomain            pdid.Domain = 2  // "holder"
 	ManifestDomain          pdid.Domain = 9  // "manifest"
@@ -101,7 +99,6 @@ const (
 
 func init() {
 	pdid.Register("app.Audit", AuditDomain, "audit")
-	pdid.Register("app.Binding", BindingDomain, "binding")
 	pdid.Register("app.GcRun", GcRunDomain, "gc-run")
 	pdid.Register("app.Holder", HolderDomain, "holder")
 	pdid.Register("app.Manifest", ManifestDomain, "manifest")
@@ -120,7 +117,6 @@ func init() {
 // which is the name a [Minter] is asked about.
 var Domains = map[string]pdid.Domain{
 	"app.Audit":             AuditDomain,
-	"app.Binding":           BindingDomain,
 	"app.GcRun":             GcRunDomain,
 	"app.Holder":            HolderDomain,
 	"app.Manifest":          ManifestDomain,
@@ -183,16 +179,6 @@ func (wall) AuditScope(ctx context.Context) (predicate.Audit, error) {
 	}
 
 	return audit.Or(audit.TenantIdIn(vs...), audit.ActorTenantIdIn(vs...), audit.CounterpartTenantIdIn(vs...)), nil
-}
-
-// BindingScope: a row belongs to the tenant its "tenant" reaches.
-func (wall) BindingScope(ctx context.Context) (predicate.Binding, error) {
-	vs, all, err := frame.Narrow(ctx)
-	if all || err != nil {
-		return nil, err
-	}
-
-	return binding.TenantIdIn(vs...), nil
 }
 
 // GcRunScope: declared `global`, so it is not behind the wall at all.
@@ -525,436 +511,6 @@ func filterAudit(f *api.AuditFilter) (predicate.Audit, error) {
 	}
 
 	return audit.And(ps...), nil
-}
-
-type sinkBinding struct {
-	api.BindingServiceServer
-	store  bare.Store
-	w      *watch.Watch
-	namer  slug.Namer
-	joined bool
-}
-
-func (s Sink) Binding() api.BindingServiceServer {
-	return sinkBinding{s.Server.Binding(), s.Server.Store, s.w, s.namer, s.joined}
-}
-
-// Add decides the name, and refuses one that was given and cannot be one.
-//
-// It goes through [Sink.WithNamer], which is unset in most deployments and
-// then means: fold what was given, and make a name up when nothing was --
-// for the reason `bare.Minter` makes a key up. An app whose rows have to
-// be named says so with `slug.Required`; see `slug.Names` for why that is
-// the way round it is.
-//
-// The request is copied rather than written to. It belongs to whoever
-// called, and for a call made in this process that is a message they may
-// still be holding -- a server that folded a caller's own field would be
-// changing a value they can read back.
-func (s sinkBinding) Add(ctx context.Context, req *api.BindingAddRequest) (*api.Binding, error) {
-	// How many names to try. More than one only when the caller named
-	// nothing -- then the name is this server's and a collision is this
-	// server's to resolve. A name the caller gave is theirs, and quietly
-	// choosing a different one would write a row they did not ask for.
-	//
-	// And only when this Add opens its own transaction; see [Sink.joined].
-	tries := 1
-	if req.GetAlias() == "" && !s.joined {
-		tries = slug.Tries
-	}
-
-	for try := 0; ; try++ {
-		v, err := slug.NameWith(ctx, s.namer, "app.Binding", req.GetAlias(), req)
-		if err != nil {
-			return nil, pderr.At("alias", err)
-		}
-
-		// The request is copied rather than written to, and copied again on
-		// each try: it belongs to whoever called, and for a call made in this
-		// process that is a message they may still be holding.
-		r := proto.CloneOf(req)
-		r.SetAlias(v)
-
-		res, err := s.BindingServiceServer.Add(ctx, r)
-		if err == nil || try+1 >= tries || status.Code(err) != codes.AlreadyExists {
-			// Whatever it was, said in the words it was said in. Rewriting
-			// it into "no free name" would assert the one thing this cannot
-			// know -- a duplicate key is the same code -- and would say it
-			// loudest exactly when it is wrong.
-			return res, err
-		}
-	}
-}
-
-// Patch folds a name it was given, and says nothing about one it was not.
-//
-// The presence is the whole of the difference from [sinkBinding.Add]: a patch
-// that does not mention the alias is not a patch setting it to the empty
-// string, and refusing one would make every patch of any other field carry
-// the name along.
-//
-// The namer is **not** asked here, and that is the second difference. It
-// decides the name of a row being made; a patch that cleared the alias is
-// a caller asking for something invalid, and answering that with an
-// invented name would hand them a row they did not ask for.
-func (s sinkBinding) Patch(ctx context.Context, req *api.BindingPatchRequest) (*api.Binding, error) {
-	if !req.HasAlias() {
-		return s.BindingServiceServer.Patch(ctx, req)
-	}
-
-	v, err := slug.ParseAlias(req.GetAlias())
-	if err != nil {
-		return nil, pderr.At("alias", err)
-	}
-
-	req = proto.CloneOf(req)
-	req.SetAlias(v)
-
-	return s.BindingServiceServer.Patch(ctx, req)
-}
-
-// orderBinding is how Bindings come back.
-//
-// The last column is the key, and it is not decoration: a cursor cannot
-// tell apart two rows equal in every column of the order, so the page after
-// the first of them either repeats the second or skips it. Rows written by
-// one request are stamped a moment apart at best.
-var orderBinding = []sqlpage.Order{
-	{Column: binding.FieldDateCreated, Desc: false},
-	{Column: binding.FieldId, Desc: false},
-}
-
-const (
-	// BindingPageSize is what a request that did not say gets, and
-	// BindingPageLimit is the most it gets however loudly it asks.
-	BindingPageSize  = 20
-	BindingPageLimit = 100
-
-	// BindingFilterLimit is how many filters one request may carry. Each is a
-	// predicate in the same query, so it is what says how much of the
-	// database a request may ask to read -- and it is refused rather than
-	// clamped, because dropping half the filters would answer a question
-	// nobody asked.
-	BindingFilterLimit = 32
-)
-
-// List answers with the Bindings that match any of the given filters, or with
-// every one there is if the request named none, a page at a time.
-func (s sinkBinding) List(ctx context.Context, req *api.BindingListRequest) (*api.BindingListResponse, error) {
-	q := s.store.Db.Binding.Query()
-
-	// Through the same narrowing every generated read goes through, and not
-	// by asking the scope alone: what narrows a read is the wall today and
-	// the wall and something else tomorrow, and a list that reached past it
-	// would be the one read that missed the something else.
-	if p, err := bare.BindingNarrow(ctx, s.store.Scope, nil); err != nil {
-		return nil, err
-	} else if p != nil {
-		q.Where(p)
-	}
-
-	if fs := req.GetFilters(); len(fs) > 0 {
-		if len(fs) > BindingFilterLimit {
-			return nil, status.Errorf(codes.InvalidArgument,
-				"filters: %d of them, and %d is the most one list carries", len(fs), BindingFilterLimit)
-		}
-
-		ps := make([]predicate.Binding, 0, len(fs))
-		for i, f := range fs {
-			p, err := filterBinding(f)
-			if err != nil {
-				return nil, status.Errorf(codes.InvalidArgument, "filters[%d]: %s", i, err)
-			}
-
-			ps = append(ps, p)
-		}
-
-		q.Where(binding.Or(ps...))
-	}
-
-	if v := req.GetAfter(); v != "" {
-		var (
-			at0 time.Time
-			at1 uuid.UUID
-		)
-		if err := sqlpage.Decode(v, &at0, &at1); err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "after: %s", err)
-		}
-
-		p, err := sqlpage.After(orderBinding, []any{at0, at1})
-		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "after: %s", err)
-		}
-
-		q.Where(p)
-	}
-
-	// One row more than the page, which is how "is there another" is answered
-	// without a second query and without a count. The extra is dropped before
-	// the answer is built; it was only ever asked for to see whether it was
-	// there -- so a full last page answers with no cursor rather than sending
-	// the caller back for an empty one.
-	size := sqlpage.Size(int(req.GetSize()), BindingPageSize, BindingPageLimit)
-	us, err := q.Order(binding.ByDateCreated(), binding.ById()).Limit(size + 1).All(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	more := len(us) > size
-	if more {
-		us = us[:size]
-	}
-
-	items := make([]*api.Binding, len(us))
-	for i, u := range us {
-		items[i] = u.Proto()
-	}
-
-	res := api.BindingListResponse_builder{Items: items}.Build()
-	if more {
-		last := us[len(us)-1]
-		next, err := sqlpage.Encode(last.DateCreated, last.Id)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "next: %s", err)
-		}
-
-		res.SetNext(next)
-	}
-
-	return res, nil
-}
-
-// filterBinding turns one filter into the predicate that selects what it
-// names. Naming nothing is refused, since the request asked for "these" and
-// did not say which.
-func filterBinding(f *api.BindingFilter) (predicate.Binding, error) {
-	ps := make([]predicate.Binding, 0, 1)
-	if f.HasRef() {
-		p, err := bare.BindingPick(f.GetRef())
-		if err != nil {
-			return nil, err
-		}
-
-		ps = append(ps, p)
-	}
-	if f.HasTenant() {
-		w := f.GetTenant()
-		if b := w.GetId(); len(b) > 0 {
-			// The **foreign key column** on this row, which is what an
-			// edge is. A subquery for a comparison against an indexed
-			// column is work nobody asked for.
-			k, err := entuuid.FromBytes(b)
-			if err != nil {
-				return nil, status.Errorf(codes.InvalidArgument, "tenant: %s", err)
-			}
-
-			ps = append(ps, binding.TenantIdEQ(k))
-		} else {
-			// Named some other way -- an alias, a slug. Resolving it
-			// would be a read, and a predicate is built without one, so
-			// it becomes a condition on the target instead. One hop,
-			// against whatever index that column has.
-			q, err := bare.TenantPick(w)
-			if err != nil {
-				return nil, err
-			}
-
-			ps = append(ps, binding.HasTenantWith(q))
-		}
-	}
-	if f.HasSubject() {
-		ps = append(ps, binding.SubjectEQ(f.GetSubject()))
-	}
-	if f.HasGroup() {
-		ps = append(ps, binding.GroupEQ(f.GetGroup()))
-	}
-	if len(ps) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "a filter that names nothing")
-	}
-
-	return binding.And(ps...), nil
-}
-
-// BindingService is the prefix of every Rpc of that service, which is how a
-// change is known to be about a Binding. A service is named for the entity it
-// is about, so the name carries it.
-var BindingService = watch.ServiceOf(api.BindingService_Get_FullMethodName)
-
-// Watch answers with the Bindings this caller may see, as they are now and as
-// they change.
-//
-// What is sent is **state and never a delta**, which is what makes a stream
-// that missed something still correct: the next item about a row carries the
-// whole of it, so a client converges rather than replays. It is also what
-// makes the first message safe to duplicate against the ones after it.
-func (s sinkBinding) Watch(req *api.BindingWatchRequest, out grpc.ServerStreamingServer[api.BindingWatchResponse]) error {
-	ctx := out.Context()
-
-	// A watch with no filters is the whole table, forever. It is the one
-	// shape that has no cap at all, so it is the one shape refused.
-	fs := req.GetFilters()
-	switch {
-	case len(fs) == 0:
-		return status.Error(codes.InvalidArgument,
-			"filters: a watch says which rows it is about; one that says nothing is the whole table, for as long as it is open")
-	case len(fs) > BindingFilterLimit:
-		return status.Errorf(codes.InvalidArgument,
-			"filters: %d of them, and %d is the most one watch carries", len(fs), BindingFilterLimit)
-	}
-
-	// Resolved before anything is subscribed to, so a name that names
-	// nothing is an answer rather than a stream that quietly watches none.
-	watching, err := s.watchBindingKeys(ctx, fs)
-	if err != nil {
-		return err
-	}
-
-	var snapshot func(watch.Seen) error
-	if !req.GetSkipSnapshot() {
-		snapshot = func(sent watch.Seen) error { return s.watchNow(ctx, req, out, sent) }
-	}
-
-	if s.w == nil {
-		return status.Error(codes.Unimplemented,
-			"this deployment publishes no changes; see WithWatch")
-	}
-
-	return watch.Stream(ctx, s.w, BindingService, snapshot,
-		func(ks map[pdid.Id]string, sent watch.Seen) error {
-			items := make([]*api.BindingWatchItem, 0, len(ks))
-			for k, action := range ks {
-				u, err := s.watchRead(ctx, watching, k)
-				if err != nil {
-					return err
-				}
-				if u == nil && !sent[k] {
-					// Not theirs, or not what they asked for, and they
-					// have never been told about it. A row that never
-					// matched is not news.
-					continue
-				}
-
-				sent[k] = u != nil
-				items = append(items, api.BindingWatchItem_builder{
-					Id:     k.Bytes(),
-					Value:  u,
-					Action: action,
-				}.Build())
-			}
-			if len(items) == 0 {
-				return nil
-			}
-
-			return out.Send(api.BindingWatchResponse_builder{Items: items}.Build())
-		})
-}
-
-// watchNow sends what matches right now, through the same List a caller
-// would have called -- so what a stream begins with and what a list answers
-// cannot disagree, and a client does not have to do both and race them.
-func (s sinkBinding) watchNow(
-	ctx context.Context, req *api.BindingWatchRequest, out grpc.ServerStreamingServer[api.BindingWatchResponse],
-	sent watch.Seen,
-) error {
-	after := ""
-	for {
-		res, err := s.List(ctx, api.BindingListRequest_builder{
-			Filters: req.GetFilters(),
-			After:   after,
-		}.Build())
-		if err != nil {
-			return err
-		}
-
-		items := make([]*api.BindingWatchItem, 0, len(res.GetItems()))
-		for _, u := range res.GetItems() {
-			k, err := pdid.From(u.GetId())
-			if err != nil {
-				return err
-			}
-
-			sent[k] = true
-			// No action: this is not something anybody asked for, it is
-			// what is already there.
-			items = append(items, api.BindingWatchItem_builder{Id: u.GetId(), Value: u}.Build())
-		}
-		if len(items) > 0 {
-			if err := out.Send(api.BindingWatchResponse_builder{Items: items}.Build()); err != nil {
-				return err
-			}
-		}
-
-		if after = res.GetNext(); after == "" {
-			return nil
-		}
-	}
-}
-
-// watchRead answers with the row as it is now, or nil when it is no longer
-// one this caller may see -- erased, walled off, or no longer matching what
-// they asked for. The three are deliberately indistinguishable to a caller:
-// a stream that told them apart would be saying which rows stopped being
-// theirs, which is the thing the wall is for.
-//
-// The Get is what keeps the wall out of this file. It goes through the same
-// server every other read does, with the context of the caller who asked, so
-// a row they may not see comes back NotFound and is never sent.
-func (s sinkBinding) watchRead(
-	ctx context.Context, watching []pdid.Id, k pdid.Id,
-) (*api.Binding, error) {
-	// Not one of the rows this stream is about. Asked before the read, so a
-	// busy table costs a stream nothing for the rows it does not watch.
-	if !slices.Contains(watching, k) {
-		return nil, nil
-	}
-
-	v, err := s.Get(ctx, api.BindingGetRequest_builder{
-		Ref: api.BindingRef_builder{Id: k.Bytes()}.Build(),
-	}.Build())
-	if err != nil {
-		if status.Code(err) == codes.NotFound {
-			return nil, nil
-		}
-
-		return nil, err
-	}
-
-	return v, nil
-}
-
-// watchBindingKeys is the rows a stream is about, resolved once when it opens.
-//
-// A filter names a row and a row is named several ways -- by identifier, or
-// by whatever unique index the schema declared. Resolving them here rather
-// than comparing them per event does three things: the comparison afterwards
-// is an identifier against an identifier, a name that names nothing is
-// refused when the stream opens rather than silently watching nothing, and a
-// row renamed while the stream is open goes on being the row that was asked
-// for -- which is what somebody watching a thing meant.
-func (s sinkBinding) watchBindingKeys(
-	ctx context.Context, fs []*api.BindingFilter,
-) ([]pdid.Id, error) {
-	ks := make([]pdid.Id, 0, len(fs))
-	for i, f := range fs {
-		if !f.HasRef() {
-			return nil, status.Errorf(codes.InvalidArgument,
-				"filters[%d]: a watch says which rows it is about by naming them", i)
-		}
-
-		v, err := s.Get(ctx, api.BindingGetRequest_builder{Ref: f.GetRef()}.Build())
-		if err != nil {
-			return nil, err
-		}
-
-		k, err := pdid.From(v.GetId())
-		if err != nil {
-			return nil, err
-		}
-
-		ks = append(ks, k)
-	}
-
-	return ks, nil
 }
 
 type sinkGcRun struct {
@@ -3773,42 +3329,6 @@ func (s gateHolder) Add(ctx context.Context, req *api.HolderAddRequest) (*api.Ho
 	return s.HolderServiceServer.Add(ctx, req)
 }
 
-type gateBinding struct {
-	Gate
-	api.BindingServiceServer
-}
-
-func (s Gate) Binding() api.BindingServiceServer {
-	return gateBinding{s, s.Next().Binding()}
-}
-
-// Add refuses a Binding put into a Tenant this caller cannot see.
-//
-// The wall is a predicate and an Add has no query, so without this the
-// identifier in `tenant` becomes a foreign key with nothing consulted.
-// The row is then invisible to whoever planted it and visible to whoever
-// holds that Tenant, which is the shape of the bug rather than a
-// mitigation of it.
-//
-// NotFound rather than a refusal, for the reason on `gateHolder.Add`:
-// that a row exists is itself something a caller who may not see it
-// should not be told.
-func (s gateBinding) Add(ctx context.Context, req *api.BindingAddRequest) (*api.Binding, error) {
-	if ref := req.GetTenant(); ref != nil {
-		if _, err := s.Gate.Next().Tenant().Get(ctx, api.TenantGetRequest_builder{
-			Ref: ref,
-		}.Build()); err != nil {
-			if status.Code(err) == codes.NotFound {
-				return nil, gate.ErrNotFound("Tenant")
-			}
-
-			return nil, err
-		}
-	}
-
-	return s.BindingServiceServer.Add(ctx, req)
-}
-
 type gateTagRule struct {
 	Gate
 	api.TagRuleServiceServer
@@ -4102,38 +3622,6 @@ func subject(ctx context.Context, s bare.Server, key pdid.Id) (uuid.UUID, []byte
 
 		return k, b, nil
 
-	case BindingDomain:
-		row, err := s.Binding().Get(ctx, api.BindingGetRequest_builder{
-			Ref: api.BindingRef_builder{Id: key.Bytes()}.Build(),
-		}.Build())
-		// Erased softly is still a row; see [erasedBinding].
-		if status.Code(err) == codes.NotFound {
-			row, err = erasedBinding(ctx, s, key)
-		}
-		if err != nil {
-			if status.Code(err) == codes.NotFound {
-				return uuid.Nil(), []byte{}, nil
-			}
-
-			return uuid.Nil(), nil, err
-		}
-
-		b, err := proto.Marshal(row)
-		if err != nil {
-			return uuid.Nil(), nil, err
-		}
-
-		if !row.HasTenant() {
-			return uuid.Nil(), b, nil
-		}
-
-		k, err := entuuid.FromBytes(row.GetTenant().GetId())
-		if err != nil {
-			return uuid.Nil(), nil, err
-		}
-
-		return k, b, nil
-
 	case HolderDomain:
 		row, err := s.Holder().Get(ctx, api.HolderGetRequest_builder{
 			Ref: api.HolderRef_builder{Id: key.Bytes()}.Build(),
@@ -4228,33 +3716,6 @@ func subject(ctx context.Context, s bare.Server, key pdid.Id) (uuid.UUID, []byte
 	// which the switch above skips, or a domain nothing registered, which
 	// is an identifier from somewhere else. Nothing to read either way.
 	return uuid.Nil(), []byte{}, nil
-}
-
-// erasedBinding is the row `key` names among the rows already erased, which no
-// bare read answers: erasure is part of every reference that server builds.
-// The recorder is the one caller that has to see past it -- the row it asks
-// about was erased by the very write it is recording, and a trail row built
-// blind was filed under the actor's tenant with an empty value, which the
-// tenant whose row was erased could not read.
-func erasedBinding(ctx context.Context, s bare.Server, key pdid.Id) (*api.Binding, error) {
-	k, err := entuuid.FromBytes(key.Bytes())
-	if err != nil {
-		return nil, err
-	}
-
-	q := s.Db.Binding.Query().Where(binding.IdEQ(k), binding.DateErasedNotNil())
-	bare.BindingSelectInit(q, nil)
-
-	v, err := q.Only(ctx)
-	if err != nil {
-		if ent.IsNotFound(err) {
-			return nil, status.Error(codes.NotFound, "Binding not found")
-		}
-
-		return nil, err
-	}
-
-	return v.Proto(), nil
 }
 
 // erasedHolder is the row `key` names among the rows already erased, which no
@@ -4389,89 +3850,6 @@ func (s Intercept) WithDriver(drv dialect.Driver) (api.Server, error) {
 	return Intercept{Overlay: api.NewOverlay(next), unary: s.unary, stream: s.stream}, nil
 }
 
-func (s Intercept) Tenant() api.TenantServiceServer {
-	return interceptTenant{s, s.Next().Tenant()}
-}
-
-type interceptTenant struct {
-	Intercept
-	api.TenantServiceServer
-}
-
-func (s interceptTenant) Add(ctx context.Context, req *api.TenantAddRequest) (*api.Tenant, error) {
-	return grpcx.RunUnary(ctx, s.unary, s.TenantServiceServer,
-		api.TenantService_Add_FullMethodName, req, s.TenantServiceServer.Add)
-}
-
-func (s interceptTenant) Get(ctx context.Context, req *api.TenantGetRequest) (*api.Tenant, error) {
-	return grpcx.RunUnary(ctx, s.unary, s.TenantServiceServer,
-		api.TenantService_Get_FullMethodName, req, s.TenantServiceServer.Get)
-}
-
-func (s interceptTenant) Patch(ctx context.Context, req *api.TenantPatchRequest) (*api.Tenant, error) {
-	return grpcx.RunUnary(ctx, s.unary, s.TenantServiceServer,
-		api.TenantService_Patch_FullMethodName, req, s.TenantServiceServer.Patch)
-}
-
-func (s interceptTenant) Apply(ctx context.Context, req *api.TenantApplyRequest) (*api.Tenant, error) {
-	return grpcx.RunUnary(ctx, s.unary, s.TenantServiceServer,
-		api.TenantService_Apply_FullMethodName, req, s.TenantServiceServer.Apply)
-}
-
-func (s interceptTenant) Erase(ctx context.Context, req *api.TenantRef) (*api.TenantEraseResponse, error) {
-	return grpcx.RunUnary(ctx, s.unary, s.TenantServiceServer,
-		api.TenantService_Erase_FullMethodName, req, s.TenantServiceServer.Erase)
-}
-
-func (s interceptTenant) List(ctx context.Context, req *api.TenantListRequest) (*api.TenantListResponse, error) {
-	return grpcx.RunUnary(ctx, s.unary, s.TenantServiceServer,
-		api.TenantService_List_FullMethodName, req, s.TenantServiceServer.List)
-}
-
-func (s Intercept) Binding() api.BindingServiceServer {
-	return interceptBinding{s, s.Next().Binding()}
-}
-
-type interceptBinding struct {
-	Intercept
-	api.BindingServiceServer
-}
-
-func (s interceptBinding) Add(ctx context.Context, req *api.BindingAddRequest) (*api.Binding, error) {
-	return grpcx.RunUnary(ctx, s.unary, s.BindingServiceServer,
-		api.BindingService_Add_FullMethodName, req, s.BindingServiceServer.Add)
-}
-
-func (s interceptBinding) Get(ctx context.Context, req *api.BindingGetRequest) (*api.Binding, error) {
-	return grpcx.RunUnary(ctx, s.unary, s.BindingServiceServer,
-		api.BindingService_Get_FullMethodName, req, s.BindingServiceServer.Get)
-}
-
-func (s interceptBinding) Patch(ctx context.Context, req *api.BindingPatchRequest) (*api.Binding, error) {
-	return grpcx.RunUnary(ctx, s.unary, s.BindingServiceServer,
-		api.BindingService_Patch_FullMethodName, req, s.BindingServiceServer.Patch)
-}
-
-func (s interceptBinding) Apply(ctx context.Context, req *api.BindingApplyRequest) (*api.Binding, error) {
-	return grpcx.RunUnary(ctx, s.unary, s.BindingServiceServer,
-		api.BindingService_Apply_FullMethodName, req, s.BindingServiceServer.Apply)
-}
-
-func (s interceptBinding) Erase(ctx context.Context, req *api.BindingRef) (*api.BindingEraseResponse, error) {
-	return grpcx.RunUnary(ctx, s.unary, s.BindingServiceServer,
-		api.BindingService_Erase_FullMethodName, req, s.BindingServiceServer.Erase)
-}
-
-func (s interceptBinding) List(ctx context.Context, req *api.BindingListRequest) (*api.BindingListResponse, error) {
-	return grpcx.RunUnary(ctx, s.unary, s.BindingServiceServer,
-		api.BindingService_List_FullMethodName, req, s.BindingServiceServer.List)
-}
-
-func (s interceptBinding) Watch(req *api.BindingWatchRequest, out grpc.ServerStreamingServer[api.BindingWatchResponse]) error {
-	return grpcx.RunStream(s.stream, s.BindingServiceServer,
-		api.BindingService_Watch_FullMethodName, req, out, s.BindingServiceServer.Watch)
-}
-
 func (s Intercept) GcRun() api.GcRunServiceServer {
 	return interceptGcRun{s, s.Next().GcRun()}
 }
@@ -4576,6 +3954,45 @@ func (s interceptAudit) Erase(ctx context.Context, req *api.AuditRef) (*api.Audi
 func (s interceptAudit) List(ctx context.Context, req *api.AuditListRequest) (*api.AuditListResponse, error) {
 	return grpcx.RunUnary(ctx, s.unary, s.AuditServiceServer,
 		api.AuditService_List_FullMethodName, req, s.AuditServiceServer.List)
+}
+
+func (s Intercept) Tenant() api.TenantServiceServer {
+	return interceptTenant{s, s.Next().Tenant()}
+}
+
+type interceptTenant struct {
+	Intercept
+	api.TenantServiceServer
+}
+
+func (s interceptTenant) Add(ctx context.Context, req *api.TenantAddRequest) (*api.Tenant, error) {
+	return grpcx.RunUnary(ctx, s.unary, s.TenantServiceServer,
+		api.TenantService_Add_FullMethodName, req, s.TenantServiceServer.Add)
+}
+
+func (s interceptTenant) Get(ctx context.Context, req *api.TenantGetRequest) (*api.Tenant, error) {
+	return grpcx.RunUnary(ctx, s.unary, s.TenantServiceServer,
+		api.TenantService_Get_FullMethodName, req, s.TenantServiceServer.Get)
+}
+
+func (s interceptTenant) Patch(ctx context.Context, req *api.TenantPatchRequest) (*api.Tenant, error) {
+	return grpcx.RunUnary(ctx, s.unary, s.TenantServiceServer,
+		api.TenantService_Patch_FullMethodName, req, s.TenantServiceServer.Patch)
+}
+
+func (s interceptTenant) Apply(ctx context.Context, req *api.TenantApplyRequest) (*api.Tenant, error) {
+	return grpcx.RunUnary(ctx, s.unary, s.TenantServiceServer,
+		api.TenantService_Apply_FullMethodName, req, s.TenantServiceServer.Apply)
+}
+
+func (s interceptTenant) Erase(ctx context.Context, req *api.TenantRef) (*api.TenantEraseResponse, error) {
+	return grpcx.RunUnary(ctx, s.unary, s.TenantServiceServer,
+		api.TenantService_Erase_FullMethodName, req, s.TenantServiceServer.Erase)
+}
+
+func (s interceptTenant) List(ctx context.Context, req *api.TenantListRequest) (*api.TenantListResponse, error) {
+	return grpcx.RunUnary(ctx, s.unary, s.TenantServiceServer,
+		api.TenantService_List_FullMethodName, req, s.TenantServiceServer.List)
 }
 
 func (s Intercept) Holder() api.HolderServiceServer {
@@ -5264,162 +4681,6 @@ func dispatch(ctx context.Context, s api.Server, op *pdpb.Op) (*anypb.Any, error
 	ctx = batch.AsOp(ctx, m)
 
 	switch m {
-	case api.TenantService_Add_FullMethodName:
-		v := &api.TenantAddRequest{}
-		if err := op.GetRequest().UnmarshalTo(v); err != nil {
-			return nil, batch.ErrRequest(m, err)
-		}
-
-		res, err := s.Tenant().Add(ctx, v)
-		if err != nil {
-			return nil, err
-		}
-
-		return anypb.New(res)
-
-	case api.TenantService_Get_FullMethodName:
-		v := &api.TenantGetRequest{}
-		if err := op.GetRequest().UnmarshalTo(v); err != nil {
-			return nil, batch.ErrRequest(m, err)
-		}
-
-		res, err := s.Tenant().Get(ctx, v)
-		if err != nil {
-			return nil, err
-		}
-
-		return anypb.New(res)
-
-	case api.TenantService_Patch_FullMethodName:
-		v := &api.TenantPatchRequest{}
-		if err := op.GetRequest().UnmarshalTo(v); err != nil {
-			return nil, batch.ErrRequest(m, err)
-		}
-
-		res, err := s.Tenant().Patch(ctx, v)
-		if err != nil {
-			return nil, err
-		}
-
-		return anypb.New(res)
-
-	case api.TenantService_Apply_FullMethodName:
-		v := &api.TenantApplyRequest{}
-		if err := op.GetRequest().UnmarshalTo(v); err != nil {
-			return nil, batch.ErrRequest(m, err)
-		}
-
-		res, err := s.Tenant().Apply(ctx, v)
-		if err != nil {
-			return nil, err
-		}
-
-		return anypb.New(res)
-
-	case api.TenantService_Erase_FullMethodName:
-		v := &api.TenantRef{}
-		if err := op.GetRequest().UnmarshalTo(v); err != nil {
-			return nil, batch.ErrRequest(m, err)
-		}
-
-		res, err := s.Tenant().Erase(ctx, v)
-		if err != nil {
-			return nil, err
-		}
-
-		return anypb.New(res)
-
-	case api.TenantService_List_FullMethodName:
-		v := &api.TenantListRequest{}
-		if err := op.GetRequest().UnmarshalTo(v); err != nil {
-			return nil, batch.ErrRequest(m, err)
-		}
-
-		res, err := s.Tenant().List(ctx, v)
-		if err != nil {
-			return nil, err
-		}
-
-		return anypb.New(res)
-
-	case api.BindingService_Add_FullMethodName:
-		v := &api.BindingAddRequest{}
-		if err := op.GetRequest().UnmarshalTo(v); err != nil {
-			return nil, batch.ErrRequest(m, err)
-		}
-
-		res, err := s.Binding().Add(ctx, v)
-		if err != nil {
-			return nil, err
-		}
-
-		return anypb.New(res)
-
-	case api.BindingService_Get_FullMethodName:
-		v := &api.BindingGetRequest{}
-		if err := op.GetRequest().UnmarshalTo(v); err != nil {
-			return nil, batch.ErrRequest(m, err)
-		}
-
-		res, err := s.Binding().Get(ctx, v)
-		if err != nil {
-			return nil, err
-		}
-
-		return anypb.New(res)
-
-	case api.BindingService_Patch_FullMethodName:
-		v := &api.BindingPatchRequest{}
-		if err := op.GetRequest().UnmarshalTo(v); err != nil {
-			return nil, batch.ErrRequest(m, err)
-		}
-
-		res, err := s.Binding().Patch(ctx, v)
-		if err != nil {
-			return nil, err
-		}
-
-		return anypb.New(res)
-
-	case api.BindingService_Apply_FullMethodName:
-		v := &api.BindingApplyRequest{}
-		if err := op.GetRequest().UnmarshalTo(v); err != nil {
-			return nil, batch.ErrRequest(m, err)
-		}
-
-		res, err := s.Binding().Apply(ctx, v)
-		if err != nil {
-			return nil, err
-		}
-
-		return anypb.New(res)
-
-	case api.BindingService_Erase_FullMethodName:
-		v := &api.BindingRef{}
-		if err := op.GetRequest().UnmarshalTo(v); err != nil {
-			return nil, batch.ErrRequest(m, err)
-		}
-
-		res, err := s.Binding().Erase(ctx, v)
-		if err != nil {
-			return nil, err
-		}
-
-		return anypb.New(res)
-
-	case api.BindingService_List_FullMethodName:
-		v := &api.BindingListRequest{}
-		if err := op.GetRequest().UnmarshalTo(v); err != nil {
-			return nil, batch.ErrRequest(m, err)
-		}
-
-		res, err := s.Binding().List(ctx, v)
-		if err != nil {
-			return nil, err
-		}
-
-		return anypb.New(res)
-
 	case api.GcRunService_Get_FullMethodName:
 		v := &api.GcRunGetRequest{}
 		if err := op.GetRequest().UnmarshalTo(v); err != nil {
@@ -5570,6 +4831,84 @@ func dispatch(ctx context.Context, s api.Server, op *pdpb.Op) (*anypb.Any, error
 		}
 
 		res, err := s.Audit().List(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+
+		return anypb.New(res)
+
+	case api.TenantService_Add_FullMethodName:
+		v := &api.TenantAddRequest{}
+		if err := op.GetRequest().UnmarshalTo(v); err != nil {
+			return nil, batch.ErrRequest(m, err)
+		}
+
+		res, err := s.Tenant().Add(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+
+		return anypb.New(res)
+
+	case api.TenantService_Get_FullMethodName:
+		v := &api.TenantGetRequest{}
+		if err := op.GetRequest().UnmarshalTo(v); err != nil {
+			return nil, batch.ErrRequest(m, err)
+		}
+
+		res, err := s.Tenant().Get(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+
+		return anypb.New(res)
+
+	case api.TenantService_Patch_FullMethodName:
+		v := &api.TenantPatchRequest{}
+		if err := op.GetRequest().UnmarshalTo(v); err != nil {
+			return nil, batch.ErrRequest(m, err)
+		}
+
+		res, err := s.Tenant().Patch(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+
+		return anypb.New(res)
+
+	case api.TenantService_Apply_FullMethodName:
+		v := &api.TenantApplyRequest{}
+		if err := op.GetRequest().UnmarshalTo(v); err != nil {
+			return nil, batch.ErrRequest(m, err)
+		}
+
+		res, err := s.Tenant().Apply(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+
+		return anypb.New(res)
+
+	case api.TenantService_Erase_FullMethodName:
+		v := &api.TenantRef{}
+		if err := op.GetRequest().UnmarshalTo(v); err != nil {
+			return nil, batch.ErrRequest(m, err)
+		}
+
+		res, err := s.Tenant().Erase(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+
+		return anypb.New(res)
+
+	case api.TenantService_List_FullMethodName:
+		v := &api.TenantListRequest{}
+		if err := op.GetRequest().UnmarshalTo(v); err != nil {
+			return nil, batch.ErrRequest(m, err)
+		}
+
+		res, err := s.Tenant().List(ctx, v)
 		if err != nil {
 			return nil, err
 		}

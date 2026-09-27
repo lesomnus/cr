@@ -1,6 +1,6 @@
 // Package auth is who is calling the registry and what they may do there:
-// subjects from authenticators, actions from bindings, the rules on tags, and
-// the tokens the distribution flow carries between them.
+// subjects from providers, actions from permissions granted by matches, the
+// rules on tags, and the tokens the distribution flow carries between them.
 //
 // Enforcement is a layer between the handler and the index. The rows it reads
 // are the management plane's; nothing here writes them.
@@ -33,7 +33,7 @@ const (
 	// ActionAdmin is moving a protected tag, and the operator's endpoints.
 	ActionAdmin Action = "admin"
 
-	// ActionAll is every action, in a binding.
+	// ActionAll is every action, in a permission.
 	ActionAll Action = "*"
 )
 
@@ -63,75 +63,32 @@ func Strings(as []Action) []string {
 	return out
 }
 
-// Method is the action by the name a credential that lists methods gives it,
-// `/cr.Registry/Push`: how a roster key made for cr says what it is for.
-// Every action is `/cr.Registry/*`.
-func (a Action) Method() string {
-	if a == "" || a == ActionAll {
-		return "/cr.Registry/*"
-	}
-	return "/cr.Registry/" + strings.ToUpper(string(a[:1])) + string(a[1:])
-}
-
-// Anonymous is the subject of a caller that gave no credential. Every caller
-// is also anonymous, so a binding to it is a binding to everyone.
+// Anonymous is the subject of a caller that gave no credential.
 const Anonymous = "anonymous"
 
-// Authenticated is the group every caller with a credential that checked is
-// in.
-const Authenticated = "authenticated"
+// Anyone is the match every caller is under, with a credential or without,
+// so logging in never takes away what a public repository allows.
+const Anyone = "anyone"
 
-// Subject is a caller as an authenticator names them.
+// Subject is a caller as a provider names them.
 type Subject struct {
+	// ID is `provider:subject`, what the logs name the caller by.
 	ID string
 
-	// Aliases are other names for the same subject that a binding may use:
-	// roster's `@tenant/alias` beside a holder's identifier.
-	Aliases []string
+	// Provider is the name of the provider that vouched for the caller, what
+	// a match's `for` names; empty for the anonymous caller.
+	Provider string
 
-	Groups []string
-
-	// Claims are what the credential said beyond the subject, for a binding's
-	// `when`. Empty for credentials that say nothing more.
+	// Claims are what the credential said, for a match's `when`.
 	Claims map[string]any
 
-	// Only, when it is not nil, is every action the credential may be used
-	// for, whatever the bindings grant the subject: a key made for less than
-	// its holder may do. Nil narrows nothing, and empty allows nothing.
-	Only []Action
-
-	// Via is the authenticator that accepted the credential -- `htpasswd`,
-	// `static`, `oidc`, `roster`, `exchange` -- for the count of logins.
-	// Empty for the anonymous caller, and for a token.
+	// Via is the kind of authenticator that accepted the credential --
+	// `oidc`, `exchange` -- for the count of logins. Empty for the anonymous
+	// caller, and for a token.
 	Via string
 }
 
-func (s Subject) IsAnonymous() bool { return s.ID == "" || s.ID == Anonymous }
-
-// Is reports whether name names the subject.
-func (s Subject) Is(name string) bool {
-	return name == s.ID || slices.Contains(s.Aliases, name)
-}
-
-// In reports whether the subject is in group g.
-func (s Subject) In(g string) bool {
-	if g == Authenticated {
-		return !s.IsAnonymous()
-	}
-	return slices.Contains(s.Groups, g)
-}
-
-// permits reports whether the credential may be used for a, whatever a
-// binding grants.
-func (s Subject) permits(a Action) bool {
-	if s.Only == nil {
-		return true
-	}
-	if a == ActionAll {
-		return !slices.ContainsFunc(Actions, func(v Action) bool { return !slices.Contains(s.Only, v) })
-	}
-	return slices.Contains(s.Only, a)
-}
+func (s Subject) IsAnonymous() bool { return s.Provider == "" }
 
 var (
 	// ErrUnauthenticated is a credential that was checked and is wrong.

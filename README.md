@@ -6,32 +6,29 @@ pull-through caches, and garbage collection that never stops it.
 - **The OCI distribution specification v1.1**, referrers included. Its
   conformance suite passes in CI, and Docker, oras, cosign and notation push
   and find images, artifacts and signatures.
-- **Access per repository.** Bindings grant actions on repository globs to
-  subjects and groups, optionally only for credentials whose claims match, and
-  tag rules make tags immutable, protected, patterned or retained.
-- **Credentials from where they already are**: htpasswd, static tokens,
-  OpenID Connect ID tokens -- so a GitHub Actions workflow pushes with no
-  secret -- and [roster](https://github.com/lesomnus/roster).
+- **Access per repository.** Named permissions over repository globs, granted
+  to the callers a provider vouches for when their credential's claims match,
+  and tag rules that make tags immutable, protected, patterned or retained.
+- **Credentials from where they already are**: OpenID Connect ID tokens, so a
+  GitHub Actions workflow pushes with no secret.
 - **Pull-through caches** that stream while they fill, fetch only what is
   asked for, and keep serving cached tags when the upstream is down.
 - **Garbage collection without a read-only window**, and an index whose
   repositories and manifests the store alone can rebuild.
-- **A management API** for bindings, tag rules, repositories and collection
-  runs. SQLite or PostgreSQL; a local disk or S3.
+- **A management API** for tag rules, repositories and collection runs. SQLite or PostgreSQL; a local disk or S3.
 
 ## Quick start
 
 ```sh
 docker compose up -d
-docker login localhost:5000 -u admin -p admin
 docker tag alpine localhost:5000/acme/alpine
 docker push localhost:5000/acme/alpine
 docker pull localhost:5000/docker.io/library/ubuntu   # through the Docker Hub cache
 ```
 
-`compose.yaml` builds the image and runs cr on PostgreSQL and MinIO. Blob pulls
-are redirected to MinIO, so a client pulling has to reach `localhost:9000` as
-well. [docs/operating.md](docs/operating.md#running) starts from the binary
+`compose.yaml` builds the image and runs cr on PostgreSQL and MinIO, with no
+`auth:`, so anybody who reaches it may push. Blob pulls are redirected to
+MinIO, so a client pulling has to reach `localhost:9000` as well. [docs/operating.md](docs/operating.md#running) starts from the binary
 instead.
 
 Every commit on `main` that passes CI is published as `ghcr.io/lesomnus/cr`:
@@ -44,8 +41,8 @@ Every commit on `main` that passes CI is published as `ghcr.io/lesomnus/cr`:
   index, garbage collection, and what several replicas take.
 - [Operating](docs/operating.md) -- configuration, storage, deploying, garbage
   collection, rebuilding the index, pull-through caches, export.
-- [Access](docs/access.md) -- credentials, bindings, tag rules, OpenID Connect,
-  roster, the management API.
+- [Access](docs/access.md) -- providers, permissions and matches, globs,
+  OpenID Connect, tokens, tag rules, the management API.
 - [The registry API](docs/registry-api.md) -- endpoints, pushes and deletes,
   artifacts and signatures, errors.
 - [Developing](docs/development.md) -- how the code is laid out and generated.

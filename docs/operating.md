@@ -45,8 +45,7 @@ With no `auth:` block the registry is open to every request, and the log says
 so at startup; [access.md](access.md) turns the guard on.
 
 `init` puts up the tenant `operator` and the holder `admin` in it (`--tenant`,
-`--holder`). They own what the management plane writes -- bindings and tag
-rules -- and `cr <entity> ...` acts as that holder.
+`--holder`). They own what the management plane writes -- tag rules -- and `cr <entity> ...` acts as that holder.
 
 **The image** is `ghcr.io/lesomnus/cr`, for linux/amd64 and linux/arm64. It
 runs `cr serve` as a non-root user with no shell, exposes the registry on port
@@ -290,13 +289,13 @@ minute before the walk; nothing repairs those.
 Run one when you like:
 
 ```sh
-curl -X POST -u admin:... https://cr.example.com/admin/gc     # 202 and the run
-curl -u admin:... https://cr.example.com/admin/gc/<id>        # how it went
-curl -u admin:... https://cr.example.com/admin/gc             # the recent runs
+curl -X POST -u oidc:$ID_TOKEN https://cr.example.com/admin/gc     # 202 and the run
+curl -u oidc:$ID_TOKEN https://cr.example.com/admin/gc/<id>        # how it went
+curl -u oidc:$ID_TOKEN https://cr.example.com/admin/gc             # the recent runs
 cr gc --full                                                  # from the host
 ```
 
-The endpoints need `admin` from a binding over `*`. A second `POST` while this
+The endpoints need `admin` from a permission over `**` alone. A second `POST` while this
 replica runs one answers `409` with the run in progress; on several replicas the
 run goes to whichever takes the lock, and the others record
 `failed: another replica is collecting`. Every run, online and full, is a
@@ -317,7 +316,7 @@ reads every repository's namespace in the store and puts back what it finds:
 repositories, manifests and what they hold. It only adds, so it runs over an
 empty database or a partial one. What the store does not keep is lost: tags,
 when a manifest was pushed and pulled, a repository's description, and
-bindings and tag rules. A rebuilt index answers by digest until tags are
+tag rules. A rebuilt index answers by digest until tags are
 pushed again. A rebuilt manifest counts as pushed at the rebuild, so the
 untagged collection takes it once `gc.untagged` has passed unless a tag points
 at it by then; set `untagged: 0` until the tags are back. The database is what
@@ -488,9 +487,9 @@ What is measured:
 | `cr.repositories`, `cr.manifests`, `cr.tags` | how much the index holds, counted after every collection |
 | `cr.index.pulls.pending`, `cr.index.pulls.dropped`, `cr.index.pulls.flush.duration` | the pull bookkeeping: rows waiting when a flush began, touches dropped for there being more than 100,000 waiting, and how long a flush took |
 | `cr.uploads` | blob uploads that ended, by `cr.upload.outcome`: `completed`, `exists` for a digest the repository already had, `mounted` from another repository, `cancelled`. The ones that expired are `cr.gc.reclaimed` with `cr.gc.what=uploads` |
-| `cr.auth.logins` | credentials checked, by `cr.auth.authenticator` (`htpasswd`, `static`, `oidc`, `roster`, `exchange`, or `none` when nobody accepted) and `cr.auth.outcome` (`ok`, `refused`); a burst of refusals is a leaked key or a broken configuration |
+| `cr.auth.logins` | credentials checked, by `cr.auth.authenticator` (`oidc`, `exchange`, or `none` when nobody accepted) and `cr.auth.outcome` (`ok`, `refused`); a burst of refusals is a leaked key or a broken configuration |
 | `cr.auth.denied` | actions refused, by `cr.auth.action` and `cr.auth.at`: `token` when a token was issued without them, `request` when a request asked for them without a token |
-| `cr.auth.policy.age`, `cr.auth.policy.refresh.errors` | seconds since the bindings and tag rules were last loaded, and the loads that failed; a load that fails keeps the policy in force, and the age is how that shows |
+| `cr.auth.policy.age`, `cr.auth.policy.refresh.errors` | seconds since the permissions, matches and tag rules were last loaded, and the loads that failed; a load that fails keeps the policy in force, and the age is how that shows |
 | `go.memory.*`, `go.goroutine.count`, and the rest of OpenTelemetry's Go runtime instrumentation | the process itself |
 | `rpc.server.call.duration` | the management API's calls, over gRPC and Connect alike, by service, method and status code: the OpenTelemetry gRPC instrumentation's own |
 | spans | one server span per registry request, named for its route, and one per management call, continuing a trace the client started |

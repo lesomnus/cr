@@ -11,7 +11,6 @@ import (
 	"uuid"
 
 	"github.com/lesomnus/cr/internal/ent/audit"
-	"github.com/lesomnus/cr/internal/ent/binding"
 	"github.com/lesomnus/cr/internal/ent/gcrun"
 	"github.com/lesomnus/cr/internal/ent/holder"
 	"github.com/lesomnus/cr/internal/ent/manifest"
@@ -33,8 +32,6 @@ type Client struct {
 	config
 	// Audit is the client for interacting with the Audit builders.
 	Audit *AuditClient
-	// Binding is the client for interacting with the Binding builders.
-	Binding *BindingClient
 	// GcRun is the client for interacting with the GcRun builders.
 	GcRun *GcRunClient
 	// Holder is the client for interacting with the Holder builders.
@@ -66,7 +63,6 @@ func NewClient(opts ...Option) *Client {
 
 func (c *Client) init() {
 	c.Audit = NewAuditClient(c.config)
-	c.Binding = NewBindingClient(c.config)
 	c.GcRun = NewGcRunClient(c.config)
 	c.Holder = NewHolderClient(c.config)
 	c.Manifest = NewManifestClient(c.config)
@@ -170,7 +166,6 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ctx:               ctx,
 		config:            cfg,
 		Audit:             NewAuditClient(cfg),
-		Binding:           NewBindingClient(cfg),
 		GcRun:             NewGcRunClient(cfg),
 		Holder:            NewHolderClient(cfg),
 		Manifest:          NewManifestClient(cfg),
@@ -201,7 +196,6 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ctx:               ctx,
 		config:            cfg,
 		Audit:             NewAuditClient(cfg),
-		Binding:           NewBindingClient(cfg),
 		GcRun:             NewGcRunClient(cfg),
 		Holder:            NewHolderClient(cfg),
 		Manifest:          NewManifestClient(cfg),
@@ -287,7 +281,7 @@ func (c *Client) InTx() bool {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.Audit, c.Binding, c.GcRun, c.Holder, c.Manifest, c.ManifestBlob, c.Outbox,
+		c.Audit, c.GcRun, c.Holder, c.Manifest, c.ManifestBlob, c.Outbox,
 		c.ReferrersSnapshot, c.Repository, c.Tag, c.TagRule, c.Tenant,
 	} {
 		n.Use(hooks...)
@@ -298,7 +292,7 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.Audit, c.Binding, c.GcRun, c.Holder, c.Manifest, c.ManifestBlob, c.Outbox,
+		c.Audit, c.GcRun, c.Holder, c.Manifest, c.ManifestBlob, c.Outbox,
 		c.ReferrersSnapshot, c.Repository, c.Tag, c.TagRule, c.Tenant,
 	} {
 		n.Intercept(interceptors...)
@@ -310,8 +304,6 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
 	case *AuditMutation:
 		return c.Audit.mutate(ctx, m)
-	case *BindingMutation:
-		return c.Binding.mutate(ctx, m)
 	case *GcRunMutation:
 		return c.GcRun.mutate(ctx, m)
 	case *HolderMutation:
@@ -467,155 +459,6 @@ func (c *AuditClient) mutate(ctx context.Context, m *AuditMutation) (Value, erro
 		return (&AuditDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Audit mutation op: %q", m.Op())
-	}
-}
-
-// BindingClient is a client for the Binding schema.
-type BindingClient struct {
-	config
-}
-
-// NewBindingClient returns a client for the Binding from the given config.
-func NewBindingClient(c config) *BindingClient {
-	return &BindingClient{config: c}
-}
-
-// Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `binding.Hooks(f(g(h())))`.
-func (c *BindingClient) Use(hooks ...Hook) {
-	c.hooks.Binding = append(c.hooks.Binding, hooks...)
-}
-
-// Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `binding.Intercept(f(g(h())))`.
-func (c *BindingClient) Intercept(interceptors ...Interceptor) {
-	c.inters.Binding = append(c.inters.Binding, interceptors...)
-}
-
-// Create returns a builder for creating a Binding entity.
-func (c *BindingClient) Create() *BindingCreate {
-	mutation := newBindingMutation(c.config, OpCreate)
-	return &BindingCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// CreateBulk returns a builder for creating a bulk of Binding entities.
-func (c *BindingClient) CreateBulk(builders ...*BindingCreate) *BindingCreateBulk {
-	return &BindingCreateBulk{config: c.config, builders: builders}
-}
-
-// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
-// a builder and applies setFunc on it.
-func (c *BindingClient) MapCreateBulk(slice any, setFunc func(*BindingCreate, int)) *BindingCreateBulk {
-	rv := reflect.ValueOf(slice)
-	if rv.Kind() != reflect.Slice {
-		return &BindingCreateBulk{err: fmt.Errorf("calling to BindingClient.MapCreateBulk with wrong type %T, need slice", slice)}
-	}
-	builders := make([]*BindingCreate, rv.Len())
-	for i := 0; i < rv.Len(); i++ {
-		builders[i] = c.Create()
-		setFunc(builders[i], i)
-	}
-	return &BindingCreateBulk{config: c.config, builders: builders}
-}
-
-// Update returns an update builder for Binding.
-func (c *BindingClient) Update() *BindingUpdate {
-	mutation := newBindingMutation(c.config, OpUpdate)
-	return &BindingUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOne returns an update builder for the given entity.
-func (c *BindingClient) UpdateOne(_m *Binding) *BindingUpdateOne {
-	mutation := newBindingMutation(c.config, OpUpdateOne, withBinding(_m))
-	return &BindingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOneId returns an update builder for the given id.
-func (c *BindingClient) UpdateOneId(id uuid.UUID) *BindingUpdateOne {
-	mutation := newBindingMutation(c.config, OpUpdateOne, withBindingId(id))
-	return &BindingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// Delete returns a delete builder for Binding.
-func (c *BindingClient) Delete() *BindingDelete {
-	mutation := newBindingMutation(c.config, OpDelete)
-	return &BindingDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// DeleteOne returns a builder for deleting the given entity.
-func (c *BindingClient) DeleteOne(_m *Binding) *BindingDeleteOne {
-	return c.DeleteOneId(_m.Id)
-}
-
-// DeleteOneId returns a builder for deleting the given entity by its id.
-func (c *BindingClient) DeleteOneId(id uuid.UUID) *BindingDeleteOne {
-	builder := c.Delete().Where(binding.Id(id))
-	builder.mutation.id = &id
-	builder.mutation.SetOp(OpDeleteOne)
-	return &BindingDeleteOne{builder}
-}
-
-// Query returns a query builder for Binding.
-func (c *BindingClient) Query() *BindingQuery {
-	return &BindingQuery{
-		config: c.config,
-		ctx:    &QueryContext{Type: TypeBinding},
-		inters: c.Interceptors(),
-	}
-}
-
-// Get returns a Binding entity by its id.
-func (c *BindingClient) Get(ctx context.Context, id uuid.UUID) (*Binding, error) {
-	return c.Query().Where(binding.Id(id)).Only(ctx)
-}
-
-// GetX is like Get, but panics if an error occurs.
-func (c *BindingClient) GetX(ctx context.Context, id uuid.UUID) *Binding {
-	obj, err := c.Get(ctx, id)
-	if err != nil {
-		panic(err)
-	}
-	return obj
-}
-
-// QueryTenant queries the tenant edge of a Binding.
-func (c *BindingClient) QueryTenant(_m *Binding) *TenantQuery {
-	query := (&TenantClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.Id
-		step := sqlgraph.NewStep(
-			sqlgraph.From(binding.Table, binding.FieldId, id),
-			sqlgraph.To(tenant.Table, tenant.FieldId),
-			sqlgraph.Edge(sqlgraph.M2O, false, binding.TenantTable, binding.TenantColumn),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
-// Hooks returns the client hooks.
-func (c *BindingClient) Hooks() []Hook {
-	return c.hooks.Binding
-}
-
-// Interceptors returns the client interceptors.
-func (c *BindingClient) Interceptors() []Interceptor {
-	return c.inters.Binding
-}
-
-func (c *BindingClient) mutate(ctx context.Context, m *BindingMutation) (Value, error) {
-	switch m.Op() {
-	case OpCreate:
-		return (&BindingCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdate:
-		return (&BindingUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdateOne:
-		return (&BindingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpDelete, OpDeleteOne:
-		return (&BindingDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
-	default:
-		return nil, fmt.Errorf("ent: unknown Binding mutation op: %q", m.Op())
 	}
 }
 
@@ -1984,11 +1827,11 @@ func (c *TenantClient) mutate(ctx context.Context, m *TenantMutation) (Value, er
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Audit, Binding, GcRun, Holder, Manifest, ManifestBlob, Outbox,
-		ReferrersSnapshot, Repository, Tag, TagRule, Tenant []ent.Hook
+		Audit, GcRun, Holder, Manifest, ManifestBlob, Outbox, ReferrersSnapshot,
+		Repository, Tag, TagRule, Tenant []ent.Hook
 	}
 	inters struct {
-		Audit, Binding, GcRun, Holder, Manifest, ManifestBlob, Outbox,
-		ReferrersSnapshot, Repository, Tag, TagRule, Tenant []ent.Interceptor
+		Audit, GcRun, Holder, Manifest, ManifestBlob, Outbox, ReferrersSnapshot,
+		Repository, Tag, TagRule, Tenant []ent.Interceptor
 	}
 )

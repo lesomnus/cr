@@ -25,17 +25,14 @@ func TestGuardIsMeasured(t *testing.T) {
 	ctx := h.Into(context.Background())
 	meter := otx.From(ctx).Meter()
 
-	st := auth.NewPolicyStore(time.Hour, auth.Static{Bindings: []auth.Binding{
-		{Subject: "alice", Repo: "*", Actions: []auth.Action{auth.ActionAll}},
-	}}).Measure(meter)
+	st := auth.NewPolicyStore(time.Hour, everything("alice")).Measure(meter)
 	require.NoError(t, st.Refresh(ctx))
-	tokens, err := auth.NewTokens([]auth.StaticToken{{Name: "alice", Token: "alice-secret"}, {Name: "bob", Token: "bob-secret"}})
-	require.NoError(t, err)
+	users := people{"alice": {"sub": "alice"}, "bob": {"sub": "bob"}}
 	k, err := auth.GenerateKey()
 	require.NoError(t, err)
 	issuer, err := auth.NewIssuer("cr", "registry.test", time.Minute, k)
 	require.NoError(t, err)
-	g := (&auth.Guard{Authenticator: auth.Chain{tokens}, Policy: st, Issuer: issuer}).Measure(meter)
+	g := (&auth.Guard{Authenticator: auth.Chain{users}, Policy: st, Issuer: issuer}).Measure(meter)
 	mux := http.NewServeMux()
 	mux.Handle("/v2/", registry.New(registry.Config{Stores: flob.NewMemStores(), Index: memindex.New(), Guard: g, Meter: meter}))
 	mux.HandleFunc("/token", g.ServeToken)
@@ -76,7 +73,7 @@ func TestGuardIsMeasured(t *testing.T) {
 			}
 		}
 	}
-	require.Equal(t, map[string]int64{"static ok": 3, "none refused": 1}, logins)
+	require.Equal(t, map[string]int64{"test ok": 3, "none refused": 1}, logins)
 	require.Equal(t, map[string]int64{"token pull": 1, "token push": 1, "token tag": 1, "request pull": 1}, denied)
 	require.GreaterOrEqual(t, age, int64(0), "the policy was loaded a moment ago")
 }

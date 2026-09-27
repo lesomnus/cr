@@ -15,16 +15,16 @@ import (
 func TestExchange(t *testing.T) {
 	ctx := context.Background()
 	p := newProvider(t, "k1")
-	o, err := NewOIDC(OIDCConfig{Issuer: p.srv.URL, Audience: "cr"})
+	o, err := NewOIDC(OIDCConfig{Name: "github", Issuer: p.srv.URL, Audience: "cr"})
 	require.NoError(t, err)
 	is := issuer(t)
 
-	st := NewPolicyStore(time.Hour, Static{Bindings: []Binding{{
-		Group:   Authenticated,
-		Repo:    "acme/app",
-		Actions: []Action{ActionPull, ActionPush},
-		When:    map[string]string{"workflow_ref": "acme/app/.github/workflows/release.yml@*"},
-	}}})
+	st := NewPolicyStore(time.Hour, Static{
+		Permissions: map[string]Permission{"app": {Repos: []string{"acme/app"}, Actions: []Action{ActionPull, ActionPush}}},
+		Matches: map[string]Match{"release": {For: "github", Grant: []string{"app"}, When: map[string]string{
+			"workflow_ref": "acme/app/.github/workflows/release.yml@refs/heads/*",
+		}}},
+	})
 	require.NoError(t, st.Refresh(ctx))
 	g := &Guard{Authenticator: Chain{o, LoginTokens{Issuer: is}}, Policy: st, Issuer: is, Exchange: time.Hour}
 
@@ -46,9 +46,11 @@ func TestExchange(t *testing.T) {
 	require.Greater(t, res.ExpiresIn, 3500)
 	login := res.AccessToken
 
-	// Given as a password, it is the job again, with the job's claims.
+	// Given as a password, it is the job again, from its provider and with
+	// its claims.
 	s, err := g.Authenticator.Authenticate(ctx, "anything", login)
 	require.NoError(t, err)
+	require.Equal(t, "github", s.Provider)
 	require.Equal(t, "acme/app/.github/workflows/release.yml@refs/heads/main", s.Claims["workflow_ref"])
 
 	req := httptest.NewRequest("GET", "/token?scope="+url.QueryEscape("repository:acme/app:pull,push"), nil)
@@ -72,31 +74,4 @@ func TestExchange(t *testing.T) {
 	closed := *g
 	closed.Exchange = 0
 	require.Equal(t, http.StatusNotFound, exchange(&closed, "Bearer "+p.sign(t, p.job("release.yml"))).Code)
-}
-
-// A credential narrowed to some actions stays narrowed through every token
-// that stands in for it, a narrowing to nothing included.
-func TestNarrowedTokens(t *testing.T) {
-	is := issuer(t)
-	st := NewPolicyStore(time.Hour, Static{})
-	require.NoError(t, st.Refresh(context.Background()))
-	g := &Guard{Policy: st, Issuer: is}
-
-	for _, only := range [][]Action{nil, {}, {ActionPull}} {
-		s := Subject{ID: "ci", Only: only}
-
-		login, _, err := is.IssueLogin(s, time.Hour)
-		require.NoError(t, err)
-		back, err := is.VerifyLogin(login)
-		require.NoError(t, err)
-		require.Equal(t, only, back.Only)
-
-		access, _, err := is.Issue(s, nil)
-		require.NoError(t, err)
-		req := httptest.NewRequest("GET", "/v2/", nil)
-		req.Header.Set("Authorization", "Bearer "+access)
-		c, err := g.Caller(req)
-		require.NoError(t, err)
-		require.Equal(t, only, c.Subject.Only)
-	}
 }

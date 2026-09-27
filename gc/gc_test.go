@@ -174,11 +174,11 @@ func TestRetention(t *testing.T) {
 		e.clock.Add(time.Minute)
 	}
 
-	p, err := auth.NewPolicy(nil, []auth.TagRule{
-		{Repo: "*", Tag: "*", Kind: auth.TagRetention, Keep: 0},
-		{Repo: "acme/*", Tag: "nightly-*", Kind: auth.TagRetention, Keep: 2},
-		{Repo: "*", Tag: "v*", Kind: auth.TagImmutable},
-	})
+	p, err := auth.NewPolicy(auth.Rules{TagRules: []auth.TagRule{
+		{Repo: "**", Tag: "*", Kind: auth.TagRetention, Keep: 0},
+		{Repo: "acme/**", Tag: "nightly-*", Kind: auth.TagRetention, Keep: 2},
+		{Repo: "**", Tag: "v*", Kind: auth.TagImmutable},
+	}})
 	require.NoError(t, err)
 
 	collector := gc.New(gc.Config{Stores: e.stores, Index: e.ix, Policy: func() *auth.Policy { return p }, Now: e.clock.Now})

@@ -119,7 +119,7 @@ it into a repository that is not a cache, with `oras copy` or the like.
 ## Listing and search
 
 When the registry is guarded, `/v2/_catalog` and `/v1/search` need the
-`catalog` and `search` actions from a binding over every repository (`*`), and
+`catalog` and `search` actions from a permission over every repository (`**`), and
 answer only with repositories the caller may pull. `docker search
 cr.example.com/term` asks `/v1/_ping` and then `/v1/search`, which answers in
 Docker Hub's shape. A repository's description is its `desc`, set with

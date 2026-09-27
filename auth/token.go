@@ -35,32 +35,15 @@ type Claims struct {
 	// which is a 401 that sends the client back for a token that asks.
 	Refused []Access `json:"refused,omitempty"`
 
-	// Groups is the subject's groups when the token was issued, for the
-	// decisions a token's access cannot carry: protected tags, and which
-	// repositories a list shows.
-	Groups []string `json:"groups,omitempty"`
-
-	// Aliases are the subject's other names, for the same decisions.
-	Aliases []string `json:"aliases,omitempty"`
-
-	// Narrowed says Only is every action the credential behind the token may
-	// be used for, none included; see [Subject.Only]. It is its own claim
-	// because a list that allows nothing and a list that is not there look
-	// the same once `omitempty` is done with them.
-	Narrowed bool     `json:"narrowed,omitempty"`
-	Only     []string `json:"only,omitempty"`
+	// Provider and Carried are who vouched for the subject and what the
+	// credential said, for the decisions a token's access cannot carry:
+	// protected tags, and which repositories a list shows.
+	Provider string         `json:"provider,omitempty"`
+	Carried  map[string]any `json:"claims,omitempty"`
 
 	// Use is `login` for a token that stands in for a credential, which is
 	// given as a password and is never an access token; see IssueLogin.
 	Use string `json:"use,omitempty"`
-}
-
-// only is the Only a token's claims carry back to a subject.
-func only(narrowed bool, vs []string) []Action {
-	if !narrowed {
-		return nil
-	}
-	return ParseActions(vs)
 }
 
 // Issuer signs the tokens `/token` hands out and verifies the ones `/v2/` is
@@ -132,10 +115,8 @@ func (i *Issuer) Issue(s Subject, access []Access, refused ...Access) (string, C
 		},
 		Access:   access,
 		Refused:  refused,
-		Groups:   s.Groups,
-		Aliases:  s.Aliases,
-		Narrowed: s.Only != nil,
-		Only:     Strings(s.Only),
+		Provider: s.Provider,
+		Carried:  s.Claims,
 	}
 	if c.Access == nil {
 		c.Access = []Access{}
@@ -145,6 +126,11 @@ func (i *Issuer) Issue(s Subject, access []Access, refused ...Access) (string, C
 		return "", Claims{}, err
 	}
 	return t, c, nil
+}
+
+// Who is the subject the token was issued to.
+func (c *Claims) Who() Subject {
+	return Subject{ID: c.Claims.Subject, Provider: c.Provider, Claims: c.Carried}
 }
 
 // Verify checks a token's signature, issuer, audience and time, and answers

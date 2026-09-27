@@ -23,15 +23,12 @@ type loginClaims struct {
 	jwt.Claims
 
 	Use      string         `json:"use"`
-	Groups   []string       `json:"groups,omitempty"`
-	Aliases  []string       `json:"aliases,omitempty"`
+	Provider string         `json:"provider"`
 	Carried  map[string]any `json:"claims,omitempty"`
-	Narrowed bool           `json:"narrowed,omitempty"`
-	Only     []string       `json:"only,omitempty"`
 }
 
 // IssueLogin signs a token that stands in for s's credential: given as a
-// password, it is s again, claims and all, until it expires. It is never an
+// password, it is s again, provider and claims and all, until it expires. It is never an
 // access token; Verify refuses it.
 func (i *Issuer) IssueLogin(s Subject, ttl time.Duration) (string, time.Time, error) {
 	now := i.now()
@@ -49,11 +46,8 @@ func (i *Issuer) IssueLogin(s Subject, ttl time.Duration) (string, time.Time, er
 			ID:        base64.RawURLEncoding.EncodeToString(id),
 		},
 		Use:      useLogin,
-		Groups:   s.Groups,
-		Aliases:  s.Aliases,
+		Provider: s.Provider,
 		Carried:  s.Claims,
-		Narrowed: s.Only != nil,
-		Only:     Strings(s.Only),
 	}
 	t, err := jwt.Signed(i.signer).Claims(c).Serialize()
 	return t, exp, err
@@ -85,7 +79,7 @@ func (i *Issuer) VerifyLogin(token string) (Subject, error) {
 	}, 30*time.Second); err != nil {
 		return Subject{}, ErrUnauthenticated
 	}
-	return Subject{ID: c.Subject, Aliases: c.Aliases, Groups: c.Groups, Claims: c.Carried, Only: only(c.Narrowed, c.Only)}, nil
+	return Subject{ID: c.Subject, Provider: c.Provider, Claims: c.Carried}, nil
 }
 
 // LoginTokens authenticates the tokens `POST /token/exchange` issued.

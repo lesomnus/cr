@@ -13,14 +13,14 @@ the short version of this page; the rest of `docs/` is for people running cr.
 | `registry/` | the `/v2/`, `/v1/` and `/admin/` handlers, written against `flob.Stores` and `index.Index` |
 | `blob/` | what wraps flob: the prefix router, the upstream store and cache for pull-through, the constant blobs |
 | `index/` | the `Index` port: `entindex` over the generated ent client, `memindex` in memory, `indextest` the suite both pass, `rebuild` |
-| `auth/` | authenticators, bindings and tag rules, the token issuer; `entpolicy` reads rows, `roster` speaks to roster |
+| `auth/` | providers, permissions and matches, globs, tag rules, the token issuer; `entpolicy` reads rows, `roster` reads the management API's roster tokens |
 | `gc/` | the online collection and the sweep; `entruns` records the runs |
 | `export/` | `cr export` |
 | `httpx/` | instrumentation and the health handlers |
 | `telemetry/` | the histogram boundaries and the instruments the packages share |
 | `cmd/`, `cli/` | the configuration, the server's wiring, the command line |
 | `wasm/` | the sandbox build |
-| `proto/app/` | the entities: `Repository`, `Manifest`, `ManifestBlob`, `Tag`, `Binding`, `TagRule`, `GcRun` |
+| `proto/app/` | the entities: `Repository`, `Manifest`, `ManifestBlob`, `Tag`, `TagRule`, `GcRun` |
 | `api/`, `internal/ent/`, `server/` | generated |
 | `ts/` | the page, and its generated client |
 
@@ -29,7 +29,7 @@ authentication, wall and gate are gRPC interceptors, and a plain HTTP handler
 receives none of them. The registry has credentials and a per-repository
 authorization of its own, so `registry/` talks to `index.Index`, and `entindex`
 uses the generated ent client directly. The management plane goes through the
-whole stack, so a change to a binding is audited and watched like any payday
+whole stack, so a change to a tag rule is audited and watched like any payday
 row.
 
 **The registry's tables are payday entities too** -- `Repository`, `Manifest`,
@@ -93,7 +93,7 @@ The generated messages live in `api/`, named by `option go_package` in every
 `proto/app/*.proto`:
 
 ```proto
-option go_package = "github.com/lesomnus/cr/api";   // -> api/binding.pb.go, api.Binding
+option go_package = "github.com/lesomnus/cr/api";   // -> api/tag_rule.pb.go, api.TagRule
 ```
 
 Every entity has to name the same package -- an app is **one** Go package for
@@ -110,7 +110,7 @@ in which order, and which server the wall is on -- and it is deliberately not
 hidden behind a `payday.Serve(cfg)`. `cli/registry.go` puts the registry beside
 it, and `registry/registry.go` is the registry.
 
-`proto/app/binding.proto` is the other half. The `(payday.entity)` option at the
+`proto/app/tag_rule.proto` is the other half. The `(payday.entity)` option at the
 bottom of it is where the domain byte, the tenant wall, the `List` and the
 `Watch` all come from.
 

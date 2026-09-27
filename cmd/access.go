@@ -6,73 +6,83 @@ import (
 
 // AuthConfig is who may use the registry and what they may do there.
 //
-// Bindings and tag rules come from here and from the management plane's rows
-// together; what is written here is what a deployment needs before anybody can
-// write a row, the operator's own access first of all.
+// Providers vouch for callers, permissions say what may be done where, and
+// matches grant permissions to the callers a provider vouches for. Tag rules
+// come from here and from the management plane's rows together.
 type AuthConfig struct {
 	// Enabled turns the guard on even when nothing below would, for a
-	// deployment whose bindings are all rows. Any authenticator, binding or
-	// tag rule configured here turns it on as well.
+	// deployment whose tag rules are all rows. Any provider, permission,
+	// match or tag rule configured here turns it on as well.
 	Enabled bool `yaml:"enabled"`
 
-	Htpasswd HtpasswdConfig      `yaml:"htpasswd"`
-	Static   []StaticTokenConfig `yaml:"static"`
-	Oidc     []OidcConfig        `yaml:"oidc"`
-	Roster   RosterConfig        `yaml:"roster"`
-	Token    TokenConfig         `yaml:"token"`
-	Exchange ExchangeConfig      `yaml:"exchange"`
+	// Providers are who vouches for a caller, by the name a match's `for`
+	// gives them. `anyone` is not one: it is every caller.
+	Providers map[string]ProviderConfig `yaml:"providers"`
 
-	Bindings []BindingConfig `yaml:"bindings"`
+	// Permissions are actions on repositories, by the name a match's `grant`
+	// gives them.
+	Permissions map[string]PermissionConfig `yaml:"permissions"`
+
+	// Matches grant permissions to callers. They only add: a caller may do
+	// what any match it is under grants, and nothing else.
+	Matches map[string]MatchConfig `yaml:"matches"`
+
+	Token    TokenConfig    `yaml:"token"`
+	Exchange ExchangeConfig `yaml:"exchange"`
+
 	TagRules []TagRuleConfig `yaml:"tag_rules"`
 
-	// Refresh is how often bindings and tag rules are read again from the
-	// database; zero is five seconds.
+	// Refresh is how often tag rules are read again from the database; zero
+	// is five seconds.
 	Refresh time.Duration `yaml:"refresh"`
 }
 
 // On reports whether the registry is guarded.
 func (c AuthConfig) On() bool {
-	return c.Enabled || c.Htpasswd.Path != "" || len(c.Static) > 0 || len(c.Oidc) > 0 || c.Roster.Url != "" ||
-		len(c.Bindings) > 0 || len(c.TagRules) > 0
+	return c.Enabled || len(c.Providers) > 0 || len(c.Permissions) > 0 || len(c.Matches) > 0 || len(c.TagRules) > 0
 }
 
-// OidcConfig is one OpenID Connect provider whose ID tokens are credentials.
-type OidcConfig struct {
-	// Issuer is the provider as its tokens name it:
+// ProviderConfig is one provider of credentials.
+type ProviderConfig struct {
+	// Kind is what the provider is; `oidc` is the one there is.
+	Kind string `yaml:"kind"`
+
+	// Issuer is an `oidc` provider as its ID tokens name it:
 	// `https://token.actions.githubusercontent.com`.
 	Issuer string `yaml:"issuer"`
 
-	// Audience is what a token must be issued for.
+	// Audience is what an ID token must be issued for: a GitHub job asks
+	// for it with `audience=`. It keeps a token the provider issued for
+	// another service from being given here.
 	Audience string `yaml:"audience"`
 
-	// SubjectClaim is the claim the subject is read from; empty is `sub`.
+	// SubjectClaim is the claim an ID token's subject is read from; empty is
+	// `sub`.
 	SubjectClaim string `yaml:"subject_claim"`
-
-	// GroupsClaim is a claim holding groups; empty reads none.
-	GroupsClaim string `yaml:"groups_claim"`
-
-	// Prefix goes in front of every subject from this provider.
-	Prefix string `yaml:"prefix"`
 }
 
-// RosterConfig is roster as an authenticator: `rt_` keys, and passwords of
-// people who have no second factor.
-type RosterConfig struct {
-	// Url is roster's data plane over HTTP, `server.http` in roster's
-	// configuration: the listener its people and apps call.
-	Url string `yaml:"url"`
+// PermissionConfig is actions on repositories.
+type PermissionConfig struct {
+	// Repos are globs, read in order: the last that matches a repository
+	// decides, and one with `!` in front takes back what it matches.
+	Repos []string `yaml:"repos"`
 
-	// Key is the `rk_` key `roster key add --service cr` made, which must be
-	// allowed `/payday.TokenService/Introspect`, `/roster.VouchService/Verify`,
-	// `/roster.HolderService/Get`, `/roster.TenantService/Get`,
-	// `/roster.TeamMembershipService/List`, `/roster.TeamService/Get`,
-	// `/roster.SiteService/Get` and `/roster.SyncService/Watch`.
-	Key string `yaml:"key"`
+	// Actions are pull, push, delete, tag, catalog, search, admin, or `*`
+	// for all of them.
+	Actions []string `yaml:"actions"`
+}
 
-	// Remember is how long a credential roster accepted is accepted again
-	// without asking, unless roster says the holder changed; zero is a
-	// minute.
-	Remember time.Duration `yaml:"remember"`
+// MatchConfig grants permissions to the callers a provider vouches for.
+type MatchConfig struct {
+	// For is a provider's name, or `anyone` for every caller.
+	For string `yaml:"for"`
+
+	// Grant is the names of the permissions granted.
+	Grant []string `yaml:"grant"`
+
+	// When is claims of the caller's credential that must all hold, each
+	// value a glob. Required for a provider, and not allowed for anyone.
+	When map[string]string `yaml:"when"`
 }
 
 // ExchangeConfig is `POST /token/exchange`: a credential traded for a token
@@ -81,27 +91,6 @@ type RosterConfig struct {
 type ExchangeConfig struct {
 	// Ttl is how long the token lasts; zero serves no exchange.
 	Ttl time.Duration `yaml:"ttl"`
-}
-
-type HtpasswdConfig struct {
-	// Path is a bcrypt htpasswd file (`htpasswd -B`), read again when it
-	// changes.
-	Path string `yaml:"path"`
-
-	// Groups are the groups each user is in.
-	Groups map[string][]string `yaml:"groups"`
-}
-
-// StaticTokenConfig is a long-lived token for CI where there is no roster.
-type StaticTokenConfig struct {
-	Name string `yaml:"name"`
-
-	// Token is the secret, or TokenSha256 its SHA-256 in hex, which is what a
-	// file that is not itself secret should carry.
-	Token       string `yaml:"token"`
-	TokenSha256 string `yaml:"token_sha256"`
-
-	Groups []string `yaml:"groups"`
 }
 
 type TokenConfig struct {
@@ -122,14 +111,6 @@ type TokenConfig struct {
 
 	// Ttl is how long a token lasts; zero is five minutes.
 	Ttl time.Duration `yaml:"ttl"`
-}
-
-type BindingConfig struct {
-	Subject string            `yaml:"subject"`
-	Group   string            `yaml:"group"`
-	Repo    string            `yaml:"repo"`
-	Actions []string          `yaml:"actions"`
-	When    map[string]string `yaml:"when"`
 }
 
 type TagRuleConfig struct {
@@ -158,6 +139,18 @@ type ManagementConfig struct {
 	// As is the holder `cr <entity> ...` acts as, `@tenant/alias`; empty is
 	// `@operator/admin`, which `cr init` puts up.
 	As string `yaml:"as"`
+}
+
+// RosterConfig is roster answering for the management API's callers.
+type RosterConfig struct {
+	// Url is roster's data plane over HTTP, `server.http` in roster's
+	// configuration: the listener its people and apps call.
+	Url string `yaml:"url"`
+
+	// Key is the `rk_` key `roster key add --service cr` made, which must be
+	// allowed `/payday.TokenService/Introspect`, `/roster.HolderService/Get`
+	// and `/roster.TenantService/Get`.
+	Key string `yaml:"key"`
 }
 
 type ManagementTokenConfig struct {

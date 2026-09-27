@@ -25,32 +25,58 @@ type guarded struct {
 	guard *auth.Guard
 }
 
+// people is an authenticator for the tests: a user whose password is
+// `user-secret`, vouched for by the provider `test` with the claims given.
+type people map[string]map[string]any
+
+func (p people) Authenticate(_ context.Context, user, pass string) (auth.Subject, error) {
+	claims, ok := p[user]
+	if !ok || pass != user+"-secret" {
+		return auth.Subject{}, auth.ErrNotMine
+	}
+	return auth.Subject{ID: "test:" + user, Provider: "test", Claims: claims}, nil
+}
+
+func (people) Kind() string { return "test" }
+
+// everything is a policy under which the user `test` names may do anything.
+func everything(user string) auth.Static {
+	return auth.Static{
+		Permissions: map[string]auth.Permission{"all": {Repos: []string{"**"}, Actions: []auth.Action{auth.ActionAll}}},
+		Matches:     map[string]auth.Match{user: {For: "test", Grant: []string{"all"}, When: map[string]string{"sub": user}}},
+	}
+}
+
 func newGuarded(t *testing.T) *guarded {
 	st := auth.NewPolicyStore(time.Hour, auth.Static{
-		Bindings: []auth.Binding{
-			{Subject: auth.Anonymous, Repo: "public/*", Actions: []auth.Action{auth.ActionPull}},
-			{Subject: auth.Anonymous, Repo: "*", Actions: []auth.Action{auth.ActionCatalog}},
-			{Subject: "alice", Repo: "*", Actions: []auth.Action{auth.ActionAll}},
-			{Group: "dev", Repo: "team/*", Actions: []auth.Action{auth.ActionPull, auth.ActionPush, auth.ActionTag}},
+		Permissions: map[string]auth.Permission{
+			"public":  {Repos: []string{"public/*"}, Actions: []auth.Action{auth.ActionPull}},
+			"catalog": {Repos: []string{"**"}, Actions: []auth.Action{auth.ActionCatalog}},
+			"all":     {Repos: []string{"**"}, Actions: []auth.Action{auth.ActionAll}},
+			"team":    {Repos: []string{"team/*"}, Actions: []auth.Action{auth.ActionPull, auth.ActionPush, auth.ActionTag}},
+		},
+		Matches: map[string]auth.Match{
+			"public": {For: auth.Anyone, Grant: []string{"public", "catalog"}},
+			"alice":  {For: "test", Grant: []string{"all"}, When: map[string]string{"sub": "alice"}},
+			"dev":    {For: "test", Grant: []string{"team"}, When: map[string]string{"groups": "dev"}},
 		},
 		TagRules: []auth.TagRule{
-			{Name: "releases", Repo: "*", Tag: "v*", Kind: auth.TagImmutable},
+			{Name: "releases", Repo: "**", Tag: "v*", Kind: auth.TagImmutable},
 			{Name: "semver", Repo: "team/*", Tag: "*", Kind: auth.TagPattern, Pattern: `v\d+\.\d+\.\d+|latest`},
 		},
 	})
 	require.NoError(t, st.Refresh(context.Background()))
-	tokens, err := auth.NewTokens([]auth.StaticToken{
-		{Name: "alice", Token: "alice-secret"},
-		{Name: "bob", Token: "bob-secret"},
-		{Name: "carol", Token: "carol-secret", Groups: []string{"dev"}},
-	})
-	require.NoError(t, err)
+	users := people{
+		"alice": {"sub": "alice"},
+		"bob":   {"sub": "bob"},
+		"carol": {"sub": "carol", "groups": []any{"dev"}},
+	}
 	k, err := auth.GenerateKey()
 	require.NoError(t, err)
 	issuer, err := auth.NewIssuer("cr", "registry.test", time.Minute, k)
 	require.NoError(t, err)
 
-	g := &auth.Guard{Authenticator: auth.Chain{tokens}, Policy: st, Issuer: issuer}
+	g := &auth.Guard{Authenticator: auth.Chain{users}, Policy: st, Issuer: issuer}
 	return &guarded{
 		harness: &harness{t: t, h: registry.New(registry.Config{
 			Stores: flob.NewMemStores(),
@@ -112,7 +138,7 @@ func TestGuardPush(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
 	require.Contains(t, res.Header.Get("WWW-Authenticate"), `scope="repository:acme/app:pull,push"`)
 
-	// Somebody with no binding: refused.
+	// Somebody no match grants anything: refused.
 	res = x.do("POST", path, blob, "Authorization", basic("bob"))
 	require.Equal(t, http.StatusForbidden, res.StatusCode)
 	require.Equal(t, "DENIED", code(t, res))
@@ -200,7 +226,7 @@ func TestGuardTagRules(t *testing.T) {
 	res = x.do("DELETE", "/v2/acme/app/manifests/"+res.Header.Get("Docker-Content-Digest"), nil, "Authorization", alice)
 	require.Equal(t, http.StatusForbidden, res.StatusCode)
 
-	// A pattern, for a group binding.
+	// A pattern, for a caller granted through a claim.
 	carol := basic("carol")
 	require.Equal(t, http.StatusCreated, x.pushAs(carol, "team/app", "v2.0.0", "three").StatusCode)
 	res = x.pushAs(carol, "team/app", "nightly", "four")

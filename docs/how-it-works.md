@@ -72,7 +72,7 @@ answers for names, and the only place tags are kept.
 - **The store can rebuild most of it.** `cr index rebuild` recovers
   repositories, manifests and what they hold from the store alone. Tags are not
   in the store, and neither are when things were pushed and pulled,
-  descriptions, bindings and tag rules, so a rebuild cannot bring those back:
+  descriptions and tag rules, so a rebuild cannot bring those back:
   the database is what to back up.
 
 ## Garbage collection
@@ -101,16 +101,16 @@ Two tiers, and neither stops the registry.
 
 ## Who may do what
 
-- **cr stores no passwords of its own.** Authenticators name the caller: an
-  htpasswd file, tokens in the configuration, OpenID Connect ID tokens, roster,
-  or a token cr exchanged for one of those.
-- **Authorization is cr's.** Bindings grant actions on repositories to a
-  subject or a group, optionally only when the credential's claims match; they
-  only add, and nothing denies. Tag rules constrain what happens to tags,
-  whoever asks.
-- **Decisions never wait on the database.** Bindings and tag rules, from the
-  configuration and from the database, are loaded into a snapshot every
-  `auth.refresh`, and requests read the snapshot. A reload that fails keeps the
+- **cr stores no passwords of its own.** Providers vouch for the caller: an
+  OpenID Connect provider's ID token, or a token cr exchanged for one.
+- **Authorization is cr's.** Matches grant permissions -- actions on
+  repository globs -- to the callers a provider vouches for, when their
+  credential's claims match; they only add, and nothing denies. Tag rules
+  constrain what happens to tags, whoever asks.
+- **Decisions never wait on the database.** Permissions, matches and tag
+  rules, from the configuration and, for tag rules, from the database, are
+  loaded into a snapshot every `auth.refresh`, and requests read the
+  snapshot. A reload that fails keeps the
   policy in force.
 - **Tokens are verified offline.** cr signs ES256 JWTs saying what was granted
   and what was refused, and publishes the keys.

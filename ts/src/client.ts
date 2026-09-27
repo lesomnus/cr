@@ -33,7 +33,6 @@
 
 import { createClient, type Client, type Transport } from '@connectrpc/connect'
 
-import { BindingService } from '../gen/app/binding_svc_pb.js'
 import { GcRunService } from '../gen/app/gc_run_svc_pb.js'
 import { ManifestBlobService } from '../gen/app/manifest_blob_svc_pb.js'
 import { ManifestService } from '../gen/app/manifest_svc_pb.js'
@@ -49,7 +48,6 @@ export interface App {
 	readonly manifest: Client<typeof ManifestService>
 	readonly manifestBlob: Client<typeof ManifestBlobService>
 	readonly tag: Client<typeof TagService>
-	readonly binding: Client<typeof BindingService>
 	readonly tagRule: Client<typeof TagRuleService>
 	readonly gcRun: Client<typeof GcRunService>
 	readonly tenant: Client<typeof TenantService>
@@ -65,7 +63,6 @@ export function app(transport: Transport): App {
 		manifest: createClient(ManifestService, transport),
 		manifestBlob: createClient(ManifestBlobService, transport),
 		tag: createClient(TagService, transport),
-		binding: createClient(BindingService, transport),
 		tagRule: createClient(TagRuleService, transport),
 		gcRun: createClient(GcRunService, transport),
 		tenant: createClient(TenantService, transport),
