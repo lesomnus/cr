@@ -32,8 +32,9 @@ type RegistryConfig struct {
 // ProxyConfig is one pull-through cache.
 type ProxyConfig struct {
 	// Prefix is the repositories that are the cache: `docker.io` covers
-	// `docker.io/library/ubuntu`. Empty covers every repository, which makes
-	// the deployment a mirror and nothing else.
+	// `docker.io/library/ubuntu`, and so does a request for `library/ubuntu`
+	// with `ns=docker.io`, which is how a client asks a mirror. Empty covers
+	// every repository, which makes the deployment a mirror and nothing else.
 	Prefix string `yaml:"prefix"`
 
 	// Upstream is the registry's URL: `https://registry-1.docker.io`.

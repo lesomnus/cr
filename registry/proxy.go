@@ -101,6 +101,29 @@ type proxies struct {
 	list []*Proxy
 }
 
+// named answers the repository a request for name is for. A client that
+// mirrors a registry asks the mirror for the name as the registry knows it,
+// `library/alpine`, and says which registry in `ns`, `docker.io`: when a
+// proxy's prefix is that, the name is under it. A name a prefix already
+// covers is left as it is, and so is one when no prefix is ns; the empty
+// prefix is not ns, so what it covers is left too.
+func (ps *proxies) named(name, ns string) string {
+	if ns == "" {
+		return name
+	}
+	for _, p := range ps.list {
+		if p.Prefix != "" && blob.Covers(p.Prefix, name) {
+			return name
+		}
+	}
+	for _, p := range ps.list {
+		if p.Prefix == ns {
+			return ns + "/" + name
+		}
+	}
+	return name
+}
+
 func (ps *proxies) of(repo string) *Proxy {
 	for _, p := range ps.list {
 		if blob.Covers(p.Prefix, repo) {
