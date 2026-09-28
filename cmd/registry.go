@@ -44,6 +44,13 @@ type ProxyConfig struct {
 	// what follows the prefix to itself.
 	Remote string `yaml:"remote"`
 
+	// Hosts are names this deployment is reached by, `dockerhub.example.com`,
+	// that make a request for `library/ubuntu` one for the prefix's
+	// `library/ubuntu`: for a client that is given a mirror by host and does
+	// not say `ns`. A port in the request is not compared. The reverse proxy
+	// in front has to pass the Host the client asked for.
+	Hosts []string `yaml:"hosts"`
+
 	Username string `yaml:"username"`
 	Password string `yaml:"password"`
 

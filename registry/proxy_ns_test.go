@@ -3,6 +3,7 @@ package registry_test
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -17,14 +18,18 @@ import (
 	"github.com/lesomnus/cr/registry"
 )
 
-// mirror is a registry caching each upstream under its prefix.
-func mirror(t *testing.T, guard *auth.Guard, ups map[string]*upstream) *harness {
+// mirror is a registry caching each upstream under its prefix, which is also
+// reached by the hosts listed for it.
+func mirror(t *testing.T, guard *auth.Guard, ups map[string]*upstream, hosts ...map[string][]string) *harness {
 	var ps []*registry.Proxy
 	var routes []blob.CacheRoute
 	for prefix, up := range ups {
 		u, err := blob.NewUpstream(up.srv.URL, "", "")
 		require.NoError(t, err)
 		p := &registry.Proxy{Prefix: prefix, Upstream: u, TagTTL: time.Minute}
+		for _, h := range hosts {
+			p.Hosts = h[prefix]
+		}
 		ps = append(ps, p)
 		routes = append(routes, blob.CacheRoute{Prefix: prefix, Origin: u.Stores(p.Name)})
 	}
@@ -135,4 +140,51 @@ func TestProxyByNsIsGuarded(t *testing.T) {
 	res := c.do("GET", "/v2/lesomnus/cr/manifests/edge?ns=ghcr.io", nil)
 	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
 	require.Contains(t, res.Header.Get("WWW-Authenticate"), `scope="repository:ghcr.io/lesomnus/cr:pull"`)
+}
+
+// TestProxyByHost: a client given a mirror by host, and not saying ns, is
+// answered by the proxy that lists the host.
+func TestProxyByHost(t *testing.T) {
+	hub, gh := newUpstream(t, nil), newUpstream(t, nil)
+	alpine, _ := hub.image("library/alpine", "alpine layer")
+	require.Equal(t, http.StatusCreated, hub.pushManifest("library/alpine", "3.20", alpine, v1.MediaTypeImageManifest).StatusCode)
+	cr, _ := gh.image("lesomnus/cr", "cr layer")
+	require.Equal(t, http.StatusCreated, gh.pushManifest("lesomnus/cr", "edge", cr, v1.MediaTypeImageManifest).StatusCode)
+
+	c := mirror(t, nil, map[string]*upstream{"docker.io": hub, "ghcr.io": gh}, map[string][]string{
+		"docker.io": {"dockerhub.example.com"},
+		"ghcr.io":   {"ghcr.example.com"},
+	})
+	get := func(host, path string) *http.Response {
+		req := httptest.NewRequest("GET", path, nil)
+		req.Host = host
+		w := httptest.NewRecorder()
+		c.h.ServeHTTP(w, req)
+		return w.Result()
+	}
+
+	res := get("dockerhub.example.com", "/v2/library/alpine/manifests/3.20")
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	require.Equal(t, alpine, read(t, res))
+
+	// With a port, in whatever case.
+	res = get("GHCR.example.com:5000", "/v2/lesomnus/cr/manifests/edge")
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	require.Equal(t, cr, read(t, res))
+
+	// ns says which registry, over the host it came in on.
+	res = get("dockerhub.example.com", "/v2/lesomnus/cr/manifests/edge?ns=ghcr.io")
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	require.Equal(t, cr, read(t, res))
+
+	// And a prefix in the name over both.
+	res = get("dockerhub.example.com", "/v2/ghcr.io/lesomnus/cr/manifests/edge")
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	require.Equal(t, cr, read(t, res))
+
+	// ns names a registry nothing here caches: not the host's either.
+	require.Equal(t, http.StatusNotFound, get("dockerhub.example.com", "/v2/library/alpine/manifests/3.20?ns=quay.io").StatusCode)
+
+	// Another host is not a mirror.
+	require.Equal(t, http.StatusNotFound, get("cr.example.com", "/v2/library/alpine/manifests/3.20").StatusCode)
 }
