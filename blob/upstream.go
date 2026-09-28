@@ -259,6 +259,10 @@ func (u *Upstream) authorize(ctx context.Context, challenge, scope string) (stri
 		}
 		return "Basic " + base64.StdEncoding.EncodeToString([]byte(u.username+":"+u.password)), nil
 	case "bearer":
+	case "":
+		// Nothing to answer. Docker Hub does this for a name it does not
+		// have, `docker.io/library/alpine`, rather than a 404.
+		return "", fmt.Errorf("%w: 401 without a challenge", ErrUpstreamUnauthorized)
 	default:
 		return "", fmt.Errorf("%w: challenge %q", ErrUpstreamUnauthorized, challenge)
 	}
