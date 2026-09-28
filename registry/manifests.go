@@ -313,12 +313,20 @@ func (g *Registry) deleteManifest(w http.ResponseWriter, r *http.Request, name, 
 	}
 
 	d := ref.Digest
+	proxied := g.proxies.of(name) != nil
 	var released []digest.Digest
 	err = g.c.Index.Tx(ctx, name, func(ix index.Index) error {
-		if _, err := ix.Manifest().Get(ctx, name, d); errors.Is(err, index.ErrNotFound) {
+		m, err := ix.Manifest().Get(ctx, name, d)
+		if errors.Is(err, index.ErrNotFound) {
 			return oci.ErrManifestUnknown(d.String())
 		} else if err != nil {
 			return err
+		}
+		// In a cache a delete evicts, and an index is evicted with the
+		// manifests it brought in. Read what it lists before it is gone.
+		var listed []digest.Digest
+		if proxied {
+			listed = g.listed(ctx, name, m)
 		}
 		ts, err := ix.Tag().Of(ctx, name, d)
 		if err != nil {
@@ -335,6 +343,11 @@ func (g *Registry) deleteManifest(w http.ResponseWriter, r *http.Request, name, 
 			}
 		}
 		released, err = ix.Manifest().Erase(ctx, name, d)
+		if err != nil {
+			return err
+		}
+		evicted, err := g.evict(ctx, ix, name, listed)
+		released = append(released, evicted...)
 		return err
 	})
 	if err != nil {
@@ -344,6 +357,84 @@ func (g *Registry) deleteManifest(w http.ResponseWriter, r *http.Request, name, 
 
 	g.release(context.WithoutCancel(ctx), name, append(released, d))
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// listed is the manifests an index lists, read from the store; nothing for a
+// manifest that is not an index. An index whose bytes cannot be read lists
+// nothing: its children are then left to the cache's retention, as they were
+// before a delete evicted them, rather than failing a delete that has
+// already been decided.
+func (g *Registry) listed(ctx context.Context, name string, m index.Manifest) []digest.Digest {
+	if !oci.IsIndexMediaType(m.MediaType) {
+		return nil
+	}
+	body, err := g.read(ctx, name, m.Digest)
+	if err == nil {
+		var parsed *oci.Manifest
+		if parsed, err = oci.ParseManifest(m.MediaType, body); err == nil {
+			ds := make([]digest.Digest, 0, len(parsed.Manifests))
+			for _, c := range parsed.Manifests {
+				ds = append(ds, c.Digest)
+			}
+			return ds
+		}
+	}
+	log.From(ctx).WarnContext(ctx, "an evicted index's children are left to retention",
+		slog.String("repo", name), slog.String("digest", m.Digest.String()), slog.String("err", err.Error()))
+	return nil
+}
+
+func (g *Registry) read(ctx context.Context, name string, d digest.Digest) ([]byte, error) {
+	rc, _, err := g.store(name).Open(ctx, flob.Digest(d))
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	return io.ReadAll(io.LimitReader(rc, g.c.MaxManifestSize+1))
+}
+
+// evict erases, from a pull-through repository, the manifests of ds that
+// nothing there refers to any more -- no manifest holds them and no tag points
+// at them -- and answers what they released. When they were last pulled is
+// not asked: a client fetches an index's children by digest, so for exactly
+// these manifests it is always recent, and the delete that listed them is the
+// decision. An evicted index takes its own children the same way.
+func (g *Registry) evict(ctx context.Context, ix index.Index, name string, ds []digest.Digest) ([]digest.Digest, error) {
+	var released []digest.Digest
+	for _, d := range ds {
+		m, err := ix.Manifest().Get(ctx, name, d)
+		if errors.Is(err, index.ErrNotFound) {
+			continue // never fetched, or gone already
+		} else if err != nil {
+			return released, err
+		}
+		held, err := ix.Manifest().Holds(ctx, name, d)
+		if err != nil {
+			return released, err
+		}
+		if held {
+			continue // another index lists it
+		}
+		ts, err := ix.Tag().Of(ctx, name, d)
+		if err != nil {
+			return released, err
+		}
+		if len(ts) > 0 {
+			continue
+		}
+		listed := g.listed(ctx, name, m)
+		rs, err := ix.Manifest().Erase(ctx, name, d)
+		if err != nil {
+			return released, err
+		}
+		released = append(append(released, rs...), d)
+		more, err := g.evict(ctx, ix, name, listed)
+		released = append(released, more...)
+		if err != nil {
+			return released, err
+		}
+	}
+	return released, nil
 }
 
 // release erases what a delete released, leaking to the sweep on failure.
