@@ -1,6 +1,9 @@
 package blob
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -23,6 +26,21 @@ func TestParseChallenge(t *testing.T) {
 	scheme, params = parseChallenge(`Basic realm=cr`)
 	require.Equal(t, "Basic", scheme)
 	require.Equal(t, "cr", params["realm"])
+}
+
+// TestUpstreamWithoutAChallenge: a 401 with no challenge, which Docker Hub
+// answers for a name it does not have, is refused, and says it had none.
+func TestUpstreamWithoutAChallenge(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(srv.Close)
+	u, err := NewUpstream(srv.URL, "", "")
+	require.NoError(t, err)
+
+	_, err = u.HeadManifest(context.Background(), "docker.io/library/alpine", "3.20")
+	require.ErrorIs(t, err, ErrUpstreamUnauthorized)
+	require.ErrorContains(t, err, "401 without a challenge")
 }
 
 func TestProxyName(t *testing.T) {
