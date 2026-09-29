@@ -416,6 +416,9 @@ without the API, the referrer is kept, since not knowing is not "none".
 
 ### A mirror for several registries
 
+[mirror.md](mirror.md) is a whole deployment of this, with the clients'
+configuration.
+
 A client configured with a mirror asks it for the name as the registry knows
 it, `library/alpine` and not `docker.io/library/alpine`. containerd, buildkit
 and Docker on the containerd image store say which registry in `ns`:
