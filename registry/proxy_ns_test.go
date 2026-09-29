@@ -3,6 +3,7 @@ package registry_test
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -78,7 +79,8 @@ func TestProxyByNs(t *testing.T) {
 }
 
 // TestProxyByNsBesideTheEmptyPrefix: ns picks its proxy before the empty
-// prefix takes what is left, and the empty prefix still takes it.
+// prefix, which takes what is left only when ns is its own upstream or there
+// is none: another registry's name is not its name.
 func TestProxyByNsBesideTheEmptyPrefix(t *testing.T) {
 	hub, gh := newUpstream(t, nil), newUpstream(t, nil)
 	alpine, _ := hub.image("library/alpine", "alpine layer")
@@ -87,14 +89,24 @@ func TestProxyByNsBesideTheEmptyPrefix(t *testing.T) {
 	require.Equal(t, http.StatusCreated, gh.pushManifest("library/alpine", "3.20", other, v1.MediaTypeImageManifest).StatusCode)
 
 	c := mirror(t, nil, map[string]*upstream{"docker.io": hub, "": gh})
+	ns := strings.TrimPrefix(gh.srv.URL, "http://")
 
 	res := c.do("GET", "/v2/library/alpine/manifests/3.20?ns=docker.io", nil)
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	require.Equal(t, alpine, read(t, res))
 
-	res = c.do("GET", "/v2/library/alpine/manifests/3.20?ns=ghcr.io", nil)
+	res = c.do("GET", "/v2/library/alpine/manifests/3.20?ns="+ns, nil)
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	require.Equal(t, other, read(t, res))
+
+	res = c.do("GET", "/v2/library/alpine/manifests/3.20", nil)
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	require.Equal(t, other, read(t, res))
+
+	// Not the empty prefix's upstream's alpine, cached or not.
+	res = c.do("GET", "/v2/library/alpine/manifests/3.20?ns=quay.io", nil)
+	require.Equal(t, http.StatusNotFound, res.StatusCode)
+	require.Equal(t, "NAME_UNKNOWN", code(t, res))
 }
 
 // TestProxyByNsIsGuarded: the policy is asked about the repository ns puts

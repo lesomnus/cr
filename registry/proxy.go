@@ -101,27 +101,33 @@ type proxies struct {
 	list []*Proxy
 }
 
-// named answers the repository a request for name is for. A client that
-// mirrors a registry asks the mirror for the name as the registry knows it,
-// `library/alpine`, and says which registry in `ns`, `docker.io`: when a
-// proxy's prefix is that, the name is under it. A name a prefix already
-// covers is left as it is, and so is one when no prefix is ns; the empty
-// prefix is not ns, so what it covers is left too.
-func (ps *proxies) named(name, ns string) string {
+// named answers the repository a request for name is for, and false when it
+// is for a registry nothing here caches. A client that mirrors a registry
+// asks the mirror for the name as the registry knows it, `library/alpine`,
+// and says which registry in `ns`, `docker.io`: when a proxy's prefix is
+// that, the name is under it. A name a prefix already covers is left as it
+// is. The empty prefix has no name to be ns by, so it takes a request with
+// ns only when ns is its upstream: another registry's `acme/app` is not its
+// `acme/app`, and the client, told there is no such thing, goes to that
+// registry itself.
+func (ps *proxies) named(name, ns string) (string, bool) {
 	if ns == "" {
-		return name
+		return name, true
 	}
 	for _, p := range ps.list {
 		if p.Prefix != "" && blob.Covers(p.Prefix, name) {
-			return name
+			return name, true
 		}
 	}
 	for _, p := range ps.list {
 		if p.Prefix == ns {
-			return ns + "/" + name
+			return ns + "/" + name, true
 		}
 	}
-	return name
+	if p := ps.of(name); p != nil && p.Prefix == "" {
+		return name, p.Upstream.Registry() == strings.ToLower(ns)
+	}
+	return name, true
 }
 
 func (ps *proxies) of(repo string) *Proxy {
