@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/lesomnus/flob"
@@ -194,8 +195,24 @@ func Proxies(c cmd.RegistryConfig, base flob.Stores, meter metric.Meter) (flob.S
 		ps     []*registry.Proxy
 		routes []blob.CacheRoute
 		keep   = map[string]time.Duration{}
+		hosts  = map[string]string{}
 	)
 	for i, pc := range c.Proxies {
+		hs := make([]string, len(pc.Hosts))
+		for j, h := range pc.Hosts {
+			h = strings.ToLower(h)
+			hs[j] = h
+			switch {
+			case pc.Prefix == "":
+				return nil, nil, nil, fmt.Errorf("registry.proxies[%d].hosts: the empty prefix already takes every name", i)
+			case h == "" || strings.ContainsAny(h, ":/"):
+				return nil, nil, nil, fmt.Errorf("registry.proxies[%d].hosts[%d]: %q is not a host name", i, j, h)
+			}
+			if p, ok := hosts[h]; ok {
+				return nil, nil, nil, fmt.Errorf("registry.proxies[%d].hosts[%d]: %q is already %q's", i, j, h, p)
+			}
+			hosts[h] = pc.Prefix
+		}
 		opts := []blob.UpstreamOption{blob.WithMeter(meter)}
 		if pc.TokenFile != "" {
 			if pc.Username != "" || pc.Password != "" {
@@ -214,6 +231,7 @@ func Proxies(c cmd.RegistryConfig, base flob.Stores, meter metric.Meter) (flob.S
 			Prefix:            pc.Prefix,
 			Upstream:          up,
 			Remote:            pc.Remote,
+			Hosts:             hs,
 			TagTTL:            pc.TagTtl,
 			TagMaxStale:       pc.TagMaxStale,
 			ReferrersTTL:      pc.ReferrersTtl,

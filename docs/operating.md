@@ -331,6 +331,7 @@ registry:
     - prefix: docker.io                     # docker.io/library/ubuntu
       upstream: https://registry-1.docker.io
       remote: ""                            # the upstream name for the prefix; empty maps the rest as is
+      hosts: []                             # hosts a mirror is reached by; see "A mirror for several registries"
       username: ""                          # when the upstream wants one
       password: ""
       token_file: ""                        # a bearer minted elsewhere; see below
@@ -449,9 +450,27 @@ server = "https://ghcr.io"
   mirrors = ["cr.example.com"]
 ```
 
+A client that does not send `ns` can be given a host per registry instead,
+and a proxy lists the hosts that are its own:
+
+```yaml
+registry:
+  proxies:
+    - prefix: docker.io
+      upstream: https://registry-1.docker.io
+      hosts: [dockerhub.example.com]
+```
+
+A request that came in on `dockerhub.example.com` for `library/alpine` is for
+`docker.io/library/alpine`. The host is only asked when there is no `ns`: a
+client that says which registry it wants is given that one or none, and a
+name a prefix covers keeps its prefix over both. The port is not compared, and
+the reverse proxy in front has to pass the `Host` the client asked for. A host
+belongs to one proxy, and the empty prefix lists none.
+
 An empty `prefix` makes every repository a cache, which is what a daemon's
 `registry-mirrors` expects of a mirror: it asks for `library/ubuntu`, without
-`ns`, and not for a prefixed name. It takes what no prefix did, and a request
+`ns`, and not for a prefixed name. It takes what no prefix or host did, and a request
 with `ns` only when `ns` is its `upstream`'s host -- `docker.io` for
 `registry-1.docker.io`. Anything else is `404 NAME_UNKNOWN`, and the client
 goes to that registry itself: two registries can each have an `acme/app`,

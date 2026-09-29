@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"maps"
+	"net"
 	"net/http"
 	"slices"
 	"strings"
@@ -35,6 +36,10 @@ type Proxy struct {
 	// Remote is the upstream repository the prefix stands for; empty maps
 	// what follows the prefix to itself.
 	Remote string
+
+	// Hosts are the names, lowercase and without a port, that a request
+	// without `ns` comes in on to be for this proxy.
+	Hosts []string
 
 	// TagTTL is how long a tag is answered from the cache before the upstream
 	// is asked again; zero is five minutes. A digest is never asked again.
@@ -109,15 +114,25 @@ type proxies struct {
 // is. The empty prefix has no name to be ns by, so it takes a request with
 // ns only when ns is its upstream: another registry's `acme/app` is not its
 // `acme/app`, and the client, told there is no such thing, goes to that
-// registry itself.
-func (ps *proxies) named(name, ns string) (string, bool) {
-	if ns == "" {
-		return name, true
-	}
+// registry itself. A client that does not say is given the mirror by host,
+// so without ns a proxy that lists the host the request came in on takes it.
+func (ps *proxies) named(name, ns, host string) (string, bool) {
 	for _, p := range ps.list {
 		if p.Prefix != "" && blob.Covers(p.Prefix, name) {
 			return name, true
 		}
+	}
+	if ns == "" {
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		host = strings.ToLower(host)
+		for _, p := range ps.list {
+			if p.Prefix != "" && slices.Contains(p.Hosts, host) {
+				return p.Prefix + "/" + name, true
+			}
+		}
+		return name, true
 	}
 	for _, p := range ps.list {
 		if p.Prefix == ns {
