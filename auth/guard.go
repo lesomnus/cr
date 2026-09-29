@@ -25,6 +25,12 @@ type Guard struct {
 	// whatever host and scheme the request came in on.
 	Realm string
 
+	// Name is the repository a token asked for on r is for: the name a
+	// request for it on the same host is, which a mirror's host puts under a
+	// proxy. A client asks for `library/alpine` and pulls it, and the pull is
+	// of `docker.io/library/alpine`. Nil is the name as asked.
+	Name func(r *http.Request, name string) string
+
 	// The count of logins and of refusals; see Measure. Nil counts nothing.
 	logins metric.Int64Counter
 	denied metric.Int64Counter
@@ -289,6 +295,9 @@ func (g *Guard) ServeToken(w http.ResponseWriter, r *http.Request) {
 		want := ParseActions(sc.Actions)
 		switch sc.Type {
 		case TypeRepository:
+			if g.Name != nil {
+				sc.Name = g.Name(r, sc.Name)
+			}
 			if !oci.ValidName(sc.Name) {
 				continue
 			}

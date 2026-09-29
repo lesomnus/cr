@@ -2,6 +2,7 @@ package registry_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -33,12 +34,19 @@ func mirror(t *testing.T, guard *auth.Guard, ups map[string]*upstream, hosts ...
 		ps = append(ps, p)
 		routes = append(routes, blob.CacheRoute{Prefix: prefix, Origin: u.Stores(p.Name)})
 	}
-	return &harness{t: t, h: registry.New(registry.Config{
+	reg := registry.New(registry.Config{
 		Stores:  blob.NewCache(flob.NewMemStores(), routes...),
 		Index:   memindex.New(),
 		Proxies: ps,
 		Guard:   guard,
-	})}
+	})
+	mux := http.NewServeMux()
+	mux.Handle("/v2/", reg)
+	if guard != nil {
+		guard.Name = reg.Name
+		mux.HandleFunc("/token", guard.ServeToken)
+	}
+	return &harness{t: t, h: mux}
 }
 
 // TestProxyByNs: a client that mirrors a registry asks for the name as the
@@ -187,4 +195,49 @@ func TestProxyByHost(t *testing.T) {
 
 	// Another host is not a mirror.
 	require.Equal(t, http.StatusNotFound, get("cr.example.com", "/v2/library/alpine/manifests/3.20").StatusCode)
+}
+
+// TestProxyByHostWithAToken: a client that sends no ns and fetches a token
+// first -- Docker on its own image store, given a mirror -- asks for the name
+// it knows, and the token is good for the name the host puts it under.
+func TestProxyByHostWithAToken(t *testing.T) {
+	hub := newUpstream(t, nil)
+	alpine, _ := hub.image("library/alpine", "alpine layer")
+	require.Equal(t, http.StatusCreated, hub.pushManifest("library/alpine", "3.20", alpine, v1.MediaTypeImageManifest).StatusCode)
+
+	st := auth.NewPolicyStore(time.Hour, auth.Static{
+		Permissions: map[string]auth.Permission{"hub": {Repos: []string{"docker.io/**"}, Actions: []auth.Action{auth.ActionPull}}},
+		Matches:     map[string]auth.Match{"hub": {For: auth.Anyone, Grant: []string{"hub"}}},
+	})
+	require.NoError(t, st.Refresh(context.Background()))
+	k, err := auth.GenerateKey()
+	require.NoError(t, err)
+	issuer, err := auth.NewIssuer("cr", "registry.test", time.Minute, k)
+	require.NoError(t, err)
+
+	c := mirror(t, &auth.Guard{Policy: st, Issuer: issuer}, map[string]*upstream{"docker.io": hub}, map[string][]string{
+		"docker.io": {"dockerhub.example.com"},
+	})
+	on := func(path string, header ...string) *http.Response {
+		req := httptest.NewRequest("GET", path, nil)
+		req.Host = "dockerhub.example.com"
+		for i := 0; i+1 < len(header); i += 2 {
+			req.Header.Set(header[i], header[i+1])
+		}
+		w := httptest.NewRecorder()
+		c.h.ServeHTTP(w, req)
+		return w.Result()
+	}
+
+	require.Equal(t, http.StatusUnauthorized, on("/v2/").StatusCode)
+	res := on("/token?service=registry.test&scope=repository:library/alpine:pull")
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	var v struct {
+		Token string `json:"token"`
+	}
+	require.NoError(t, json.Unmarshal(read(t, res), &v))
+
+	res = on("/v2/library/alpine/manifests/3.20", "Authorization", "Bearer "+v.Token)
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	require.Equal(t, alpine, read(t, res))
 }

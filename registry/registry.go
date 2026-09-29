@@ -179,6 +179,17 @@ func parse(rest string) (name string, r route, arg string) {
 	return "", routeNone, ""
 }
 
+// Name is the repository a request on r for name is for: under the proxy
+// that r's `ns` or host picks, or name itself. A guard's token endpoint
+// answers a scope with it, so that a token asked for `library/alpine` on a
+// mirror's host is good for the pull it is asked for.
+func (g *Registry) Name(r *http.Request, name string) string {
+	if n, ok := g.proxies.named(name, r.URL.Query().Get("ns"), r.Host); ok {
+		return n
+	}
+	return name
+}
+
 func (g *Registry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Docker-Distribution-API-Version", "registry/2.0")
 
