@@ -41,6 +41,9 @@ Every commit on `main` that passes CI is published as `ghcr.io/lesomnus/cr`:
   index, garbage collection, and what several replicas take.
 - [Operating](docs/operating.md) -- configuration, storage, deploying, garbage
   collection, rebuilding the index, pull-through caches, export.
+- [A cache for other registries](docs/mirror.md) -- cr as a pull-through
+  cache of Docker Hub, GitHub and the rest, and Docker, containerd and
+  BuildKit pointed at it.
 - [Access](docs/access.md) -- the policy file, providers, permissions and
   matches, globs, OpenID Connect, testing a policy, tokens, tag rules, the
   management API.
