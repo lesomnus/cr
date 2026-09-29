@@ -43,6 +43,19 @@ func TestUpstreamWithoutAChallenge(t *testing.T) {
 	require.ErrorContains(t, err, "401 without a challenge")
 }
 
+func TestUpstreamRegistry(t *testing.T) {
+	for raw, want := range map[string]string{
+		"https://registry-1.docker.io": "docker.io",
+		"https://index.docker.io/":     "docker.io",
+		"https://GHCR.io":              "ghcr.io",
+		"http://127.0.0.1:5000/base":   "127.0.0.1:5000",
+	} {
+		u, err := NewUpstream(raw, "", "")
+		require.NoError(t, err)
+		require.Equal(t, want, u.Registry(), raw)
+	}
+}
+
 func TestProxyName(t *testing.T) {
 	require.True(t, Covers("docker.io", "docker.io/library/ubuntu"))
 	require.False(t, Covers("docker.io", "docker.iox/library"))

@@ -130,6 +130,18 @@ func NewUpstream(rawURL, username, password string, opts ...UpstreamOption) (*Up
 
 func (u *Upstream) String() string { return u.base.String() }
 
+// Registry is the name a client knows the upstream by, the `ns` it sends a
+// mirror: its host, and `docker.io` for Docker Hub's, which is not served
+// on that name.
+func (u *Upstream) Registry() string {
+	switch h := strings.ToLower(u.base.Host); h {
+	case "registry-1.docker.io", "index.docker.io":
+		return "docker.io"
+	default:
+		return h
+	}
+}
+
 // do is request, timed: under the upstream's host, the operation -- `manifest
 // head`, `manifest get`, `blob head`, `blob get`, `referrers get` -- and the status, or 0 when
 // nothing answered. A challenge answered on the way is part of the time.

@@ -413,9 +413,50 @@ subject is still there goes when the upstream's last list, taken after the
 referrer arrived, omits it. With no list for the subject, or an upstream
 without the API, the referrer is kept, since not knowing is not "none".
 
+### A mirror for several registries
+
+A client configured with a mirror asks it for the name as the registry knows
+it, `library/alpine` and not `docker.io/library/alpine`. containerd, buildkit
+and Docker on the containerd image store say which registry in `ns`:
+
+```
+GET /v2/library/alpine/manifests/3.20?ns=docker.io
+```
+
+When a proxy's `prefix` is what `ns` names, the name is taken to be under it:
+that request is for `docker.io/library/alpine`, from the policy's view as
+from the cache's, so one cr with a proxy per registry is a mirror for all of
+them, and a blob two registries share is stored once. A name a prefix already
+covers keeps its prefix whatever `ns` says, and an `ns` no prefix is leaves
+the name as it is.
+
+`ns` only picks among the proxies configured: cr never asks a registry that is
+not an `upstream`. A prefix that is a registry's name says the proxy stands for
+that registry, whatever its `upstream` is -- `prefix: ghcr.io` in front of
+another mirror of ghcr.io answers `ns=ghcr.io` from that mirror. A prefix that
+is no registry's name, `dist`, is never what `ns` names.
+
+```yaml
+# containerd, /etc/containerd/certs.d/ghcr.io/hosts.toml
+server = "https://ghcr.io"
+[host."https://cr.example.com"]
+  capabilities = ["pull", "resolve"]
+```
+
+```toml
+# buildkitd.toml
+[registry."docker.io"]
+  mirrors = ["cr.example.com"]
+```
+
 An empty `prefix` makes every repository a cache, which is what a daemon's
-`registry-mirrors` expects of a mirror: it asks for `library/ubuntu` and not
-for a prefixed name.
+`registry-mirrors` expects of a mirror: it asks for `library/ubuntu`, without
+`ns`, and not for a prefixed name. It takes what no prefix did, and a request
+with `ns` only when `ns` is its `upstream`'s host -- `docker.io` for
+`registry-1.docker.io`. Anything else is `404 NAME_UNKNOWN`, and the client
+goes to that registry itself: two registries can each have an `acme/app`,
+kept by different people, and a mirror of one that answered for the other
+would hand out the wrong image without an error anywhere.
 
 ### A credential that expires
 

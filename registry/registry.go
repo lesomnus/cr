@@ -216,6 +216,13 @@ func (g *Registry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		g.fail(w, r, errNoRoute)
 		return
 	}
+	// Before anything reads the name, so that the policy, the challenge's
+	// scope and the cache all see the repository the request is for.
+	name, ok = g.proxies.named(name, r.URL.Query().Get("ns"))
+	if !ok {
+		g.fail(w, r, oci.ErrNameUnknown("this registry caches no "+r.URL.Query().Get("ns")))
+		return
+	}
 	if !oci.ValidName(name) {
 		g.fail(w, r, oci.ErrNameInvalid(name))
 		return
