@@ -1,6 +1,7 @@
 package blob
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -28,7 +29,7 @@ func (l Literal) Value() (string, error) { return string(l), nil }
 // changes.
 func SecretFile(path string) Secret { return newSecretFile(path) }
 
-// secretFile is a credential that lives in a file and is re-read when it
+// newSecretFile is a credential that lives in a file and is re-read when it
 // changes.
 //
 // # Why a file
@@ -72,71 +73,91 @@ func SecretFile(path string) Secret { return newSecretFile(path) }
 // one in hand is still valid — a token is replaced at half its life, not at
 // expiry, and a password is revoked after its successor is in place. A first
 // read that fails has nothing to fall back on and is an error.
-type secretFile struct {
+//
+// The rules are the file's and not the credential's, so [watchedFile] keeps
+// them for whatever a file is parsed into: a secret here, a set of S3 keys in
+// [S3CredentialsFile].
+func newSecretFile(path string) *watchedFile[string] {
+	return &watchedFile[string]{path: path, what: "secret file", parse: parseSecret}
+}
+
+// parseSecret is the file's content without the whitespace around it.
+//
+// Surrounding whitespace goes: a credential written by `echo` or a heredoc
+// carries a newline, and a header value with one in it is rejected by the
+// server for a reason nobody guesses.
+//
+// An empty result is a failed read and not a good one. A zero-byte file is what
+// a provisioning unit leaves behind before anything has been minted into it;
+// keeping it would send every request anonymously, behind a 401 that names
+// neither this file nor the fact that it was empty.
+func parseSecret(b []byte) (string, error) {
+	v := strings.TrimSpace(string(b))
+	if v == "" {
+		return "", errors.New("empty")
+	}
+	return v, nil
+}
+
+// watchedFile is a value that lives in a file, parsed from it, and re-read when
+// the file changes; see [newSecretFile] for why, and for when a read is kept. A
+// parse that fails is a failed read like any other.
+type watchedFile[T any] struct {
 	path string
+	// what the file is, to name it in an error: `secret file`.
+	what  string
+	parse func([]byte) (T, error)
 
 	mu    sync.Mutex
-	value string
+	value T
 	// seen is the file the held value was read from, kept whole so os.SameFile
 	// can be asked whether the path still names it.
 	seen os.FileInfo
 	read bool
 }
 
-func newSecretFile(path string) *secretFile { return &secretFile{path: path} }
-
 // Value is what the file says now.
-func (t *secretFile) Value() (string, error) {
+func (t *watchedFile[T]) Value() (T, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	fi, err := os.Stat(t.path)
 	switch {
-	case err != nil && !t.read:
-		return "", fmt.Errorf("secret file %s: %w", t.path, err)
 	case err != nil:
-		return t.value, nil
+		return t.failed(err)
 	case t.read && t.unchanged(fi):
 		return t.value, nil
 	case fi.Size() > maxSecretFile:
-		if t.read {
-			return t.value, nil
-		}
-		return "", fmt.Errorf("secret file %s: %d bytes, over the %d cap", t.path, fi.Size(), maxSecretFile)
+		return t.failed(fmt.Errorf("%d bytes, over the %d cap", fi.Size(), maxSecretFile))
 	}
 
 	b, err := os.ReadFile(t.path)
 	if err != nil {
-		if t.read {
-			return t.value, nil
-		}
-		return "", fmt.Errorf("secret file %s: %w", t.path, err)
+		return t.failed(err)
+	}
+	v, err := t.parse(b)
+	if err != nil {
+		return t.failed(err)
 	}
 
-	// Surrounding whitespace goes: a credential written by `echo` or a heredoc
-	// carries a newline, and a header value with one in it is rejected by the
-	// server for a reason nobody guesses.
-	//
-	// An empty result is a failed read and not a good one. A zero-byte file is
-	// what a provisioning unit leaves behind before anything has been minted
-	// into it; keeping it would send every request anonymously, behind a 401
-	// that names neither this file nor the fact that it was empty.
-	value := strings.TrimSpace(string(b))
-	if value == "" {
-		if t.read {
-			return t.value, nil
-		}
-		return "", fmt.Errorf("secret file %s: empty", t.path)
-	}
-
-	t.value, t.seen, t.read = value, fi, true
+	t.value, t.seen, t.read = v, fi, true
 
 	return t.value, nil
 }
 
+// failed is a read that did not give a value: the one held, when there is one,
+// and err otherwise.
+func (t *watchedFile[T]) failed(err error) (T, error) {
+	if t.read {
+		return t.value, nil
+	}
+	var zero T
+	return zero, fmt.Errorf("%s %s: %w", t.what, t.path, err)
+}
+
 // unchanged reports whether the path still names the file the held value was
 // read from, unmodified since.
-func (t *secretFile) unchanged(fi os.FileInfo) bool {
+func (t *watchedFile[T]) unchanged(fi os.FileInfo) bool {
 	return os.SameFile(t.seen, fi) &&
 		fi.Size() == t.seen.Size() &&
 		fi.ModTime().Equal(t.seen.ModTime())

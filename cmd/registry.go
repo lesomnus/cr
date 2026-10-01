@@ -167,6 +167,13 @@ type S3StorageConfig struct {
 	SecretAccessKey string `yaml:"secret_access_key"`
 	SessionToken    string `yaml:"session_token"`
 
+	// CredentialsFile holds the three above as one set, instead of them: the
+	// JSON an AWS `credential_process` prints, with `AccessKeyId`,
+	// `SecretAccessKey`, and optionally `SessionToken` and `Expiration`. It is
+	// RE-READ WHEN IT CHANGES, so temporary credentials are replaced without a
+	// restart, all three at once.
+	CredentialsFile string `yaml:"credentials_file"`
+
 	// PathStyle addresses the bucket in the path rather than the host, which
 	// MinIO and most S3-compatible servers want.
 	PathStyle bool `yaml:"path_style"`

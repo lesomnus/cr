@@ -107,8 +107,9 @@ registry:
       bucket: cr-blobs
       prefix: ""                          # to share a bucket
       access_key_id: ...
-      secret_access_key: ...
+      secret_access_key: ${env:S3_SECRET_ACCESS_KEY}
       session_token: ""
+      credentials_file: ""                # the three above as one set, re-read; see below
       path_style: true                    # MinIO and most S3-compatible servers
       part_size: 16777216                 # buffered per part of an upload
       spool_dir: ""                       # where a blob waits to be uploaded; empty is the temporary directory
@@ -142,6 +143,27 @@ are memory charged to cr, and a few concurrent large uploads can take a
 container past its limit while cr's own memory looks small. Empty is the
 system's temporary directory, `$TMPDIR` or `/tmp`. A chunked upload is
 neither: it goes to the bucket a part at a time, `part_size` in memory each.
+
+The keys are either written into the configuration, where `${env:...}` keeps
+them out of the file and is read once, or kept in `credentials_file` instead:
+the JSON an AWS `credential_process` prints.
+
+```json
+{"Version": 1, "AccessKeyId": "...", "SecretAccessKey": "...", "SessionToken": "...", "Expiration": "2026-10-01T12:00:00Z"}
+```
+
+`SessionToken` and `Expiration` are for temporary credentials, and `Version`
+may be left out. The file is **re-read when it changes**, by the same rules as a
+proxy's `${file:...}` (see [Credentials](#credentials)), so temporary
+credentials are replaced without a restart. The three keys are in one file
+because they are replaced together: three files would be read apart, and a
+request signed between two of the renames would pair a key with another
+key's secret. For the same reason `${file:...}` is refused in the three fields.
+
+With `Expiration`, a redirect's presigned URL is not made to outlive it, and a
+request after it fails naming the time instead of a `403` from the service.
+Replace the file before then: the set in it is what every request is signed
+with, expired or not.
 
 On S3 a delete removes a repository's reference to a blob and leaves the one
 shared copy in the bucket, so neither deleting nor collecting garbage shrinks

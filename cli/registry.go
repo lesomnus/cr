@@ -145,6 +145,10 @@ func backend(at string, driver string, o cmd.OsStorageConfig, s cmd.S3StorageCon
 		}
 		return blob.Measured(flob.NewOsStores(o.Root, stage), "os", meter), nil
 	case "s3":
+		creds, err := s3Credentials(s)
+		if err != nil {
+			return nil, fmt.Errorf("%s.s3.%w", at, err)
+		}
 		stores, err := flob.NewS3Stores(flob.S3Config{
 			Client:         s3Client(),
 			Stage:          stage,
@@ -156,11 +160,7 @@ func backend(at string, driver string, o cmd.OsStorageConfig, s cmd.S3StorageCon
 			Bucket:         s.Bucket,
 			Prefix:         s.Prefix,
 			UsePathStyle:   s.PathStyle,
-			Credentials: flob.Credentials{
-				AccessKeyID:     s.AccessKeyId,
-				SecretAccessKey: s.SecretAccessKey,
-				SessionToken:    s.SessionToken,
-			},
+			Credentials:    creds,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("%s.s3: %w", at, err)
@@ -239,6 +239,34 @@ func secret(v string) (blob.Secret, error) {
 		return nil, fmt.Errorf("%q: want ${file:/path}", v)
 	}
 	return blob.SecretFile(path), nil
+}
+
+// s3Credentials is what an S3 store signs with: the file, re-read when it
+// changes, or the keys as they are written. The error names the field, for the
+// caller to put the store in front of.
+func s3Credentials(s cmd.S3StorageConfig) (flob.CredentialsProvider, error) {
+	for _, k := range []struct{ name, v string }{
+		{"access_key_id", s.AccessKeyId},
+		{"secret_access_key", s.SecretAccessKey},
+		{"session_token", s.SessionToken},
+	} {
+		switch {
+		case s.CredentialsFile != "" && k.v != "":
+			return nil, fmt.Errorf("%s: credentials_file is the whole set; set one or the other", k.name)
+		case strings.HasPrefix(k.v, "${file:"):
+			// Three files would be read apart, and a rotation caught between
+			// two of them signs with a key and another key's secret.
+			return nil, fmt.Errorf("%s: ${file:...} is not read here; put the set in credentials_file", k.name)
+		}
+	}
+	if s.CredentialsFile != "" {
+		return blob.S3CredentialsFile(s.CredentialsFile), nil
+	}
+	return flob.Credentials{
+		AccessKeyID:     s.AccessKeyId,
+		SecretAccessKey: s.SecretAccessKey,
+		SessionToken:    s.SessionToken,
+	}, nil
 }
 
 // s3Client is what the S3 store sends its requests with. Go's default
