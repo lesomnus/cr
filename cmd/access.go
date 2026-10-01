@@ -50,7 +50,8 @@ type PolicyFile struct {
 
 // ProviderConfig is one provider of credentials.
 type ProviderConfig struct {
-	// Kind is what the provider is; `oidc` is the one there is.
+	// Kind is what the provider is: `oidc`, or `mtls` for a client
+	// certificate a listener verified.
 	Kind string `yaml:"kind"`
 
 	// Issuer is an `oidc` provider as its ID tokens name it:

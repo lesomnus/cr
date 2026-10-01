@@ -187,6 +187,34 @@ covers `library/ubuntu`, not `librarything`. The longest prefix wins, and the
 store above holds everything no route covers. A mount between repositories on
 different stores is a copy.
 
+## Listeners
+
+`server.http.addr` is one address for the registry, its token endpoint and the
+management page. `listeners` are more, each with TLS of its own or none, all
+serving the same thing behind the same policy:
+
+```yaml
+listeners:
+  - addr: ":5000"                     # plain HTTP
+  - addr: ":5443"
+    tls:
+      cert_file: /etc/cr/tls/cr.crt
+      key_file: /etc/cr/tls/cr.key
+      client_ca_file: /etc/cr/tls/engines.crt   # verify client certificates against these
+      client_cert_optional: true                # and serve a caller without one, as anonymous
+```
+
+`server.http.addr` may be left empty when `listeners` say where to listen.
+With `client_ca_file`, a certificate that does not verify is a failed
+handshake, and one that does is a caller the policy's `mtls` provider vouches
+for ([access.md](access.md#client-certificates-mtls)). Without
+`client_cert_optional`, a caller with no certificate is refused at the
+handshake too -- leave it off only where nothing else is meant to connect.
+A client offers only a certificate whose issuer the listener names, so one
+signed by somebody else is not sent at all, and the caller is anonymous.
+
+The files are read once, when `serve` starts.
+
 ## Deploying
 
 **One process: SQLite, or the `os` store.** The lock that keeps a manifest

@@ -162,6 +162,11 @@ func (g *Guard) Caller(r *http.Request) (*Caller, error) {
 	p := g.Policy.Current()
 	h := r.Header.Get("Authorization")
 	if h == "" {
+		// A header says who the caller is in so many words, so it is read
+		// first; a certificate is who the connection is, when there is none.
+		if s, ok := g.certificate(r, p); ok {
+			return &Caller{Subject: s, policy: p}, nil
+		}
 		return &Caller{Subject: Subject{ID: Anonymous}, policy: p}, nil
 	}
 	scheme, rest, _ := strings.Cut(h, " ")
@@ -274,6 +279,10 @@ func (g *Guard) ServeToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		g.login(r.Context(), s.Via, "ok")
+	} else if c, ok := g.certificate(r, p); ok {
+		// A runtime that is challenged asks for a token without a password
+		// when it has none; the connection it asks on still says who it is.
+		s = c
 	}
 
 	ss, err := ParseScopes(scopes)
