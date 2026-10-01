@@ -21,6 +21,14 @@ cr --config cr.yaml init         # the operator tenant and its first holder
 cr --config cr.yaml serve
 ```
 
+`${env:NAME}` anywhere in the file is the variable's value, and
+`${env:NAME:-default}` is `default` when it is not set; one that is neither set
+nor given a default fails the start rather than read as empty. It is replaced
+in the file's text before the file is parsed, so quote a value YAML could
+misread, and write `$$` for a literal `$`. `cr config` prints the result, value
+and all. A credential that should stay out of that output, or change without a
+restart, is a file: see [Credentials](#credentials).
+
 A minimal configuration, for one process on a local disk:
 
 ```yaml
@@ -332,9 +340,10 @@ registry:
       upstream: https://registry-1.docker.io
       remote: ""                            # the upstream name for the prefix; empty maps the rest as is
       hosts: []                             # hosts a mirror is reached by; see "A mirror for several registries"
-      username: ""                          # when the upstream wants one
-      password: ""
-      token_file: ""                        # a bearer minted elsewhere; see below
+      auth:                                 # none is anonymous; see "Credentials" below
+        kind: password                      # or bearer
+        username: someone
+        password: ${file:/run/credentials/dockerhub}
       tag_ttl: 5m
       tag_max_stale: 0                      # zero serves a cached tag for as long as the upstream is down
       referrers_ttl: 5m                     # zero is tag_ttl; see "Referrers" below
@@ -480,42 +489,80 @@ goes to that registry itself: two registries can each have an `acme/app`,
 kept by different people, and a mirror of one that answered for the other
 would hand out the wrong image without an error anywhere.
 
-### A credential that expires
+### Credentials
 
-`username` and `password` answer whatever the upstream challenges with — Basic,
-or the token endpoint its `WWW-Authenticate` names. `token_file` is for the
-other kind: a bearer the upstream never issued, minted somewhere else for this
-deployment and replaced before it expires. A machine that proves what it is to
-an authority and is handed a registry token gets one of these, and the token
-lands in a file rather than in the configuration because a value in the
-configuration would be a dead credential by the end of the week.
+A proxy's `auth` says how its upstream is asked, by `kind`; without one, it is
+asked anonymously.
 
 ```yaml
 registry:
   proxies:
+    - prefix: docker.io
+      upstream: https://registry-1.docker.io
+      auth:
+        kind: password
+        username: someone
+        password: ${file:/run/credentials/dockerhub}
     - prefix: dist
       upstream: https://registry.example.com
-      token_file: /run/credentials/registry-token
+      auth:
+        kind: bearer
+        token: ${file:/run/credentials/registry-token}
 ```
 
-It is sent as `Authorization: Bearer` **from the first request**, not after a
-401: there is nothing to exchange, and waiting for the challenge would refuse a
-request for every manifest and blob before the one that worked. It is mutually
-exclusive with `username`/`password`, which is refused where the configuration
-is read rather than at the first pull.
+**`password`** answers whatever the upstream challenges with — Basic, or the
+token endpoint its `WWW-Authenticate` names. Docker Hub's access tokens,
+`dckr_pat_...`, are a password here.
 
-The file is re-read when it changes, which is a `stat` beside a request cr was
-making anyway — the file's identity first, because publishing a token means
-writing a temporary name and renaming it into place, and a rename always puts a
-different file there whatever the clock says. A writer that rewrites the file in
-place with a token of the same length inside one filesystem tick is not
-noticed; publishing by rename is the contract.
+**`bearer`** is for the other kind: a credential the upstream never issued,
+minted somewhere else for this deployment and replaced before it expires. A
+machine that proves what it is to an authority and is handed a registry token
+gets one of these. It is sent as `Authorization: Bearer` **from the first
+request**, not after a 401: there is nothing to exchange, and waiting for the
+challenge would refuse a request for every manifest and blob before the one
+that worked.
 
-A read that fails **after** a good one keeps the token it has and says nothing:
+A field that does not belong to the kind, a kind with a field missing, and a
+credential without a kind are refused where the configuration is read rather
+than at the first pull. So are `username`, `password` and `token_file` beside
+`auth`, where they used to be.
+
+#### `${file:...}`
+
+`password` and `token` are each either the value itself or `${file:/path}`: the
+file's content, without the whitespace around it. That keeps the list of
+proxies in a plain ConfigMap and only the secret in a Secret, mounted as a file:
+
+```yaml
+volumeMounts:
+  - { name: dockerhub, mountPath: /run/credentials, readOnly: true }
+```
+
+**The file is re-read when it changes**, so a rotated credential is used
+without a restart: a token a machine renews every few days, or a password
+replaced in the Secret. Unlike `${env:...}`, it is only understood in these two
+fields, and `cr config` prints the reference rather than what the file holds.
+
+A `password` is read when a challenge is answered. A token the upstream issued
+from the old one is used until it expires or is refused; a refusal is answered
+again with the password as it is then, so revoking the old one after the new one
+is in place is the whole rotation. A `bearer` token is read for every request.
+
+Reading it is a `stat` beside a request cr was making anyway — the file's
+identity first, because publishing a credential means writing a temporary name
+and renaming it into place, and a rename always puts a different file there
+whatever the clock says. That is also how Kubernetes updates a mounted Secret,
+except one mounted with `subPath`, which is never updated at all. A writer that rewrites the file in place with a value of the same length inside
+one filesystem tick is not noticed; publishing by rename is the contract.
+
+A read that fails **after** a good one keeps the value it has and says nothing:
 rename is atomic for content and not for permissions, so between the rename and
 the chown that follows it the file is there and unreadable, and failing a pull
 for that would be failing it because the credential was being renewed. A first
-read that fails has nothing to fall back on, and the pull fails naming the file.
+read that fails, or finds the file empty, has nothing to fall back on, and the
+pull fails naming the file.
+
+A value that begins `${file:` is always a reference; there is no escaping it.
 
 ## Health and telemetry
 

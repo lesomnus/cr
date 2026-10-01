@@ -67,7 +67,11 @@ type cache struct {
 }
 
 func newCache(t *testing.T, up *upstream, username, password string) *cache {
-	u, err := blob.NewUpstream(up.srv.URL, username, password)
+	var opts []blob.UpstreamOption
+	if username != "" {
+		opts = append(opts, blob.WithPassword(username, blob.Literal(password)))
+	}
+	u, err := blob.NewUpstream(up.srv.URL, opts...)
 	require.NoError(t, err)
 	p := &registry.Proxy{Prefix: "docker.io", Upstream: u, TagTTL: time.Minute}
 	base := flob.NewMemStores()
@@ -305,7 +309,7 @@ func TestProxyFillOutlivesTheRequest(t *testing.T) {
 	up := newUpstream(t, nil)
 	_, m := up.image("library/app", "a layer that outlives its request")
 
-	u, err := blob.NewUpstream(up.srv.URL, "", "")
+	u, err := blob.NewUpstream(up.srv.URL)
 	require.NoError(t, err)
 	p := &registry.Proxy{Prefix: "docker.io", Upstream: u}
 	base := flob.NewMemStores()

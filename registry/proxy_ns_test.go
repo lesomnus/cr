@@ -25,7 +25,7 @@ func mirror(t *testing.T, guard *auth.Guard, ups map[string]*upstream, hosts ...
 	var ps []*registry.Proxy
 	var routes []blob.CacheRoute
 	for prefix, up := range ups {
-		u, err := blob.NewUpstream(up.srv.URL, "", "")
+		u, err := blob.NewUpstream(up.srv.URL)
 		require.NoError(t, err)
 		p := &registry.Proxy{Prefix: prefix, Upstream: u, TagTTL: time.Minute}
 		for _, h := range hosts {

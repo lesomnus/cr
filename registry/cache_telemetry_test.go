@@ -29,7 +29,7 @@ func TestCacheRequestsAreCounted(t *testing.T) {
 	body, _ := up.image("library/app", "layer bytes")
 	require.Equal(t, http.StatusCreated, up.pushManifest("library/app", "latest", body, v1.MediaTypeImageManifest).StatusCode)
 
-	u, err := blob.NewUpstream(up.srv.URL, "", "", blob.WithMeter(meter))
+	u, err := blob.NewUpstream(up.srv.URL, blob.WithMeter(meter))
 	require.NoError(t, err)
 	p := &registry.Proxy{Prefix: "docker.io", Upstream: u, TagTTL: time.Minute}
 	clock := &fakeClock{now: time.Now()}

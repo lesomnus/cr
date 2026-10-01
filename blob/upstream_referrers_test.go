@@ -41,7 +41,7 @@ func TestReferrersFollowsPages(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	u, err := NewUpstream(srv.URL+"/base", "", "")
+	u, err := NewUpstream(srv.URL + "/base")
 	require.NoError(t, err)
 	ds, err := u.Referrers(context.Background(), "app", subject, 1<<20)
 	require.NoError(t, err)
@@ -61,7 +61,7 @@ func TestReferrersRefusesAnotherHost(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	u, err := NewUpstream(srv.URL, "", "")
+	u, err := NewUpstream(srv.URL)
 	require.NoError(t, err)
 	_, err = u.Referrers(context.Background(), "app", digest.FromString("s"), 1<<20)
 	require.ErrorContains(t, err, "another host")
@@ -72,7 +72,7 @@ func TestUpstreamErrors(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(status)
 	}))
-	u, err := NewUpstream(srv.URL, "", "")
+	u, err := NewUpstream(srv.URL)
 	require.NoError(t, err)
 	get := func() error {
 		_, err := u.Referrers(context.Background(), "app", digest.FromString("s"), 1<<20)

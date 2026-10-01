@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -172,6 +173,74 @@ func backend(at string, driver string, o cmd.OsStorageConfig, s cmd.S3StorageCon
 	}
 }
 
+// proxyAuth is the credential a proxy's `auth` configures. The error names the
+// field, for the caller to put the proxy in front of.
+func proxyAuth(pc cmd.ProxyConfig) ([]blob.UpstreamOption, error) {
+	switch {
+	case pc.Username != "", pc.Password != "":
+		return nil, errors.New("username, password: moved to auth, with kind: password")
+	case pc.TokenFile != "":
+		return nil, errors.New("token_file: moved to auth, with kind: bearer and token: ${file:...}")
+	}
+
+	a := pc.Auth
+	switch a.Kind {
+	case "":
+		if a.Username != "" || a.Password != "" || a.Token != "" {
+			return nil, errors.New("auth.kind: not set, so the credential beside it would not be sent; say password or bearer")
+		}
+		return nil, nil
+	case "password":
+		switch {
+		case a.Token != "":
+			return nil, errors.New("auth.token: is bearer's; kind is password")
+		case a.Username == "":
+			return nil, errors.New("auth.username: not set")
+		case a.Password == "":
+			return nil, errors.New("auth.password: not set")
+		}
+		password, err := secret(a.Password)
+		if err != nil {
+			return nil, fmt.Errorf("auth.password: %w", err)
+		}
+		return []blob.UpstreamOption{blob.WithPassword(a.Username, password)}, nil
+	case "bearer":
+		switch {
+		case a.Username != "" || a.Password != "":
+			return nil, errors.New("auth.username, auth.password: are password's; kind is bearer")
+		case a.Token == "":
+			return nil, errors.New("auth.token: not set")
+		}
+		token, err := secret(a.Token)
+		if err != nil {
+			return nil, fmt.Errorf("auth.token: %w", err)
+		}
+		return []blob.UpstreamOption{blob.WithBearer(token)}, nil
+	default:
+		return nil, fmt.Errorf("auth.kind: %q is not password or bearer", a.Kind)
+	}
+}
+
+// secret is a configured credential: the file `${file:/path}` names, re-read
+// when it changes, or the value as it is written.
+//
+// `${env:NAME}` is not here because it is gone before this is asked: the
+// configuration file is expanded before it is parsed. `${file:...}` survives
+// that because only `env:` is expanded, which is also why a value cannot
+// escape it — `$$` is already `$` by now. A credential that begins `${file:`
+// and is not a reference is not one anybody has.
+func secret(v string) (blob.Secret, error) {
+	ref, ok := strings.CutPrefix(v, "${file:")
+	if !ok {
+		return blob.Literal(v), nil
+	}
+	path, ok := strings.CutSuffix(ref, "}")
+	if !ok || path == "" {
+		return nil, fmt.Errorf("%q: want ${file:/path}", v)
+	}
+	return blob.SecretFile(path), nil
+}
+
 // s3Client is what the S3 store sends its requests with. Go's default
 // transport keeps two idle connections per host and opens a new one for
 // every request past them, which at the registry's concurrency left a
@@ -214,14 +283,11 @@ func Proxies(c cmd.RegistryConfig, base flob.Stores, meter metric.Meter) (flob.S
 			}
 			hosts[h] = pc.Prefix
 		}
-		opts := []blob.UpstreamOption{blob.WithMeter(meter)}
-		if pc.TokenFile != "" {
-			if pc.Username != "" || pc.Password != "" {
-				return nil, nil, nil, fmt.Errorf("registry.proxies[%d]: token_file and username/password are two credentials; configure one", i)
-			}
-			opts = append(opts, blob.WithTokenFile(pc.TokenFile))
+		auth, err := proxyAuth(pc)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("registry.proxies[%d].%w", i, err)
 		}
-		up, err := blob.NewUpstream(pc.Upstream, pc.Username, pc.Password, opts...)
+		up, err := blob.NewUpstream(pc.Upstream, append(auth, blob.WithMeter(meter))...)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("registry.proxies[%d].upstream: %w", i, err)
 		}
