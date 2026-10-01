@@ -91,3 +91,24 @@ func TestSecret(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "hunter2", v)
 }
+
+func TestS3Credentials(t *testing.T) {
+	c, err := s3Credentials(cmd.S3StorageConfig{AccessKeyId: "AKIA1", SecretAccessKey: "s1"})
+	require.NoError(t, err)
+	require.Equal(t, flob.Credentials{AccessKeyID: "AKIA1", SecretAccessKey: "s1"}, c)
+
+	path := filepath.Join(t.TempDir(), "credentials.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"AccessKeyId": "AKIA2", "SecretAccessKey": "s2"}`), 0o600))
+	p, err := s3Credentials(cmd.S3StorageConfig{CredentialsFile: path})
+	require.NoError(t, err)
+	got, err := p.Retrieve(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, "AKIA2", got.AccessKeyID)
+
+	_, err = s3Credentials(cmd.S3StorageConfig{CredentialsFile: path, SessionToken: "t"})
+	require.ErrorContains(t, err, "session_token: credentials_file is the whole set")
+
+	// One file per key would be read apart; the set goes in one file.
+	_, err = s3Credentials(cmd.S3StorageConfig{AccessKeyId: "AKIA1", SecretAccessKey: "${file:/run/aws/secret}"})
+	require.ErrorContains(t, err, "secret_access_key: ${file:...} is not read here")
+}
