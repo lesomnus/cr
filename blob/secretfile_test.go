@@ -45,7 +45,7 @@ func TestUpstreamSendsTheTokenFile(t *testing.T) {
 
 	var seen []string
 	srv := bearers(t, &seen)
-	up, err := NewUpstream(srv.URL, "", "", WithTokenFile(path))
+	up, err := NewUpstream(srv.URL, WithBearer(SecretFile(path)))
 	require.NoError(t, err)
 
 	_, err = up.do(context.Background(), http.MethodHead, "team/app", "/v2/team/app/manifests/1", nil)
@@ -62,7 +62,7 @@ func TestUpstreamPicksUpARotatedToken(t *testing.T) {
 
 	var seen []string
 	srv := bearers(t, &seen)
-	up, err := NewUpstream(srv.URL, "", "", WithTokenFile(path))
+	up, err := NewUpstream(srv.URL, WithBearer(SecretFile(path)))
 	require.NoError(t, err)
 
 	ask := func() {
@@ -100,7 +100,7 @@ func TestUpstreamKeepsTheTokenWhileTheFileIsUnreadable(t *testing.T) {
 
 	var seen []string
 	srv := bearers(t, &seen)
-	up, err := NewUpstream(srv.URL, "", "", WithTokenFile(path))
+	up, err := NewUpstream(srv.URL, WithBearer(SecretFile(path)))
 	require.NoError(t, err)
 
 	_, err = up.do(context.Background(), http.MethodHead, "team/app", "/v2/team/app/manifests/1", nil)
@@ -126,7 +126,7 @@ func TestUpstreamKeepsTheTokenWhileTheFileIsUnreadable(t *testing.T) {
 func TestUpstreamFailsWhenTheTokenWasNeverRead(t *testing.T) {
 	var seen []string
 	srv := bearers(t, &seen)
-	up, err := NewUpstream(srv.URL, "", "", WithTokenFile(filepath.Join(t.TempDir(), "absent")))
+	up, err := NewUpstream(srv.URL, WithBearer(SecretFile(filepath.Join(t.TempDir(), "absent"))))
 	require.NoError(t, err)
 
 	_, err = up.do(context.Background(), http.MethodHead, "team/app", "/v2/team/app/manifests/1", nil)
@@ -143,7 +143,7 @@ func TestUpstreamRefusesAnEmptyTokenFile(t *testing.T) {
 
 	var seen []string
 	srv := bearers(t, &seen)
-	up, err := NewUpstream(srv.URL, "", "", WithTokenFile(path))
+	up, err := NewUpstream(srv.URL, WithBearer(SecretFile(path)))
 	require.NoError(t, err)
 
 	_, err = up.do(context.Background(), http.MethodHead, "team/app", "/v2/team/app/manifests/1", nil)
@@ -154,11 +154,11 @@ func TestUpstreamRefusesAnEmptyTokenFile(t *testing.T) {
 // The whitespace a token picks up from `echo` or a heredoc is not part of it; a
 // header value carrying a newline is rejected by the server for a reason nobody
 // guesses.
-func TestTokenFileTrimsWhatAToolLeaves(t *testing.T) {
+func TestSecretFileTrimsWhatAToolLeaves(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "token")
 	write(t, path, "  first\n")
 
-	got, err := newTokenFile(path).Token()
+	got, err := newSecretFile(path).Value()
 	require.NoError(t, err)
 	require.Equal(t, "first", got)
 }
@@ -167,12 +167,12 @@ func TestTokenFileTrimsWhatAToolLeaves(t *testing.T) {
 // place, same length, inside one tick. Nothing about it moved. That is the
 // contract saying `rename` — which is how a credential is published — rather
 // than a reason to read the file on every request.
-func TestTokenFileDoesNotSeeAnInPlaceRewrite(t *testing.T) {
+func TestSecretFileDoesNotSeeAnInPlaceRewrite(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "token")
 	write(t, path, "first")
 
-	tf := newTokenFile(path)
-	got, err := tf.Token()
+	tf := newSecretFile(path)
+	got, err := tf.Value()
 	require.NoError(t, err)
 	require.Equal(t, "first", got)
 	was, err := os.Stat(path)
@@ -185,7 +185,87 @@ func TestTokenFileDoesNotSeeAnInPlaceRewrite(t *testing.T) {
 	require.NoError(t, f.Close())
 	require.NoError(t, os.Chtimes(path, was.ModTime(), was.ModTime()))
 
-	got, err = tf.Token()
+	got, err = tf.Value()
 	require.NoError(t, err)
 	require.Equal(t, "first", got)
+}
+
+// A password in a file is rotated the way a token is, and the next challenge
+// is answered with the new one. A token minted from the old password is kept
+// while the upstream takes it; when the old password is revoked and the
+// upstream refuses that token, the refusal is answered with the password as it
+// is now, with nothing restarted.
+func TestUpstreamAnswersWithARotatedPassword(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "password")
+	write(t, path, "first\n")
+
+	// valid is the password the token endpoint takes, and the tokens minted
+	// from it are the only ones the registry takes.
+	valid := "first"
+	var asked []string
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			_, pass, _ := r.BasicAuth()
+			asked = append(asked, pass)
+			if pass != valid {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			w.Write([]byte(`{"token":"from-` + pass + `","expires_in":300}`))
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer from-"+valid {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="`+srv.URL+`/token",service="test"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	up, err := NewUpstream(srv.URL, WithPassword("someone", SecretFile(path)))
+	require.NoError(t, err)
+	ask := func() error {
+		t.Helper()
+		res, err := up.do(context.Background(), http.MethodHead, "team/app", "/v2/team/app/manifests/1", nil)
+		if err != nil {
+			return err
+		}
+		res.Body.Close()
+		require.Equal(t, http.StatusOK, res.StatusCode)
+		return nil
+	}
+
+	require.NoError(t, ask())
+	require.Equal(t, []string{"first"}, asked)
+
+	// Rotated on disk; the old one still works, and the token in hand is used.
+	write(t, path, "secnd\n")
+	require.NoError(t, ask())
+	require.Equal(t, []string{"first"}, asked)
+
+	// The old one is revoked: its token is refused, and the challenge is
+	// answered with the new password.
+	valid = "secnd"
+	require.NoError(t, ask())
+	require.Equal(t, []string{"first", "secnd"}, asked)
+}
+
+// A password file that was never readable is the challenge going unanswered,
+// and says why.
+func TestUpstreamFailsWhenThePasswordWasNeverRead(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("WWW-Authenticate", `Basic realm="test"`)
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(srv.Close)
+
+	up, err := NewUpstream(srv.URL, WithPassword("someone", SecretFile(filepath.Join(t.TempDir(), "absent"))))
+	require.NoError(t, err)
+
+	_, err = up.do(context.Background(), http.MethodHead, "team/app", "/v2/team/app/manifests/1", nil)
+	require.ErrorIs(t, err, ErrUpstreamUnauthorized)
+	require.ErrorContains(t, err, "absent")
 }

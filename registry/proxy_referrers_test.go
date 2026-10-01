@@ -80,7 +80,7 @@ type referrersCache struct {
 }
 
 func newReferrersCache(t *testing.T, up *countingUpstream, ix *memindex.Index, clock *fakeClock) *referrersCache {
-	u, err := blob.NewUpstream(up.srv.URL, "", "")
+	u, err := blob.NewUpstream(up.srv.URL)
 	require.NoError(t, err)
 	p := &registry.Proxy{
 		Prefix:            "docker.io",

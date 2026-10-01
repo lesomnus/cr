@@ -35,7 +35,7 @@ func TestUpstreamWithoutAChallenge(t *testing.T) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	t.Cleanup(srv.Close)
-	u, err := NewUpstream(srv.URL, "", "")
+	u, err := NewUpstream(srv.URL)
 	require.NoError(t, err)
 
 	_, err = u.HeadManifest(context.Background(), "docker.io/library/alpine", "3.20")
@@ -50,7 +50,7 @@ func TestUpstreamRegistry(t *testing.T) {
 		"https://GHCR.io":              "ghcr.io",
 		"http://127.0.0.1:5000/base":   "127.0.0.1:5000",
 	} {
-		u, err := NewUpstream(raw, "", "")
+		u, err := NewUpstream(raw)
 		require.NoError(t, err)
 		require.Equal(t, want, u.Registry(), raw)
 	}

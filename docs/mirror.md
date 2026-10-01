@@ -40,8 +40,10 @@ registry:
     - prefix: docker.io
       upstream: https://registry-1.docker.io
       hosts: [cache.example.com]  # a request with neither prefix nor ns is Docker Hub's
-      username: ""                # a Docker Hub account raises its pull limit
-      password: ""                # an access token, dckr_pat_...
+      auth:                       # a Docker Hub account raises its pull limit
+        kind: password
+        username: someone
+        password: ${file:/run/credentials/dockerhub}  # an access token, dckr_pat_...
       retention: 720h
     - { prefix: ghcr.io,           upstream: https://ghcr.io,           retention: 720h }
     - { prefix: nvcr.io,           upstream: https://nvcr.io,           retention: 720h }
@@ -71,8 +73,9 @@ if the same deployment also takes pushes.
 **Credentials** are only for what an upstream will not give anyone: a Docker
 Hub account for its limits, and `username: $oauthtoken` with an NGC API key
 for private images on `nvcr.io`. Public images on every registry above pull
-without one. Keep the file readable by cr alone; `proxies` has no per-entry
-environment variable.
+without one. `${file:...}` keeps the secret out of the configuration and is
+re-read when it is rotated, and `${env:...}` works too; see
+[operating.md](operating.md#credentials).
 
 **`retention`** is how long a tag or manifest nobody pulled stays; see
 [operating.md](operating.md#pull-through-caches) for the two rules and

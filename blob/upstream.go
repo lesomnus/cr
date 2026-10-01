@@ -35,15 +35,17 @@ const ManifestAccept = "application/vnd.oci.image.index.v1+json, " +
 
 // Upstream is a remote registry read on behalf of a pull-through cache: its
 // manifests and blobs, through whatever token flow it challenges with — or with
-// a bearer minted elsewhere, when one is configured ([WithTokenFile]).
+// a bearer minted elsewhere, when one is configured ([WithBearer]).
 type Upstream struct {
 	base     *url.URL
 	username string
-	password string
-	// token, when set, is a bearer put in place out of band: it is sent as it
-	// is, from the first request, instead of answering a challenge. See
-	// [WithTokenFile].
-	token  *tokenFile
+	// password is asked for when a challenge is answered, not before, so one
+	// that lives in a file is read when it is needed. See [WithPassword].
+	password Secret
+	// bearer, when set, is a credential put in place out of band: it is sent
+	// as it is, from the first request, instead of answering a challenge. See
+	// [WithBearer].
+	bearer Secret
 	client *http.Client
 
 	mu     sync.Mutex
@@ -62,24 +64,34 @@ type Upstream struct {
 // UpstreamOption is what [NewUpstream] takes besides its address.
 type UpstreamOption func(*Upstream)
 
-// WithTokenFile reads the upstream's credential from a file, and sends it as
-// `Authorization: Bearer`.
+// WithPassword answers the upstream's challenge as username: Basic when it
+// asks for Basic, and a token from its realm when it asks for Bearer.
+//
+// The password is read each time a challenge is answered, so a rotated one is
+// used from the next token on. A token already in hand is kept until it expires
+// or the upstream refuses it, and a refusal is answered again with the password
+// as it is then.
+func WithPassword(username string, password Secret) UpstreamOption {
+	return func(u *Upstream) { u.username, u.password = username, password }
+}
+
+// WithBearer sends the upstream's credential as `Authorization: Bearer`.
 //
 // For an upstream whose credential is MINTED ELSEWHERE and expires: a robot
 // presents a device certificate to an authority, a token comes back, something
-// writes it here, and it is replaced long before it expires. Nothing restarts
-// when it is, so the file is re-read when it changes.
+// writes it to a file ([SecretFile]), and it is replaced long before it
+// expires. Nothing restarts when it is, so the file is re-read when it changes.
 //
 // It replaces the challenge flow rather than feeding it. A registry that hands
-// out tokens of its own gets `username`/`password` and the exchange in
+// out tokens of its own gets [WithPassword] and the exchange in
 // [Upstream.authorize]; this is for one that expects a credential it never
 // issued, and sending it only after a 401 would mean a request refused for
 // every manifest and blob before the one that worked.
 //
-// Mutually exclusive with username and password, which [cli.Proxies] enforces
-// where the configuration is read.
-func WithTokenFile(path string) UpstreamOption {
-	return func(u *Upstream) { u.token = newTokenFile(path) }
+// Mutually exclusive with [WithPassword], which [cli.Proxies] enforces where
+// the configuration is read.
+func WithBearer(token Secret) UpstreamOption {
+	return func(u *Upstream) { u.bearer = token }
 }
 
 // WithMeter measures the requests to the upstream with m.
@@ -95,9 +107,9 @@ type upstreamToken struct {
 	expires time.Time
 }
 
-// NewUpstream is the registry at rawURL, `https://registry-1.docker.io`,
-// read with username and password when it asks for them, or anonymously.
-func NewUpstream(rawURL, username, password string, opts ...UpstreamOption) (*Upstream, error) {
+// NewUpstream is the registry at rawURL, `https://registry-1.docker.io`, read
+// anonymously unless an option says otherwise.
+func NewUpstream(rawURL string, opts ...UpstreamOption) (*Upstream, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, err
@@ -107,9 +119,7 @@ func NewUpstream(rawURL, username, password string, opts ...UpstreamOption) (*Up
 	}
 	u.Path = strings.TrimSuffix(u.Path, "/")
 	up := &Upstream{
-		base:     u,
-		username: username,
-		password: password,
+		base: u,
 		client: &http.Client{Transport: &http.Transport{
 			Proxy:                 http.ProxyFromEnvironment,
 			DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
@@ -189,10 +199,10 @@ func (u *Upstream) request(ctx context.Context, method, repo, path string, heade
 		return u.send(req)
 	}
 
-	if u.token != nil {
+	if u.bearer != nil {
 		// The credential was not issued by this registry and there is nothing to
 		// exchange: send it, and let a 401 be a 401.
-		token, err := u.token.Token()
+		token, err := u.bearer.Value()
 		if err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrUpstreamUnauthorized, err)
 		}
@@ -269,7 +279,11 @@ func (u *Upstream) authorize(ctx context.Context, challenge, scope string) (stri
 		if u.username == "" {
 			return "", ErrUpstreamUnauthorized
 		}
-		return "Basic " + base64.StdEncoding.EncodeToString([]byte(u.username+":"+u.password)), nil
+		password, err := u.currentPassword()
+		if err != nil {
+			return "", err
+		}
+		return "Basic " + base64.StdEncoding.EncodeToString([]byte(u.username+":"+password)), nil
 	case "bearer":
 	case "":
 		// Nothing to answer. Docker Hub does this for a name it does not
@@ -295,7 +309,11 @@ func (u *Upstream) authorize(ctx context.Context, challenge, scope string) (stri
 		return "", err
 	}
 	if u.username != "" {
-		req.SetBasicAuth(u.username, u.password)
+		password, err := u.currentPassword()
+		if err != nil {
+			return "", err
+		}
+		req.SetBasicAuth(u.username, password)
 	}
 	res, err := u.send(req)
 	if err != nil {
@@ -329,6 +347,19 @@ func (u *Upstream) authorize(ctx context.Context, challenge, scope string) (stri
 	u.tokens[scope] = upstreamToken{auth: auth, expires: u.now().Add(ttl - min(ttl/10, 10*time.Second))}
 	u.mu.Unlock()
 	return auth, nil
+}
+
+// currentPassword is what the password says now. One that cannot be read is
+// the upstream's challenge going unanswered, and is said with the reason.
+func (u *Upstream) currentPassword() (string, error) {
+	if u.password == nil {
+		return "", nil
+	}
+	p, err := u.password.Value()
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", ErrUpstreamUnauthorized, err)
+	}
+	return p, nil
 }
 
 // parseChallenge reads `Bearer realm="...",service="...",scope="..."`.

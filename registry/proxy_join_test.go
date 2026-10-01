@@ -60,7 +60,7 @@ func newGatedUpstream(t *testing.T) *gatedUpstream {
 }
 
 func (u *gatedUpstream) cache(t *testing.T, meter metric.Meter) *harness {
-	b, err := blob.NewUpstream(u.srv.URL, "", "")
+	b, err := blob.NewUpstream(u.srv.URL)
 	require.NoError(t, err)
 	p := &registry.Proxy{Prefix: "docker.io", Upstream: b, TagTTL: time.Minute}
 	return &harness{t: t, h: registry.New(registry.Config{

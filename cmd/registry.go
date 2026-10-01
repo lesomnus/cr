@@ -51,22 +51,15 @@ type ProxyConfig struct {
 	// in front has to pass the Host the client asked for.
 	Hosts []string `yaml:"hosts"`
 
-	Username string `yaml:"username"`
-	Password string `yaml:"password"`
+	// Auth is how the upstream is asked; none is anonymously.
+	Auth ProxyAuthConfig `yaml:"auth"`
 
-	// TokenFile holds a bearer token, sent as `Authorization: Bearer` instead
-	// of username and password. It is RE-READ WHEN IT CHANGES, which is the
-	// whole reason it is a file: a credential minted for this deployment
-	// elsewhere — against a device certificate, say — is replaced on disk
-	// before it expires, and cr picks the new one up without a restart.
-	//
-	// It is not the token a registry hands out after a `WWW-Authenticate`
-	// challenge; that exchange happens on its own from username and password.
-	// This is a credential put in place out of band, for an upstream that
-	// expects one it never issued.
-	//
-	// Mutually exclusive with username and password.
-	TokenFile string `yaml:"token_file"`
+	// Username, Password and TokenFile are where `auth` used to be. They are
+	// kept only so that a configuration still carrying them is refused rather
+	// than read as anonymous.
+	Username  string `yaml:"username,omitempty"`
+	Password  string `yaml:"password,omitempty"`
+	TokenFile string `yaml:"token_file,omitempty"`
 
 	// TagTtl is how long a tag is served from the cache before the upstream
 	// is asked again; zero is five minutes.
@@ -91,6 +84,37 @@ type ProxyConfig struct {
 	// Retention is how long the cache keeps what nobody pulls; zero keeps
 	// it until a full collection finds it unreferenced.
 	Retention time.Duration `yaml:"retention"`
+}
+
+// ProxyAuthConfig is the credential a pull-through cache asks its upstream
+// with, by kind.
+//
+// A value marked SECRET is either written as it is, or `${file:/path}`: the
+// credential is the file's content, without the whitespace around it, and the
+// file is RE-READ WHEN IT CHANGES — replaced by a rename, which is how
+// Kubernetes updates a mounted Secret — so a rotated credential is used without
+// a restart. `${env:NAME}` works here as anywhere in the file, and is read once,
+// when the file is.
+type ProxyAuthConfig struct {
+	// Kind is `password` or `bearer`; empty is no credential at all.
+	//
+	// `password` answers the upstream's challenge with Username and Password:
+	// Basic, or a token from the realm it names. Docker Hub's access tokens,
+	// `dckr_pat_...`, are a password.
+	//
+	// `bearer` sends Token as `Authorization: Bearer` from the first request.
+	// It is not the token a registry hands out after a challenge; that
+	// exchange is `password`'s. It is a credential put in place out of band —
+	// minted against a device certificate, say, and replaced before it
+	// expires — for an upstream that expects one it never issued.
+	Kind string `yaml:"kind"`
+
+	// Username is `password`'s.
+	Username string `yaml:"username"`
+	// Password is `password`'s. SECRET.
+	Password string `yaml:"password"`
+	// Token is `bearer`'s. SECRET.
+	Token string `yaml:"token"`
 }
 
 // StorageConfig says where blobs and manifests are kept.
