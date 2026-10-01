@@ -157,7 +157,10 @@ func TestReadPolicyRefuses(t *testing.T) {
 			"providers:\n" + github + "permissions:\n  p:\n    repos: [a]\n    actions: [pull]\nmatches:\n  m:\n    for: gitlab\n    grant: [p]\n    when: {sub: x}\n",
 			`for "gitlab": no such provider`,
 		},
-		"a tag rule that names groups": {"tag_rules:\n  - repo: '**'\n    tag: latest\n    kind: protected\n    groups: [release]\n", `unknown field "groups"`},
+		"an mtls provider with an issuer": {"providers:\n  engines:\n    kind: mtls\n    issuer: x\n", "configured by the listener's tls.client_ca_file"},
+		"an mtls provider that exchanges": {"providers:\n  engines:\n    kind: mtls\n    exchange: 1h\n", "a certificate is not traded"},
+		"two mtls providers":              {"providers:\n  engines:\n    kind: mtls\n  more:\n    kind: mtls\n", "there is one mtls provider or none"},
+		"a tag rule that names groups":    {"tag_rules:\n  - repo: '**'\n    tag: latest\n    kind: protected\n    groups: [release]\n", `unknown field "groups"`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := readPolicy(write(t, filepath.Join(t.TempDir(), "p.yaml"), c.file))

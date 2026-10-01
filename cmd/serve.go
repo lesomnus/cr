@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -311,9 +313,9 @@ func (s *Server) Serve(ctx context.Context, c Config, l net.Listener) error {
 // through the interceptors a gRPC client goes through, behind the same wall.
 // There is no second stack here for a rule to be missing from.
 func (s *Server) serveHttp(ctx context.Context, c Config, g *grpc.Server) (*http.Server, error) {
-	if !c.Server.Http.Serves() {
+	if !c.Server.Http.Serves() && len(c.Listeners) == 0 {
 		if len(s.Routes) > 0 {
-			return nil, errors.New("server.http.addr is not set, and the registry is served on it")
+			return nil, errors.New("neither server.http.addr nor listeners is set, and the registry is served on them")
 		}
 		return nil, nil
 	}
@@ -339,7 +341,7 @@ func (s *Server) serveHttp(ctx context.Context, c Config, g *grpc.Server) (*http
 		h.Handle(pattern, route)
 	}
 
-	l, err := net.Listen("tcp", c.Server.Http.Addr)
+	ls, err := listen(c)
 	if err != nil {
 		return nil, err
 	}
@@ -347,14 +349,66 @@ func (s *Server) serveHttp(ctx context.Context, c Config, g *grpc.Server) (*http
 	// The requests' contexts carry what `ctx` carries -- the telemetry, the
 	// logger -- and not its cancellation: a push in flight when the server is
 	// told to stop is let finish, see [Server.shutdown].
+	//
+	// One server on every listener, so that one Shutdown stops them all.
 	srv := httpServer(context.WithoutCancel(ctx), h)
-	go func() {
-		if err := srv.Serve(l); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.From(ctx).ErrorContext(ctx, "http", slog.String("err", err.Error()))
-		}
-	}()
-
-	log.From(ctx).InfoContext(ctx, "http", slog.String("addr", l.Addr().String()))
+	for _, l := range ls {
+		go func() {
+			if err := srv.Serve(l); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.From(ctx).ErrorContext(ctx, "http", slog.String("addr", l.Addr().String()), slog.String("err", err.Error()))
+			}
+		}()
+		log.From(ctx).InfoContext(ctx, "http", slog.String("addr", l.Addr().String()), slog.Bool("tls", l.tls))
+	}
 
 	return srv, nil
+}
+
+// listener is an address the HTTP side is served on.
+type listener struct {
+	net.Listener
+	tls bool
+}
+
+// listen opens `server.http.addr` and every one of `listeners`, or none: one
+// that cannot be opened closes those that were.
+func listen(c Config) (ls []listener, err error) {
+	defer func() {
+		if err != nil {
+			for _, l := range ls {
+				l.Close()
+			}
+		}
+	}()
+	if c.Server.Http.Serves() {
+		l, err := net.Listen("tcp", c.Server.Http.Addr)
+		if err != nil {
+			return ls, err
+		}
+		ls = append(ls, listener{Listener: l})
+	}
+	for i, lc := range c.Listeners {
+		if lc.Addr == "" {
+			return ls, fmt.Errorf("listeners[%d].addr: not set", i)
+		}
+		cfg, err := lc.Tls.Server()
+		if err != nil {
+			return ls, fmt.Errorf("listeners[%d].tls: %w", i, err)
+		}
+		l, err := net.Listen("tcp", lc.Addr)
+		if err != nil {
+			return ls, fmt.Errorf("listeners[%d]: %w", i, err)
+		}
+		if cfg == nil {
+			ls = append(ls, listener{Listener: l})
+			continue
+		}
+		// HTTP/2 is offered as ServeTLS would; Serve takes it up from the
+		// protocol the handshake settled on.
+		if len(cfg.NextProtos) == 0 {
+			cfg.NextProtos = []string{"h2", "http/1.1"}
+		}
+		ls = append(ls, listener{Listener: tls.NewListener(l, cfg), tls: true})
+	}
+	return ls, nil
 }

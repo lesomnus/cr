@@ -198,8 +198,9 @@ func (g *Registry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// A client learns how to authenticate from this answer, and
 		// `docker login` checks a credential against it, so a request
 		// with no credential is challenged even where anonymous pulls
-		// are allowed.
-		if g.c.Guard != nil && r.Header.Get("Authorization") == "" {
+		// are allowed. A client certificate the policy vouches for is a
+		// credential.
+		if g.c.Guard != nil && !g.c.Guard.Presented(r) {
 			g.fail(w, r, g.c.Guard.Challenge(r, nil, false))
 			return
 		}

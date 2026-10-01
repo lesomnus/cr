@@ -282,6 +282,21 @@ func NewPolicy(r Rules) (*Policy, error) {
 		names[pv.Name] = true
 		p.providers = append(p.providers, pv)
 	}
+	certifiers := []string{}
+	for _, pv := range p.providers {
+		if _, ok := pv.Authenticator.(certifier); ok {
+			certifiers = append(certifiers, pv.Name)
+		}
+	}
+	if len(certifiers) > 1 {
+		// The listener decides which certificates are good, so two of these
+		// would vouch for one certificate under two names.
+		errs = append(errs, fmt.Errorf("providers %s: there is one mtls provider or none", strings.Join(certifiers, ", ")))
+		p.providers = slices.DeleteFunc(p.providers, func(pv Provider) bool {
+			_, ok := pv.Authenticator.(certifier)
+			return ok
+		})
+	}
 	for _, pv := range p.providers {
 		if pv.Authenticator != nil {
 			p.chain = append(p.chain, pv.Authenticator)

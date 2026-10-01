@@ -130,6 +130,51 @@ provider's credentials for lasts; see [below](#ci-without-secrets-openid-connect
 A provider that does not say trades none: a CI provider whose jobs outlive
 their ID tokens wants one, and a provider people sign in with may well not.
 
+### Client certificates: `mtls`
+
+```yaml
+providers:
+  engines:
+    kind: mtls
+```
+
+`mtls` vouches for the client certificate a caller's connection verified, on a
+listener with `tls.client_ca_file` (see
+[operating.md](operating.md#listeners)). Which certificates are good is the
+listener's to say, before there is a request; this names whoever presented
+one. So it has nothing to configure, and a policy has one of it or none.
+
+It is the credential for a client that cannot be told to send one. A container
+runtime sends a password only to the registry an image is named after, never to
+a mirror in front of it; a client certificate is part of the connection to the
+mirror, configured for that host -- `client` in containerd's `hosts.toml` --
+so an engine that only ever reaches cr as a mirror can still be told apart.
+
+The caller is `<provider>:<common name>`, and its claims are:
+
+| claim | |
+| --- | --- |
+| `cn` | the subject's common name |
+| `o`, `ou` | the subject's organizations and units, lists |
+| `dns`, `ip`, `uri`, `email` | the subject alternative names, lists |
+| `fingerprint` | the SHA-256 of the certificate, lowercase hex: `openssl x509 -outform der -in c.crt \| sha256sum` |
+
+```yaml
+matches:
+  engines:
+    for: engines
+    grant: [releases]
+    when:
+      cn: "engine-*"
+```
+
+`when` narrows what the listener's CA already allows. With a CA that signs only
+for this, `cn` is enough; with a bundle of self-signed certificates the bundle
+is the pin. A request with an `Authorization` header is who the header says,
+certificate or not, and a certificate on a listener without
+`client_ca_file` is never asked for. A runtime that is challenged asks
+`/token` without a password; the token it gets is for its certificate.
+
 ## Permissions
 
 ```yaml

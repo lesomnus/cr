@@ -252,8 +252,18 @@ func provider(name string, p cmd.ProviderConfig, oidcs map[oidcKey]*auth.OIDC) (
 			oidcs[k] = o
 		}
 		return auth.Provider{Name: name, Authenticator: o, Exchange: p.Exchange}, nil
+	case "mtls":
+		// Which certificates are good is the listener's `client_ca_file`; a
+		// field here would be a second place to say it, and disagree.
+		switch {
+		case p.Issuer != "", p.Audience != "", p.SubjectClaim != "":
+			return auth.Provider{}, errors.New("issuer, audience, subject_claim: an mtls provider is configured by the listener's tls.client_ca_file")
+		case p.Exchange != 0:
+			return auth.Provider{}, errors.New("exchange: a certificate is not traded for a token")
+		}
+		return auth.Provider{Name: name, Authenticator: auth.NewMTLS(name)}, nil
 	case "":
 		return auth.Provider{}, errors.New("no kind")
 	}
-	return auth.Provider{}, fmt.Errorf("kind %q: the kind there is is oidc", p.Kind)
+	return auth.Provider{}, fmt.Errorf("kind %q: the kinds there are are oidc and mtls", p.Kind)
 }

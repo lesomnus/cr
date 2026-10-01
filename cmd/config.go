@@ -35,6 +35,13 @@ type Config struct {
 	// Shutdown is how `serve` stops when it is told to.
 	Shutdown ShutdownConfig `yaml:"shutdown"`
 
+	// Listeners are addresses the HTTP side -- the registry, its token
+	// endpoint, the management page -- is served on besides
+	// `server.http.addr`, each with TLS of its own or none: plain HTTP for a
+	// push from inside, and TLS that asks for client certificates for the
+	// machines a policy names by them, at once.
+	Listeners []ListenerConfig `yaml:"listeners"`
+
 	Registry   RegistryConfig   `yaml:"registry"`
 	Auth       AuthConfig       `yaml:"auth"`
 	Management ManagementConfig `yaml:"management"`
@@ -42,4 +49,17 @@ type Config struct {
 	// From is the file this configuration was read from, and empty when
 	// there was none: where the files it names relative to it are.
 	From string `yaml:"-"`
+}
+
+// ListenerConfig is one more address the HTTP side is served on.
+type ListenerConfig struct {
+	// Addr is where to listen: `:5443`.
+	Addr string `yaml:"addr"`
+
+	// Tls is the listener's handshake; none is plain HTTP. With
+	// `client_ca_file`, a caller's certificate is verified against it, and
+	// the policy's `mtls` provider vouches for whoever presented one. With
+	// `client_cert_optional` too, a caller without one is still served, as
+	// the anonymous caller.
+	Tls config.TlsConfig `yaml:"tls"`
 }
