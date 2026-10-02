@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -119,6 +120,23 @@ func testManifests(t *testing.T, ix index.Index) {
 	held, err = m.Holds(ctx, "acme/other", d("layer"))
 	require.NoError(t, err)
 	require.False(t, held)
+
+	// One manifest held by two indexes, as a platform's is by every index
+	// that lists it.
+	require.NoError(t, m.Put(ctx, "acme/app", manifest("index-b"), []digest.Digest{one.Digest}))
+	require.NoError(t, m.Put(ctx, "acme/app", manifest("index-a"), []digest.Digest{one.Digest, d("config")}))
+	holders, err := m.Holders(ctx, "acme/app", one.Digest)
+	require.NoError(t, err)
+	want := []digest.Digest{d("index-a"), d("index-b")}
+	slices.SortFunc(want, func(a, b digest.Digest) int { return strings.Compare(a.String(), b.String()) })
+	require.Equal(t, want, holders)
+	holders, err = m.Holders(ctx, "acme/other", one.Digest)
+	require.NoError(t, err)
+	require.Empty(t, holders)
+	for _, x := range []string{"index-a", "index-b"} {
+		_, err := m.Erase(ctx, "acme/app", d(x))
+		require.NoError(t, err)
+	}
 
 	require.NoError(t, m.Put(ctx, "acme/app", manifest("two"), nil))
 	vs, err := m.List(ctx, "acme/app", index.Page{})

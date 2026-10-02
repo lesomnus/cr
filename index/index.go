@@ -129,6 +129,10 @@ type Manifests interface {
 	// Holds reports whether any manifest in repo holds d.
 	Holds(ctx context.Context, repo string, d digest.Digest) (bool, error)
 
+	// Holders is the manifests in repo that hold d, in digest order: the
+	// indexes a platform's manifest is in.
+	Holders(ctx context.Context, repo string, d digest.Digest) ([]digest.Digest, error)
+
 	// List is every manifest in repo, in digest order after p.Last.
 	List(ctx context.Context, repo string, p Page) ([]Manifest, error)
 

@@ -70,8 +70,9 @@ type Config struct {
 type Registry struct {
 	c Config
 
-	proxies proxies
-	flights flights
+	proxies  proxies
+	flights  flights
+	verdicts verdicts
 
 	// errors counts every error envelope answered, by its code, and
 	// cacheRequests every manifest request to a pull-through cache, by how
@@ -80,6 +81,10 @@ type Registry struct {
 	cacheRequests  metric.Int64Counter
 	cacheReferrers metric.Int64Counter
 	uploads        metric.Int64Counter
+
+	// verifies counts every manifest a verifying proxy was asked for, by
+	// what its signatures decided.
+	verifies metric.Int64Counter
 }
 
 func New(c Config) *Registry {
@@ -97,6 +102,7 @@ func New(c Config) *Registry {
 	g.cacheRequests = telemetry.Counter(c.Meter, "cr.cache.requests", "{request}", "Manifest requests to a pull-through cache, by how they were answered.")
 	g.cacheReferrers = telemetry.Counter(c.Meter, "cr.cache.referrers", "{request}", "Referrers requests to a pull-through cache, by how they were answered.")
 	g.uploads = telemetry.Counter(c.Meter, "cr.uploads", "{upload}", "Blob uploads that ended, by how.")
+	g.verifies = telemetry.Counter(c.Meter, "cr.verify.requests", "{request}", "Manifest requests to a verifying pull-through cache, by what the signatures decided.")
 	g.proxies.list = slices.Clone(c.Proxies)
 	slices.SortStableFunc(g.proxies.list, func(a, b *Proxy) int { return len(b.Prefix) - len(a.Prefix) })
 	return g

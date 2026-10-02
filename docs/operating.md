@@ -399,6 +399,9 @@ registry:
       referrers_ttl: 5m                     # zero is tag_ttl; see "Referrers" below
       referrers_max_stale: 1h               # zero is an hour
       retention: 720h                       # what nobody uses within this goes; zero keeps it
+      verify:                               # none serves what the upstream has; see "Signatures" below
+        roots: [/etc/cr/trust/root.crt]
+        identities: ["C=KR, ST=Seoul, O=Holiday Robotics, CN=Kamino Image Signer"]
 ```
 
 The repositories under `prefix` are a cache of `upstream`, read on demand at
@@ -472,6 +475,68 @@ The collection follows the same authority: in a cache, a referrer whose
 subject is still there goes when the upstream's last list, taken after the
 referrer arrived, omits it. With no list for the subject, or an upstream
 without the API, the referrer is kept, since not knowing is not "none".
+
+### Signatures
+
+```yaml
+verify:
+  mode: require                    # the default; or audit
+  roots: [/etc/cr/trust/root.crt]  # PEM; the root CAs a signer's chain ends at
+  identities:                      # the signer's subject; `*` is anybody the roots issued to
+    - "C=KR, ST=Seoul, O=Holiday Robotics, CN=Kamino Image Signer"
+  tsa_roots: []                    # PEM; the root CAs of a timestamp authority
+```
+
+A cache with `verify` serves a manifest from its upstream only when somebody
+it trusts signed it: a [Notary Project](https://notaryproject.dev/) signature,
+as `notation sign` makes, whose certificate chain ends at one of `roots` and
+whose signer's subject is one of `identities`. It is notation's own verifier
+at its `strict` level, so what `notation verify` accepts under the same roots
+and identities, this accepts -- with one exception: revocation is not checked,
+since a cache may stand where an OCSP responder cannot be reached, and a
+check that cannot reach one fails. An identity is a distinguished name with at
+least `C`, `ST` and `O`, which notation requires; it is matched on the
+attributes it gives.
+
+Without `tsa_roots`, a signature is good for as long as its certificate is.
+With them, a signature whose certificate has expired is still good when it
+carries a timestamp they vouch for, from within the certificate's validity; one
+whose certificate is valid needs no timestamp.
+
+What is checked is a manifest the client asks for, by tag or by digest, `GET`
+or `HEAD`; blobs are not, since nothing reaches one but through a manifest. The
+signatures are what the upstream lists for the manifest -- its referrers, or
+the referrers tag schema (`sha256-<hex>`) where it has no referrers API -- read
+through the cache as a client would read them, so they are cached too. A
+release is signed by its index, and a client asks for the index and then the
+one platform it runs by digest, which nobody signed on its own: a manifest
+that an index in the cache holds is served when that index is signed.
+Signatures themselves, and the tag schema's list of them, are served without
+one; they are what a verifier reads, and nothing runs them.
+
+| | |
+| --- | --- |
+| `403 DENIED` | the upstream lists no signature for it, or none of them verifies; the message says which, and why |
+| `502`, `504` | its signatures could not be read: the upstream failed, and the cache has no copy of them. Not the image's fault, and it is served once they can be |
+
+Docker shows the message of the first: `denied: dist/app@sha256:… is not
+signed by anybody this registry trusts: not signed`.
+
+When the upstream cannot be reached, the referrers it last listed are read
+from the database however old they are -- past `referrers_max_stale`, which
+bounds only what a client is handed as the list -- and the signatures from the
+cache. A cache that verified a release goes on serving it without its
+upstream. A signature is withdrawn by removing it upstream: it counts until the
+cache next hears the list, `referrers_ttl` after it last did, and not after.
+
+What was decided is remembered in memory, by the manifest and the signatures
+listed for it, so a pull does not verify the same signature again, and a
+changed list is decided again. `verify` is read at start; a change is a
+restart, which forgets everything decided.
+
+`mode: audit` serves what would be refused, logs it, and counts it in
+`cr.verify.requests`: for finding out what `require` would refuse before
+anything is.
 
 ### A mirror for several registries
 
@@ -646,6 +711,7 @@ What is measured:
 | `cr.repository.lock.wait`, `cr.repository.lock.timeouts` | how long a write waited for its repository's lock, and how often it gave up after `lock_wait`, by `cr.lock.for`: `manifest push`, `manifest delete`, `blob delete`, `cache fetch`, `referrers fetch`, `release`, `collection`, `sweep`, `bookkeeping`. The one thing cr serializes, measured |
 | `cr.store.operation.duration` | each call to a blob store, by `cr.store.driver` (`os`, `s3`, `memory`), `cr.store.operation` (`add`, `stat`, `open`, `label`, `erase`) and `cr.store.outcome` (`ok`, `not_found`, `exists`, `error`). `add` includes reading what it stores, so an upload's `add` is as long as the upload; mounts, presigned URLs and the collection's walk reach the store beneath and are not measured |
 | `cr.cache.requests` | manifest requests to a pull-through cache, by `cr.cache.proxy` (the prefix, `*` for the empty one) and `cr.cache.outcome`: `hit` from the cache alone, `revalidated` after the upstream said the tag had not moved, `refreshed` after it had, `miss` for what was not cached, `joined` for a request that waited on another's check or fetch of the same manifest, `stale` for a cached tag served because the upstream failed, `unknown` for what the upstream does not have, `error` for the rest. `hit` and `joined` over everything is the hit ratio, and `miss`, `refreshed` and `revalidated` are what reached the upstream |
+| `cr.verify.requests` | manifest requests to a cache with `verify`, by `cr.cache.proxy`, `cr.verify.mode` and `cr.verify.outcome`: `verified`, `unsigned` when the upstream lists no signature, `invalid` when none verifies, `unchecked` when they could not be read. In `audit` mode the last three are served |
 | `cr.cache.referrers` | referrers requests to a pull-through cache, by `cr.cache.proxy` and `cr.cache.outcome`: `hit`, `revalidated` when the upstream listed the same, `refreshed` when it did not, `miss` for a list never asked for, `stale` for one served because the upstream failed, `error` for the rest |
 | `cr.cache.upstream.duration`, `cr.cache.upstream.bytes` | every request a cache made to its upstream, by `cr.cache.upstream` (its host), `cr.cache.operation` (`manifest head`, `manifest get`, `blob head`, `blob get`, `referrers get`) and the status, a challenge answered on the way included; and the bytes it read, manifests and blobs apart |
 | `cr.gc.runs`, `cr.gc.run.duration` | every collection, by `cr.gc.kind` (`online`, `full`), `cr.gc.trigger` (`schedule`, `admin`, `cli`) and `cr.gc.state` (`done`, `failed`), and how long each took |

@@ -289,6 +289,25 @@ func (r manifests) Holds(ctx context.Context, repo string, d digest.Digest) (boo
 	return r.ix.client.ManifestBlob.Query().Where(manifestblob.Repo(repo), manifestblob.Blob(d.String())).Exist(ctx)
 }
 
+func (r manifests) Holders(ctx context.Context, repo string, d digest.Digest) ([]digest.Digest, error) {
+	vs, err := r.ix.client.ManifestBlob.Query().
+		Where(manifestblob.Repo(repo), manifestblob.Blob(d.String())).
+		Order(manifestblob.ByManifest()).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]digest.Digest, 0, len(vs))
+	for _, v := range vs {
+		h := digest.Digest(v.Manifest)
+		if n := len(out); n > 0 && out[n-1] == h {
+			continue
+		}
+		out = append(out, h)
+	}
+	return out, nil
+}
+
 func (r manifests) List(ctx context.Context, repo string, p index.Page) ([]index.Manifest, error) {
 	q := r.ix.client.Manifest.Query().Where(manifest.Repo(repo), manifest.DigestGT(p.Last)).Order(manifest.ByDigest())
 	if p.N > 0 {

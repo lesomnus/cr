@@ -74,6 +74,12 @@ func (g *Registry) getManifest(w http.ResponseWriter, r *http.Request, name, arg
 		g.fail(w, r, err)
 		return
 	}
+	if p := g.proxies.of(name); p != nil {
+		if err := g.admit(ctx, p, name, ref, m); err != nil {
+			g.fail(w, r, err)
+			return
+		}
+	}
 	// Whatever `Accept` names, what was pushed is what is answered, with its
 	// type in `Content-Type`. cr converts between no formats, so there is
 	// nothing to choose between, and the specification has an existing
