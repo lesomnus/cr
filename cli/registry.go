@@ -21,6 +21,7 @@ import (
 	"github.com/lesomnus/cr/httpx"
 	"github.com/lesomnus/cr/index/entindex"
 	"github.com/lesomnus/cr/registry"
+	"github.com/lesomnus/cr/trust"
 )
 
 // Registry builds the distribution API over s and puts it on s's routes, with
@@ -319,6 +320,10 @@ func Proxies(c cmd.RegistryConfig, base flob.Stores, meter metric.Meter) (flob.S
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("registry.proxies[%d].upstream: %w", i, err)
 		}
+		verify, err := proxyVerify(pc.Verify)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("registry.proxies[%d].verify.%w", i, err)
+		}
 		if _, ok := keep[pc.Prefix]; ok {
 			return nil, nil, nil, fmt.Errorf("registry.proxies[%d].prefix: %q is already a cache", i, pc.Prefix)
 		}
@@ -331,6 +336,7 @@ func Proxies(c cmd.RegistryConfig, base flob.Stores, meter metric.Meter) (flob.S
 			TagMaxStale:       pc.TagMaxStale,
 			ReferrersTTL:      pc.ReferrersTtl,
 			ReferrersMaxStale: pc.ReferrersMaxStale,
+			Verify:            verify,
 		}
 		ps = append(ps, p)
 		routes = append(routes, blob.CacheRoute{Prefix: pc.Prefix, Origin: up.Stores(p.Name)})
@@ -346,4 +352,18 @@ func Proxies(c cmd.RegistryConfig, base flob.Stores, meter metric.Meter) (flob.S
 		return d
 	}
 	return blob.NewCache(base, routes...), ps, cache, nil
+}
+
+// proxyVerify is the verifier a proxy's `verify` makes, or nil when it says
+// nothing.
+func proxyVerify(c cmd.ProxyVerifyConfig) (*trust.Verifier, error) {
+	if !c.IsSet() {
+		return nil, nil
+	}
+	return trust.New(trust.Config{
+		Mode:       trust.Mode(c.Mode),
+		Roots:      c.Roots,
+		Identities: c.Identities,
+		TSARoots:   c.TSARoots,
+	})
 }

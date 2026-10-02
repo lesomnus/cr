@@ -401,6 +401,21 @@ func (r manifests) Holds(ctx context.Context, repo string, d digest.Digest) (boo
 	return out, err
 }
 
+func (r manifests) Holders(ctx context.Context, repo string, d digest.Digest) ([]digest.Digest, error) {
+	var out []digest.Digest
+	err := view(r).do(ctx, func(s *state) error {
+		out = []digest.Digest{}
+		for h, e := range s.manifests[repo] {
+			if slices.Contains(e.holds, d) {
+				out = append(out, h)
+			}
+		}
+		slices.SortFunc(out, func(a, b digest.Digest) int { return strings.Compare(a.String(), b.String()) })
+		return nil
+	})
+	return out, err
+}
+
 func (r manifests) List(ctx context.Context, repo string, p index.Page) ([]index.Manifest, error) {
 	var out []index.Manifest
 	err := view(r).do(ctx, func(s *state) error {
