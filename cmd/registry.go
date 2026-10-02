@@ -84,6 +84,39 @@ type ProxyConfig struct {
 	// Retention is how long the cache keeps what nobody pulls; zero keeps
 	// it until a full collection finds it unreferenced.
 	Retention time.Duration `yaml:"retention"`
+
+	// Verify makes the cache serve an image from this upstream only when it
+	// is signed by somebody it trusts; unset serves what the upstream has.
+	Verify ProxyVerifyConfig `yaml:"verify"`
+}
+
+// ProxyVerifyConfig is who a pull-through cache trusts to sign the images it
+// serves: a Notary Project (notation) signature whose chain ends at one of
+// Roots, by a signer whose subject is one of Identities. Nothing is asked of
+// the network: revocation is not checked.
+type ProxyVerifyConfig struct {
+	// Mode is `require`, the default, which refuses an image that does not
+	// verify, or `audit`, which serves it and says so.
+	Mode string `yaml:"mode"`
+
+	// Roots are PEM files of the root CAs a signer's chain must end at: the
+	// root, not an intermediate.
+	Roots []string `yaml:"roots"`
+
+	// Identities are the subjects a signing certificate may have, as
+	// distinguished names with at least C, ST and O: `C=KR, ST=Seoul,
+	// O=Holiday Robotics, CN=Image Signer`. `*` is any the roots issued.
+	Identities []string `yaml:"identities"`
+
+	// TSARoots are PEM files of the root CAs a timestamp authority's chain
+	// must end at. Given, a signature must carry a timestamp, and is held to
+	// its certificate's validity at that time rather than now.
+	TSARoots []string `yaml:"tsa_roots"`
+}
+
+// IsSet is whether anything is said.
+func (c ProxyVerifyConfig) IsSet() bool {
+	return c.Mode != "" || len(c.Roots) > 0 || len(c.Identities) > 0 || len(c.TSARoots) > 0
 }
 
 // ProxyAuthConfig is the credential a pull-through cache asks its upstream

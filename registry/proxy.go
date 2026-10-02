@@ -21,6 +21,7 @@ import (
 	"github.com/lesomnus/cr/blob"
 	"github.com/lesomnus/cr/index"
 	"github.com/lesomnus/cr/oci"
+	"github.com/lesomnus/cr/trust"
 )
 
 // Proxy makes the repositories under Prefix a pull-through cache of an
@@ -60,6 +61,10 @@ type Proxy struct {
 	// referrers list may be and still be answered while the upstream is
 	// failing; past it the request fails. Zero is an hour.
 	ReferrersMaxStale time.Duration
+
+	// Verify, when set, is who must have signed an image for the cache to
+	// serve it.
+	Verify *trust.Verifier
 }
 
 // Name is the upstream repository for repo.

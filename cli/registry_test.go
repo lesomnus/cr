@@ -10,6 +10,9 @@ import (
 
 	"github.com/lesomnus/cr/blob"
 	"github.com/lesomnus/cr/cmd"
+	"github.com/lesomnus/cr/registry"
+	"github.com/lesomnus/cr/trust"
+	"github.com/lesomnus/cr/trust/trusttest"
 )
 
 func TestProxyHosts(t *testing.T) {
@@ -111,4 +114,36 @@ func TestS3Credentials(t *testing.T) {
 	// One file per key would be read apart; the set goes in one file.
 	_, err = s3Credentials(cmd.S3StorageConfig{AccessKeyId: "AKIA1", SecretAccessKey: "${file:/run/aws/secret}"})
 	require.ErrorContains(t, err, "secret_access_key: ${file:...} is not read here")
+}
+
+func TestProxyVerify(t *testing.T) {
+	proxy := func(v cmd.ProxyVerifyConfig) (*registry.Proxy, error) {
+		_, ps, _, err := Proxies(cmd.RegistryConfig{Proxies: []cmd.ProxyConfig{{
+			Prefix: "dist", Upstream: "https://registry.example.com", Verify: v,
+		}}}, flob.NewMemStores(), nil)
+		if err != nil {
+			return nil, err
+		}
+		return ps[0], nil
+	}
+	root := trusttest.NewCA(t, "Kamino").RootFile(t)
+
+	p, err := proxy(cmd.ProxyVerifyConfig{})
+	require.NoError(t, err)
+	require.Nil(t, p.Verify, "a proxy that says nothing verifies nothing")
+
+	p, err = proxy(cmd.ProxyVerifyConfig{Roots: []string{root}, Identities: []string{trusttest.SubjectDN}})
+	require.NoError(t, err)
+	require.Equal(t, trust.Require, p.Verify.Mode())
+
+	p, err = proxy(cmd.ProxyVerifyConfig{Mode: "audit", Roots: []string{root}, Identities: []string{"*"}})
+	require.NoError(t, err)
+	require.Equal(t, trust.Audit, p.Verify.Mode())
+
+	// Saying anything at all is asking for verification, so a mode alone is
+	// not a cache that quietly verifies nothing.
+	_, err = proxy(cmd.ProxyVerifyConfig{Mode: "require"})
+	require.ErrorContains(t, err, "registry.proxies[0].verify.roots: none")
+	_, err = proxy(cmd.ProxyVerifyConfig{Roots: []string{root}})
+	require.ErrorContains(t, err, "registry.proxies[0].verify.identities: none")
 }
