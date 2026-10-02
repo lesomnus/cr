@@ -84,6 +84,12 @@ func TestVerify(t *testing.T) {
 		env := ca.Signer(t).Sign(t, image, trust.MediaTypeJWS)
 		require.ErrorContains(t, v.Verify(ctx, ref, image, "application/octet-stream", env), "not one notation writes")
 	})
+	t.Run("without a timestamp, while its certificate is valid, timestamp roots or not", func(t *testing.T) {
+		// A timestamp is what keeps a signature good past its certificate;
+		// before then it is not asked for.
+		v := verifier(t, trust.Config{Roots: []string{ca.RootFile(t)}, TSARoots: []string{ca.RootFile(t)}, Identities: []string{trusttest.SubjectDN}})
+		require.NoError(t, v.Verify(ctx, ref, image, trust.MediaTypeJWS, ca.Signer(t).Sign(t, image, trust.MediaTypeJWS)))
+	})
 	t.Run("without asking anybody whether it was revoked", func(t *testing.T) {
 		// The certificate names a responder and a CRL nothing answers at.
 		s := ca.Signer(t, trusttest.Revocable())
@@ -148,28 +154,4 @@ func TestNew(t *testing.T) {
 			require.ErrorContains(t, err, tc.want)
 		})
 	}
-}
-
-func TestRevision(t *testing.T) {
-	ca := trusttest.NewCA(t, "Kamino")
-	root := ca.RootFile(t)
-	ids := []string{trusttest.SubjectDN}
-	base := verifier(t, trust.Config{Roots: []string{root}, Identities: ids}).Revision()
-
-	t.Run("the same trust, read again", func(t *testing.T) {
-		require.Equal(t, base, verifier(t, trust.Config{Roots: []string{root}, Identities: ids}).Revision())
-	})
-	t.Run("whatever the mode", func(t *testing.T) {
-		require.Equal(t, base, verifier(t, trust.Config{Mode: trust.Audit, Roots: []string{root}, Identities: ids}).Revision())
-	})
-	t.Run("another root", func(t *testing.T) {
-		other := trusttest.NewCA(t, "Elsewhere").RootFile(t)
-		require.NotEqual(t, base, verifier(t, trust.Config{Roots: []string{other}, Identities: ids}).Revision())
-	})
-	t.Run("another identity", func(t *testing.T) {
-		require.NotEqual(t, base, verifier(t, trust.Config{Roots: []string{root}, Identities: []string{"*"}}).Revision())
-	})
-	t.Run("a timestamp root", func(t *testing.T) {
-		require.NotEqual(t, base, verifier(t, trust.Config{Roots: []string{root}, TSARoots: []string{root}, Identities: ids}).Revision())
-	})
 }

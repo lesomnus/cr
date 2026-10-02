@@ -109,8 +109,9 @@ type ProxyVerifyConfig struct {
 	Identities []string `yaml:"identities"`
 
 	// TSARoots are PEM files of the root CAs a timestamp authority's chain
-	// must end at. Given, a signature must carry a timestamp, and is held to
-	// its certificate's validity at that time rather than now.
+	// must end at. A signature whose certificate has expired is accepted only
+	// with a timestamp they vouch for, from within the certificate's
+	// validity; one whose certificate is valid needs none.
 	TSARoots []string `yaml:"tsa_roots"`
 }
 

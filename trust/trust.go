@@ -15,14 +15,11 @@ package trust
 
 import (
 	"context"
-	"crypto/sha256"
 	"crypto/x509"
-	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
 	"os"
-	"slices"
 	"strings"
 
 	"github.com/notaryproject/notation-core-go/revocation"
@@ -74,16 +71,17 @@ type Config struct {
 	Identities []string
 
 	// TSARoots are PEM files of the CAs a timestamp authority's chain must
-	// end at. None is that a timestamp is not verified, and a signature is
-	// held to its certificate's validity alone.
+	// end at. A signature whose certificate is still valid is accepted with
+	// or without a timestamp; one whose certificate has expired is accepted
+	// only with a timestamp these roots vouch for, from within its validity.
+	// None is that an expired certificate's signature is not accepted.
 	TSARoots []string
 }
 
 // Verifier checks signatures against one Config.
 type Verifier struct {
-	mode     Mode
-	revision string
-	v        notation.Verifier
+	mode Mode
+	v    notation.Verifier
 }
 
 const (
@@ -139,7 +137,8 @@ func New(c Config) (*Verifier, error) {
 	}
 	if len(tsa) > 0 {
 		stores = append(stores, string(truststore.TypeTSA)+":"+storeName)
-		sv.VerifyTimestamp = trustpolicy.OptionAlways
+		// notation's own default, written out: its empty value is `always`.
+		sv.VerifyTimestamp = trustpolicy.OptionAfterCertExpiry
 	}
 	doc := &trustpolicy.Document{
 		Version: "1.0",
@@ -166,20 +165,11 @@ func New(c Config) (*Verifier, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Verifier{
-		mode:     mode,
-		revision: revision(roots, tsa, ids),
-		v:        v,
-	}, nil
+	return &Verifier{mode: mode, v: v}, nil
 }
 
 // Mode is what is done with an image that does not verify.
 func (v *Verifier) Mode() Mode { return v.mode }
-
-// Revision names what this verifier trusts: the roots, the timestamp roots and
-// the identities, and not the mode. A verdict reached under one revision says
-// nothing under another.
-func (v *Verifier) Revision() string { return v.revision }
 
 // Verify checks that envelope, a signature whose envelope is of mediaType, is
 // a signature of subject by somebody this verifier trusts. ref is the image's
@@ -231,28 +221,6 @@ func readRoots(field string, files []string) ([]*x509.Certificate, error) {
 		}
 	}
 	return certs, nil
-}
-
-func revision(roots, tsa []*x509.Certificate, ids []string) string {
-	h := sha256.New()
-	part := func(kind string, items []string) {
-		slices.Sort(items)
-		for _, it := range items {
-			fmt.Fprintf(h, "%s %d %s\n", kind, len(it), it)
-		}
-	}
-	der := func(cs []*x509.Certificate) []string {
-		out := make([]string, len(cs))
-		for i, c := range cs {
-			sum := sha256.Sum256(c.Raw)
-			out[i] = hex.EncodeToString(sum[:])
-		}
-		return out
-	}
-	part("root", der(roots))
-	part("tsa", der(tsa))
-	part("identity", slices.Clone(ids))
-	return hex.EncodeToString(h.Sum(nil))
 }
 
 // store is the trust store notation is given: the roots of each kind, under
