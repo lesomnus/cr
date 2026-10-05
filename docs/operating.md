@@ -1,7 +1,7 @@
 # Operating cr
 
 How to run a deployment: configuration, storage, deploying one process or
-several, garbage collection, the index, pull-through caches, health and export.
+several, garbage collection, the index, pull-through caches, health, export and import.
 [access.md](access.md) covers who may do what, and
 [how-it-works.md](how-it-works.md) why cr behaves the way it does.
 
@@ -379,7 +379,8 @@ tag rules. A rebuilt index answers by digest until tags are
 pushed again. A rebuilt manifest counts as pushed at the rebuild, so the
 untagged collection takes it once `gc.untagged` has passed unless a tag points
 at it by then; set `untagged: 0` until the tags are back. The database is what
-to back up, and a rebuild is for when there is no backup.
+to back up, and a rebuild is for when there is no backup. To bring in another registry's
+store, `cr import` (below) takes its layouts with their tags instead.
 
 ## Pull-through caches
 
@@ -747,3 +748,59 @@ blob they need, and the signatures, attestations and SBOMs that refer to them
 `org.opencontainers.image.ref.name`, and referrers are written without a name.
 A layer a pull-through cache never fetched, or one that is not distributable,
 is listed as skipped rather than failing the export.
+
+## Import
+
+```sh
+cr import /var/lib/zot                     # a directory of layouts, as zot keeps its root
+cr import ./acme-app --repo acme/app       # one layout, as a repository
+```
+
+takes OCI image layouts in: one, as the repository `--repo` names, or every
+layout under a directory, each as the repository its path names -- which is how
+zot keeps its root, so a zot root is taken in as it is. Nested layouts (`a` and
+`a/b`) are both found; directories whose names begin with a dot, as zot's
+`.uploads`, are not searched. `--only` and `--exclude` (prefixes) narrow it to
+some repositories, so a registry can be moved a few at a time while it still
+serves. A repository under a pull-through cache's prefix is not taken.
+
+**Blobs are taken by hard link, not copied.** The store and the source share
+each file, so a registry of terabytes moves in the time it takes to make the
+links. That needs both on one filesystem -- two ZFS datasets are two, even in
+one pool -- and permission to link: with `fs.protected_hardlinks`, the default
+on most distributions, a process may link only a file it owns or can both read
+and write, unless it runs as root. A blob that cannot be linked stops the
+import, and `--copy` copies it instead. Since the file is shared, so are its
+owner and mode: the user cr runs as has to be able to read it. The source may
+go on serving, and delete what it likes, but must not rewrite a blob in place,
+which no registry does.
+
+The store keeps one copy of each digest. A digest it already holds, in any
+repository, is linked to that copy; a source that holds one digest as several
+files ends up with one. **A blob is taken to be what its name says**, unless
+`--verify` hashes every one and refuses one that is not -- and one taken
+unverified that is not is what every repository holding that digest is then
+served. Manifests are always checked, being small; `--verify` reads every byte
+of the layers too. A copy is always checked.
+
+What is taken is what `index.json` reaches: its manifests, what they hold, and
+so on down; a blob of the layout that nothing reaches is left. A manifest the
+layout does not hold all of is not taken, nor is anything that holds it or a
+tag on it, and the report lists it under `missing`. The index is written in
+one transaction per repository, after its blobs: the manifests, with when they
+were pushed taken from the files' times, and the tags `index.json` names with
+`org.opencontainers.image.ref.name` -- a tag, or a whole reference, whose tag
+is taken. A tag is never in the index without its manifest, nor a manifest
+without its tag. Tag rules are not applied: the tags are the source's, as
+they were.
+
+Running it again does again only what is missing, and points tags where the
+layout points them now. The report counts, per repository, the manifests and
+tags written and the blobs `linked`, `copied` and already `present`.
+
+A manifest nobody tagged keeps the time the source stored it. One older than
+`gc.untagged` is one the next untagged collection takes, as it would have been
+had it been pushed here then; raise `untagged` first to keep them.
+
+On SQLite the index's lock is the serving process's: stop it and pass
+`--offline`, as for `cr gc`.

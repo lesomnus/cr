@@ -40,7 +40,7 @@ Every commit on `main` that passes CI is published as `ghcr.io/lesomnus/cr`:
 - [How cr works](docs/how-it-works.md) -- the consistency trade, storage, the
   index, garbage collection, and what several replicas take.
 - [Operating](docs/operating.md) -- configuration, storage, deploying, garbage
-  collection, rebuilding the index, pull-through caches, export.
+  collection, rebuilding the index, pull-through caches, export and import.
 - [A cache for other registries](docs/mirror.md) -- cr as a pull-through
   cache of Docker Hub, GitHub and the rest, and Docker, containerd and
   BuildKit pointed at it.
