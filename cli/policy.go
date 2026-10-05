@@ -121,9 +121,10 @@ type policyFile struct {
 	oidcs map[oidcKey]*auth.OIDC
 }
 
+// oidcKey is what an OIDC provider is made of: one whose `when` alone
+// changed keeps the keys it fetched.
 type oidcKey struct {
-	name string
-	c    cmd.ProviderConfig
+	name, issuer, audience, subjectClaim string
 }
 
 func newPolicyFile(path string) *policyFile {
@@ -208,14 +209,31 @@ func parsePolicy(b []byte, oidcs map[oidcKey]*auth.OIDC) (auth.Rules, error) {
 		r.Providers = append(r.Providers, pv)
 	}
 	for name, p := range f.Permissions {
-		as := make([]auth.Action, len(p.Actions))
-		for i, v := range p.Actions {
-			as[i] = auth.Action(v)
-		}
-		r.Permissions[name] = auth.Permission{Repos: p.Repos, Actions: as}
+		r.Permissions[name] = permissionOf(p)
 	}
 	for name, m := range f.Matches {
-		r.Matches[name] = auth.Match{For: m.For, When: m.When, Grant: m.Grant}
+		grant := make([]string, 0, len(m.Grant))
+		for i, g := range m.Grant {
+			if g.Inline == nil {
+				// Only a permission the file names: what is written in
+				// place is the match's own, and not another's to grant.
+				if _, ok := f.Permissions[g.Name]; !ok {
+					errs = append(errs, fmt.Errorf("match %q: grant[%d]: no permission %q", name, i, g.Name))
+				}
+				grant = append(grant, g.Name)
+				continue
+			}
+			// Named by where it is written, which is how explain and the
+			// errors about it point at it.
+			pn := fmt.Sprintf("%s.grant[%d]", name, i)
+			if _, ok := f.Permissions[pn]; ok {
+				errs = append(errs, fmt.Errorf("match %q: grant[%d]: a permission is already called %q", name, i, pn))
+				continue
+			}
+			r.Permissions[pn] = permissionOf(*g.Inline)
+			grant = append(grant, pn)
+		}
+		r.Matches[name] = auth.Match{For: m.For, When: m.When, Grant: grant}
 	}
 	for _, t := range f.TagRules {
 		r.TagRules = append(r.TagRules, auth.TagRule{
@@ -230,13 +248,21 @@ func parsePolicy(b []byte, oidcs map[oidcKey]*auth.OIDC) (auth.Rules, error) {
 	return r, errors.Join(errs...)
 }
 
+func permissionOf(p cmd.PermissionConfig) auth.Permission {
+	as := make([]auth.Action, len(p.Actions))
+	for i, v := range p.Actions {
+		as[i] = auth.Action(v)
+	}
+	return auth.Permission{Repos: p.Repos, Actions: as}
+}
+
 func provider(name string, p cmd.ProviderConfig, oidcs map[oidcKey]*auth.OIDC) (auth.Provider, error) {
 	if p.Exchange < 0 {
 		return auth.Provider{}, errors.New("exchange: a negative duration")
 	}
 	switch p.Kind {
 	case "oidc":
-		k := oidcKey{name: name, c: p}
+		k := oidcKey{name: name, issuer: p.Issuer, audience: p.Audience, subjectClaim: p.SubjectClaim}
 		o, ok := oidcs[k]
 		if !ok {
 			var err error
@@ -251,7 +277,7 @@ func provider(name string, p cmd.ProviderConfig, oidcs map[oidcKey]*auth.OIDC) (
 			}
 			oidcs[k] = o
 		}
-		return auth.Provider{Name: name, Authenticator: o, Exchange: p.Exchange}, nil
+		return auth.Provider{Name: name, Authenticator: o, Exchange: p.Exchange, When: p.When}, nil
 	case "mtls":
 		// Which certificates are good is the listener's `client_ca_file`; a
 		// field here would be a second place to say it, and disagree.
@@ -261,7 +287,7 @@ func provider(name string, p cmd.ProviderConfig, oidcs map[oidcKey]*auth.OIDC) (
 		case p.Exchange != 0:
 			return auth.Provider{}, errors.New("exchange: a certificate is not traded for a token")
 		}
-		return auth.Provider{Name: name, Authenticator: auth.NewMTLS(name)}, nil
+		return auth.Provider{Name: name, Authenticator: auth.NewMTLS(name), When: p.When}, nil
 	case "":
 		return auth.Provider{}, errors.New("no kind")
 	}

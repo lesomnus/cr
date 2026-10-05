@@ -474,3 +474,75 @@ func TestTokenCarriesTheSubject(t *testing.T) {
 	require.True(t, c.CanPull("acme/web"))
 	require.False(t, c.CanPull("other/web"))
 }
+
+func TestProviderWhen(t *testing.T) {
+	r := rules()
+	r.Providers[0].When = map[string]string{"repository_owner_id": "7"}
+	// A match that says nothing of its own is held to the provider's.
+	r.Matches["owner"] = Match{For: "github", Grant: []string{"read"}}
+	// One that says the same claim the same way is as it was.
+	r.Matches["same"] = Match{For: "github", Grant: []string{"back"}, When: map[string]string{"repository_owner_id": "7"}}
+	p, err := NewPolicy(r)
+	require.NoError(t, err)
+
+	ours := job("release.yml")
+	ours.Claims["repository_owner_id"] = "7"
+	theirs := job("release.yml")
+	theirs.Claims["repository_owner_id"] = "8"
+	all := []Action{ActionPull, ActionPush, ActionTag}
+
+	// Every match for the provider is under it, its own claims as well.
+	require.Equal(t, all, p.Allow(ours, "acme/app", all))
+	require.Empty(t, p.Allow(theirs, "acme/app", all), "the same workflow_ref, from somebody else's repository")
+	require.Empty(t, p.Allow(job("release.yml"), "acme/app", all), "no owner claim at all")
+	require.Equal(t, []Action{ActionPull}, p.Allow(ours, "acme/web", all))
+	require.Equal(t, []Action{ActionPull}, p.Allow(ours, "x/a", all))
+
+	// And it says so.
+	for _, m := range p.Explain(theirs, "acme/app").Matches {
+		if m.For == "github" {
+			require.False(t, m.Holds, m.Name)
+		}
+		if m.Name == "owner" {
+			require.Equal(t, "claim repository_owner_id is 8, not 7", m.Why)
+		}
+	}
+	// Anyone is nobody's provider.
+	require.Equal(t, []Action{ActionPull}, p.Allow(Subject{ID: Anonymous}, "library/ubuntu", all))
+}
+
+func TestProviderWhenRefuses(t *testing.T) {
+	for name, c := range map[string]struct {
+		edit func(*Rules)
+		want string
+	}{
+		"a match that says otherwise than the provider": {
+			func(r *Rules) {
+				r.Providers[0].When = map[string]string{"repository_owner_id": "7"}
+				r.Matches["m"] = Match{For: "github", Grant: []string{"read"}, When: map[string]string{"repository_owner_id": "*"}}
+			},
+			`match "m": when "repository_owner_id": "*", where the provider requires "7"`,
+		},
+		"a provider's claim that does not parse": {
+			func(r *Rules) {
+				r.Providers[0].When = map[string]string{"workflow_ref": "a**"}
+			},
+			`provider "github": when "workflow_ref"`,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := rules()
+			c.edit(&r)
+			_, err := NewPolicy(r)
+			require.ErrorContains(t, err, c.want)
+		})
+	}
+
+	// A provider whose claims do not check leaves its matches out rather
+	// than granting without them.
+	r := rules()
+	r.Providers[0].When = map[string]string{"workflow_ref": "a**"}
+	p, err := NewPolicy(r)
+	require.ErrorContains(t, err, `match "release": for "github": the provider's `+"`when`"+` does not check`)
+	require.Empty(t, p.Allow(job("release.yml"), "acme/app", []Action{ActionPush}))
+}
