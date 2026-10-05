@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -521,4 +524,39 @@ func TestWellKnownDelete(t *testing.T) {
 	res := x.do("DELETE", "/v2/acme/app/blobs/"+blob.EmptyJSON.String(), nil)
 	require.Equal(t, http.StatusMethodNotAllowed, res.StatusCode)
 	require.Equal(t, "UNSUPPORTED", code(t, res))
+}
+
+// A store cr did not write has no labels files: a registry's blobs hard-linked
+// into an os store to migrate it, say. A chunked push of a blob the repository
+// already holds then lands on an entry without one, and is taken as the blob
+// it already is (lesomnus/cr#65).
+func TestChunkedOntoAnEntryWithoutLabels(t *testing.T) {
+	root := t.TempDir()
+	x := &harness{t: t, h: registry.New(registry.Config{
+		Stores: flob.NewOsStores(root),
+		Index:  memindex.New(),
+	})}
+	b := []byte("a layer someone else stored")
+	d := x.pushBlob("acme/app", b)
+
+	var labels []string
+	require.NoError(t, filepath.WalkDir(filepath.Join(root, "repos"), func(p string, e fs.DirEntry, err error) error {
+		if err == nil && e.Name() == "labels" && strings.HasSuffix(filepath.Dir(p), d.Encoded()[4:]) {
+			labels = append(labels, p)
+		}
+		return err
+	}))
+	require.Len(t, labels, 1)
+	require.NoError(t, os.Remove(labels[0]))
+
+	res := x.do("POST", "/v2/acme/app/blobs/uploads/", nil)
+	require.Equal(t, http.StatusAccepted, res.StatusCode)
+	loc := res.Header.Get("Location")
+	res = x.do("PATCH", loc, b, "Content-Type", "application/octet-stream")
+	require.Equal(t, http.StatusAccepted, res.StatusCode)
+	res = x.do("PUT", loc+"?digest="+d.String(), nil)
+	require.Equal(t, http.StatusCreated, res.StatusCode, string(read(t, res)))
+
+	res = x.do("GET", "/v2/acme/app/blobs/"+d.String(), nil)
+	require.Equal(t, b, read(t, res))
 }
