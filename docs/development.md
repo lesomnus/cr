@@ -44,9 +44,10 @@ any other entity.
 go test ./...                                                           # handlers on flob's memory store and memindex; entindex on SQLite
 CR_TEST_POSTGRES=postgres://... go test -run TestPostgres ./index/...   # entindex on PostgreSQL, a schema per test
 ./scripts/conformance.sh                                                # the OCI conformance suite against the built binary
+./scripts/zot-import.sh                                                 # a real zot's root taken in by cr import, every answer compared
 ```
 
-CI runs all three, `pd gen --check`, the page's build and the image's build.
+CI runs all four, `pd gen --check`, the page's build and the image's build.
 
 What the process costs to start and to keep around -- startup time, memory,
 idle CPU -- is `scripts/footprint.sh`: cr beside zot and distribution at pinned

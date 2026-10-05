@@ -72,6 +72,18 @@ jobs:
         env:
           CR_TEST_POSTGRES: postgres://cr:cr@127.0.0.1:5432/cr?sslmode=disable
 
+  # A registry moved off zot: a real zot at the pinned release, images pushed
+  # to it, its root imported while it serves, and every answer compared.
+  zot-import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: ./scripts/zot-import.sh
+
   conformance:
     runs-on: ubuntu-latest
     steps:
