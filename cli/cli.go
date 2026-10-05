@@ -74,6 +74,7 @@ func Cmd(c *cmd.Config) *xli.Command {
 			NewCmdGc(c),
 			NewCmdIndex(c),
 			NewCmdExport(c),
+			NewCmdImport(c),
 			NewCmdAuth(),
 		}, t.Commands()...),
 
