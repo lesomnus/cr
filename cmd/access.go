@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"time"
+
+	"github.com/goccy/go-yaml"
 )
 
 // AuthConfig is how the registry is guarded. What it grants, and to whom, is
@@ -71,6 +73,13 @@ type ProviderConfig struct {
 	// provider's credentials for lasts, to be given as a password where the
 	// credential lives shorter than the job using it. Zero trades none.
 	Exchange time.Duration `yaml:"exchange"`
+
+	// When is claims every match for this provider requires, beside its
+	// own, each value a glob: what is true of every caller to be let in by
+	// this provider, such as the organization a repository is in, written
+	// once and not left out of the next match. A match for a provider with a
+	// When needs none of its own.
+	When map[string]string `yaml:"when"`
 }
 
 // PermissionConfig is actions on repositories.
@@ -89,12 +98,42 @@ type MatchConfig struct {
 	// For is a provider's name, or `anyone` for every caller.
 	For string `yaml:"for"`
 
-	// Grant is the names of the permissions granted.
-	Grant []string `yaml:"grant"`
+	// Grant is the permissions granted: by name, or written out here, with
+	// the `repos` and `actions` a permission has, for one that is this
+	// match's alone.
+	Grant []GrantConfig `yaml:"grant"`
 
 	// When is claims of the caller's credential that must all hold, each
 	// value a glob. Required for a provider, and not allowed for anyone.
 	When map[string]string `yaml:"when"`
+}
+
+// GrantConfig is one of a match's grants: a permission's name, or a
+// permission written out in place.
+//
+//	grant:
+//	  - library-read             # by name
+//	  - repos: [acme/app]        # in place
+//	    actions: [pull, push, tag]
+type GrantConfig struct {
+	Name   string
+	Inline *PermissionConfig
+}
+
+// UnmarshalYAML reads a name or a permission. A permission written in place is
+// read as strictly as the file: a field nothing reads is refused.
+func (g *GrantConfig) UnmarshalYAML(b []byte) error {
+	var name string
+	if err := yaml.Unmarshal(b, &name); err == nil {
+		*g = GrantConfig{Name: name}
+		return nil
+	}
+	var p PermissionConfig
+	if err := yaml.UnmarshalWithOptions(b, &p, yaml.Strict()); err != nil {
+		return err
+	}
+	*g = GrantConfig{Inline: &p}
+	return nil
 }
 
 type TokenConfig struct {

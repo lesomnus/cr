@@ -54,6 +54,12 @@ type Provider struct {
 	// Exchange is how long a token `POST /token/exchange` trades one of the
 	// provider's credentials for lasts; zero trades none.
 	Exchange time.Duration
+
+	// When is claims every match for this provider requires, beside its
+	// own: what is true of every caller the policy means to let in by this
+	// provider, written once rather than in every match, and not left out of
+	// the next one. A match for a provider with a When needs none of its own.
+	When map[string]string
 }
 
 // providerName is what a provider may be called: it is written in front of
@@ -303,6 +309,20 @@ func NewPolicy(r Rules) (*Policy, error) {
 		}
 	}
 
+	whens := map[string]map[string]string{}
+	for _, pv := range p.providers {
+		ok := true
+		for k, src := range pv.When {
+			if _, err := ParseGlob(src); err != nil {
+				errs = append(errs, fmt.Errorf("provider %q: when %q: %w", pv.Name, k, err))
+				ok = false
+			}
+		}
+		if ok {
+			whens[pv.Name] = pv.When
+		}
+	}
+
 	perms := map[string]*permission{}
 	for _, name := range slices.Sorted(maps.Keys(r.Permissions)) {
 		pm, err := compilePermission(name, r.Permissions[name])
@@ -314,7 +334,7 @@ func NewPolicy(r Rules) (*Policy, error) {
 	}
 
 	for _, name := range slices.Sorted(maps.Keys(r.Matches)) {
-		m, err := compileMatch(name, r.Matches[name], perms, names)
+		m, err := compileMatch(name, r.Matches[name], perms, names, whens)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("match %q: %w", name, err))
 			continue
@@ -375,21 +395,37 @@ func compilePermission(name string, v Permission) (*permission, error) {
 	return pm, nil
 }
 
-func compileMatch(name string, v Match, perms map[string]*permission, providers map[string]bool) (*match, error) {
+// compileMatch is the match v, under the claims its provider requires of
+// every match, from whens; a provider whose own claims did not check is not
+// there, and a match for it is refused rather than left without them.
+func compileMatch(name string, v Match, perms map[string]*permission, providers map[string]bool, whens map[string]map[string]string) (*match, error) {
+	pw, pwOK := whens[v.For]
 	switch {
 	case v.For == "":
 		return nil, errors.New("no `for`")
 	case v.For != Anyone && !providers[v.For]:
 		return nil, fmt.Errorf("for %q: no such provider", v.For)
+	case v.For != Anyone && !pwOK:
+		return nil, fmt.Errorf("for %q: the provider's `when` does not check", v.For)
 	case v.For == Anyone && len(v.When) > 0:
 		return nil, errors.New("`when` for anyone: the anonymous caller has no claims")
-	case v.For != Anyone && len(v.When) == 0:
-		return nil, fmt.Errorf("no `when`: every credential %q issues, to anybody, would be under it", v.For)
+	case v.For != Anyone && len(v.When) == 0 && len(pw) == 0:
+		return nil, fmt.Errorf("no `when`, here or on the provider: every credential %q issues, to anybody, would be under it", v.For)
 	case len(v.Grant) == 0:
 		return nil, errors.New("grants nothing")
 	}
 	m := &match{name: name, for_: v.For, when: map[string]Glob{}}
+	for k, src := range pw {
+		g, _ := ParseGlob(src)
+		m.when[k] = g
+	}
 	for k, src := range v.When {
+		// Both would have to hold: one that says otherwise than the
+		// provider is a match nobody is ever under, or one that reads as
+		// if it relaxed the provider's claim, which it does not.
+		if p, ok := pw[k]; ok && p != src {
+			return nil, fmt.Errorf("when %q: %q, where the provider requires %q", k, src, p)
+		}
 		g, err := ParseGlob(src)
 		if err != nil {
 			return nil, fmt.Errorf("when %q: %w", k, err)

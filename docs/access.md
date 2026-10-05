@@ -95,9 +95,11 @@ an exchanged token only when that expires.
 The file is checked whole, and a policy that does not check is not used: a
 field nothing reads, a provider of a kind there is not, two providers with one
 issuer, a match `for` a provider there is not or that grants a permission there
-is not, a match for a provider with no `when` or for `anyone` with one, an
-action there is not, a glob that does not parse, or a permission whose every
-pattern takes away. `cr auth check` says the same before the file is deployed.
+is not, a match for a provider with no `when` of its own or the provider's, or
+for `anyone` with one, a match that says a claim otherwise than its provider,
+an action there is not, a glob that does not parse, or a permission whose
+every pattern takes away. `cr auth check` says the same before the file is
+deployed.
 
 A key under `auth:` in `cr.yaml` that nothing reads stops `cr serve` too,
 rather than being ignored.
@@ -129,6 +131,26 @@ the caller's, for a match's `when`.
 provider's credentials for lasts; see [below](#ci-without-secrets-openid-connect).
 A provider that does not say trades none: a CI provider whose jobs outlive
 their ID tokens wants one, and a provider people sign in with may well not.
+
+```yaml
+providers:
+  github:
+    kind: oidc
+    issuer: https://token.actions.githubusercontent.com
+    audience: cr.example.com
+    when:
+      repository_owner: acme
+```
+
+`when` on a provider is claims every match for it requires, beside the
+match's own, each value a glob as in a match. It is what is true of every
+caller the policy lets in by this provider -- the organization a CI provider's
+repositories belong to, say -- written once, and not left out of the next match
+someone adds. A match for a provider with a `when` needs none of its own. A
+match may say a claim the provider says only as the provider says it: both
+would have to hold, so a different value is a match nobody is ever under, or
+one that reads as if it relaxed the provider's claim, which it would not; it
+is refused. Every provider may have one, `mtls` included.
 
 ### Client certificates: `mtls`
 
@@ -224,13 +246,36 @@ matches:
   without, so logging in never takes away what a public repository allows. A
   repository is public by a match for `anyone`; there is no separate
   visibility setting.
-- **`grant`** is the permissions granted, by name.
+- **`grant`** is the permissions granted: by name, or written out in place
+  (below).
 - **`when`** is claims of the credential that must all hold, each value a
   glob. A claim that is a list holds when any of its values does, and a number
   or a boolean is matched as it is written. A match for a provider must have
-  one -- without it, every credential the provider issues to anybody is under
-  it -- and one for `anyone` cannot, since a caller with no credential has no
-  claims.
+  one, or its provider one (above) -- without either, every credential the
+  provider issues to anybody is under it -- and one for `anyone` cannot, since
+  a caller with no credential has no claims.
+
+A permission that one match grants and no other is written in the match:
+
+```yaml
+matches:
+  cr-release:
+    for: github
+    grant:
+      - repos: ["lesomnus/cr", "lesomnus/cr/**"]
+        actions: [pull, push, tag]
+    when:
+      repository_id: "123456789"
+      workflow_ref: "lesomnus/cr/.github/workflows/release.yml@refs/heads/main"
+```
+
+Which repositories and which callers are then read together, where a
+permission named in another part of the file would be read apart from the
+claims it is granted under. It has the fields a permission has, checked the
+same way, and is named by where it is -- `cr-release.grant[0]` -- in what
+`cr auth explain` and `cr auth test` say and in errors. It is the match's own:
+another match grants it by writing it again, or a permission both name. A
+`grant` may mix both forms.
 
 ## Globs
 

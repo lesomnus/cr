@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -234,6 +235,125 @@ cases:
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := readCases(write(t, filepath.Join(t.TempDir(), "t.yaml"), c.file), p)
+			require.ErrorContains(t, err, c.want)
+		})
+	}
+}
+
+// A registry's policy as it reads with both: the organization said once on
+// the provider, and each workflow's repositories beside its claims.
+const compact = `
+providers:
+  github:
+    kind: oidc
+    issuer: https://token.actions.githubusercontent.com
+    audience: cr
+    when:
+      repository_owner_id: "177305168"
+permissions:
+  pki:
+    repos: [hday/pki]
+    actions: [pull, push, tag]
+matches:
+  everyone:
+    for: anyone
+    grant:
+      - repos: ["**"]
+        actions: [pull, catalog]
+  bosun-ci:
+    for: github
+    grant:
+      - repos: [bosun]
+        actions: [pull, push, tag]
+    when:
+      repository_id: "1292115356"
+      workflow_ref: Holiday-Robot/bosun/.github/workflows/ci.yaml@refs/heads/main
+  pki-main:
+    for: github
+    grant: [pki]
+    when:
+      workflow_ref: Holiday-Robot/pki/.github/workflows/build.yaml@refs/heads/main
+`
+
+func TestPolicyCompact(t *testing.T) {
+	p, err := readPolicy(write(t, filepath.Join(t.TempDir(), "cr.auth.yaml"), compact))
+	require.NoError(t, err)
+
+	all := []auth.Action{auth.ActionPull, auth.ActionPush, auth.ActionTag}
+	bosun := auth.Subject{ID: "github:bosun", Provider: "github", Claims: map[string]any{
+		"repository_owner_id": "177305168",
+		"repository_id":       "1292115356",
+		"workflow_ref":        "Holiday-Robot/bosun/.github/workflows/ci.yaml@refs/heads/main",
+	}}
+	require.Equal(t, all, p.Allow(bosun, "bosun", all))
+	require.Equal(t, []auth.Action{auth.ActionPull}, p.Allow(bosun, "hday/pki", all), "only what is written beside its claims")
+
+	// The provider's claim holds for a match that says nothing of it, and
+	// one that has no claims of the repository of its own.
+	stranger := bosun
+	stranger.Claims = map[string]any{"repository_owner_id": "1", "repository_id": "1292115356", "workflow_ref": bosun.Claims["workflow_ref"]}
+	require.Equal(t, []auth.Action{auth.ActionPull}, p.Allow(stranger, "bosun", all))
+	pki := auth.Subject{ID: "github:pki", Provider: "github", Claims: map[string]any{
+		"repository_owner_id": "177305168",
+		"workflow_ref":        "Holiday-Robot/pki/.github/workflows/build.yaml@refs/heads/main",
+	}}
+	require.Equal(t, all, p.Allow(pki, "hday/pki", all))
+	pki.Claims["repository_owner_id"] = "1"
+	require.Equal(t, []auth.Action{auth.ActionPull}, p.Allow(pki, "hday/pki", all))
+
+	// A permission written in place is named by where it is.
+	e := p.Explain(bosun, "bosun")
+	var grants []string
+	for _, m := range e.Matches {
+		for _, g := range m.Grants {
+			grants = append(grants, g.Permission)
+		}
+	}
+	require.ElementsMatch(t, []string{"everyone.grant[0]", "bosun-ci.grant[0]", "pki"}, grants)
+}
+
+func TestPolicyCompactRefuses(t *testing.T) {
+	github := "providers:\n  github:\n    kind: oidc\n    issuer: https://token.actions.githubusercontent.com\n    audience: cr\n"
+	for name, c := range map[string]struct {
+		file string
+		want string
+	}{
+		"a field nothing reads, in place": {
+			"matches:\n  m:\n    for: anyone\n    grant:\n      - repo: [a]\n        actions: [pull]\n",
+			`unknown field "repo"`,
+		},
+		"an action there is not, in place": {
+			"matches:\n  m:\n    for: anyone\n    grant:\n      - repos: [a]\n        actions: [pul]\n",
+			`permission "m.grant[0]": no action "pul"`,
+		},
+		"no repos, in place": {
+			"matches:\n  m:\n    for: anyone\n    grant:\n      - actions: [pull]\n",
+			`permission "m.grant[0]": no repos`,
+		},
+		"another match's own": {
+			"matches:\n  m:\n    for: anyone\n    grant:\n      - repos: [a]\n        actions: [pull]\n  n:\n    for: anyone\n    grant: [\"m.grant[0]\"]\n",
+			`match "n": grant[0]: no permission "m.grant[0]"`,
+		},
+		"a permission called what one in place is": {
+			"permissions:\n  m.grant[0]:\n    repos: [b]\n    actions: [pull]\nmatches:\n  m:\n    for: anyone\n    grant:\n      - repos: [a]\n        actions: [pull]\n",
+			`a permission is already called "m.grant[0]"`,
+		},
+		"a match for a provider with no when, either of them": {
+			github + "matches:\n  m:\n    for: github\n    grant:\n      - repos: [a]\n        actions: [pull]\n",
+			"no `when`, here or on the provider",
+		},
+		"a match that says otherwise than its provider": {
+			strings.Replace(github, "audience: cr\n", "audience: cr\n    when: {repository_owner_id: \"7\"}\n", 1) +
+				"matches:\n  m:\n    for: github\n    grant:\n      - repos: [a]\n        actions: [pull]\n    when: {repository_owner_id: \"*\"}\n",
+			`where the provider requires "7"`,
+		},
+		"a provider's claim that does not parse": {
+			strings.Replace(github, "audience: cr\n", "audience: cr\n    when: {workflow_ref: \"a**\"}\n", 1),
+			`provider "github": when "workflow_ref"`,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := readPolicy(write(t, filepath.Join(t.TempDir(), "p.yaml"), c.file))
 			require.ErrorContains(t, err, c.want)
 		})
 	}
