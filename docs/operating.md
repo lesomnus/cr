@@ -217,14 +217,21 @@ The files are read once, when `serve` starts.
 
 ## Deploying
 
-**One process: SQLite, or the `os` store.** The lock that keeps a manifest
-write and a sweep of the same repository apart, and the choice of who runs the
-collection, live inside the process. So exactly one `cr serve` may use a SQLite
-database, and the `os` store belongs on a local disk: its per-digest file locks
-and link counts cannot be trusted on NFS.
+What decides how many `cr serve` may run at once is the database, and then
+where the store is:
+
+| | replicas | an update |
+| --- | --- | --- |
+| SQLite | one | a short outage |
+| PostgreSQL, `os` store | several, on the node that has the disk | rolling, without one |
+| PostgreSQL, S3 | several, anywhere | rolling, without one |
+
+**SQLite: one process.** The lock that keeps a manifest write and a sweep of
+the same repository apart, and the choice of who runs the collection, live
+inside the process. So exactly one `cr serve` may use a SQLite database.
 
 On Kubernetes that is one replica whose old pod is gone before the new one
-starts, with its data on a volume that pod alone mounts:
+starts:
 
 ```yaml
 spec:
@@ -234,31 +241,67 @@ spec:
 ```
 
 The default rolling update starts the new pod first, and the two would share
-the database and the store without sharing the lock. An update is therefore a
-short outage, from the old pod stopping to the new one answering `/readyz`.
+the database without sharing the lock. An update is therefore a short outage,
+from the old pod stopping to the new one answering `/readyz`.
 
-**Several replicas: PostgreSQL and S3.**
+**PostgreSQL: several.** A repository's lock is a PostgreSQL advisory lock,
+and the collections run on one replica at a time, whichever takes the lock for
+the run. What else the replicas need to agree on:
 
 ```yaml
 db:
   driver: pgx
   dsn: postgres://cr:...@postgres:5432/cr
 watch:
-  broker: postgres
-registry:
-  storage:
-    driver: s3
+  broker: postgres              # what one replica writes, the others' watchers hear
 auth:
   token:
     keys: [/etc/cr/token.pem]   # the same key on every replica
 ```
 
-Any replica can take any request. A repository's lock is a PostgreSQL advisory
-lock, an upload continues on whichever replica its next chunk reaches, and a
-token one replica signed verifies on the others. The collections run on one
-replica at a time, whichever takes the lock for the run. A schema change in an
-upgrade has to suit the replicas still running the older version until they
-are replaced.
+Any replica can take any request, and a token one replica signed verifies on
+the others. A schema change in an upgrade has to suit the replicas still
+running the older version until they are replaced.
+
+The store is then either of:
+
+- **`os`, on the disk of one node.** Every replica on that node uses the same
+  directory, as a `hostPath` or a `ReadWriteOnce` volume, which pods on one
+  node may all mount (`ReadWriteOncePod` they may not). The store is made for
+  that: writers of one digest are serialized by file locks under the root, a
+  blob is moved into place in one rename, and an upload's state is on the disk,
+  so its next request goes on wherever it lands. It has to be a local disk:
+  on NFS the file locks and the link counts cannot be trusted. The replicas
+  are on that node, and are as available as it is.
+
+  ```yaml
+  spec:
+    replicas: 1                 # or more, all on the node
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxSurge: 1             # the new pod first,
+        maxUnavailable: 0       # and the old one stops once it is ready
+    template:
+      spec:
+        nodeSelector: {kubernetes.io/hostname: storage-1}
+  ```
+
+  With one replica this is already an update without an outage: for a moment
+  there are two, which is what the store and the database allow.
+
+- **S3,** for replicas on any node.
+
+  ```yaml
+  registry:
+    storage:
+      driver: s3
+  ```
+
+`e2e/replicas_test.go` runs two `cr serve` on one PostgreSQL database and one
+`os` store, and has them take each other's writes, an upload across both,
+writers of one digest on both, a collection on one of what the other holds, and
+one stopping mid-upload.
 
 ### Stopping
 
@@ -293,9 +336,9 @@ spec:
         failureThreshold: 1
 ```
 
-With several replicas, a rolling update then moves traffic to the new pods
-without cutting what is in flight, unless it runs longer than `timeout`. With
-one replica, `Recreate` still means an outage while the new pod starts.
+On PostgreSQL, a rolling update then moves traffic to the new pods without
+cutting what is in flight, unless it runs longer than `timeout`. On SQLite,
+`Recreate` still means an outage while the new pod starts.
 
 ## Garbage collection
 

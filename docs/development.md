@@ -42,7 +42,7 @@ any other entity.
 
 ```sh
 go test ./...                                                           # handlers on flob's memory store and memindex; entindex on SQLite
-CR_TEST_POSTGRES=postgres://... go test -run TestPostgres ./index/...   # entindex on PostgreSQL, a schema per test
+CR_TEST_POSTGRES=postgres://... go test -run TestPostgres ./index/... ./e2e/...   # entindex on PostgreSQL, and two cr serve on it sharing an os store; a schema per test
 ./scripts/conformance.sh                                                # the OCI conformance suite against the built binary
 ./scripts/zot-import.sh                                                 # a real zot's root taken in by cr import, every answer compared
 ```
