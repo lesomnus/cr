@@ -68,7 +68,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - run: go test -count=1 -run 'TestPostgres' ./index/...
+      - run: go test -count=1 -run 'TestPostgres' ./index/... ./e2e/...
         env:
           CR_TEST_POSTGRES: postgres://cr:cr@127.0.0.1:5432/cr?sslmode=disable
 

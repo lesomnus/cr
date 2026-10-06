@@ -115,21 +115,25 @@ Two tiers, and neither stops the registry.
 
 ## One process or several
 
-Several replicas are supported on **PostgreSQL and S3**, and on nothing else.
+Several replicas are supported on **PostgreSQL**, with the S3 store anywhere,
+or with the `os` store on the one node that has its disk.
 
 - On PostgreSQL the repository lock is an advisory lock, so replicas writing
   one repository wait on the database, and the collection and the other
   background work run on whichever replica takes the lock for that run.
-- On S3 an upload that a load balancer sends to another replica continues
-  there, and two replicas filling a cache with the same blob both succeed.
+- On S3, and on an `os` store the replicas share on one node, an upload that a
+  load balancer sends to another replica continues there, and two replicas
+  writing or filling the same blob both succeed. On `os` they are serialized
+  by file locks under the store's root, and end as one copy.
 - Tokens verify on any replica that has the same `auth.token.keys`, and a
   policy is the same on every replica that reads the same policy file; each
   reads its own, and `cr.auth.policy.revision` says which it has.
 
 With SQLite, the lock and the choice of who collects are inside the process,
 so exactly one process may use a database. The `os` store on a shared
-filesystem is not a way to scale out either: its per-digest file locks and link
-counts cannot be trusted on NFS.
+filesystem is not a way to scale out across nodes: its per-digest file locks
+and link counts cannot be trusted on NFS. See
+[operating.md](operating.md#deploying).
 
 ## What cr does not do
 
