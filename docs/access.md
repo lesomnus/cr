@@ -102,7 +102,8 @@ every pattern takes away. `cr auth check` says the same before the file is
 deployed.
 
 A key under `auth:` in `cr.yaml` that nothing reads stops `cr serve` too,
-rather than being ignored.
+rather than being ignored -- as a key anywhere in `cr.yaml` does, named with its
+line.
 
 ## Providers
 

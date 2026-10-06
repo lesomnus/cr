@@ -123,12 +123,11 @@ func (c ProxyVerifyConfig) IsSet() bool {
 // ProxyAuthConfig is the credential a pull-through cache asks its upstream
 // with, by kind.
 //
-// A value marked SECRET is either written as it is, or `${file:/path}`: the
-// credential is the file's content, without the whitespace around it, and the
-// file is RE-READ WHEN IT CHANGES — replaced by a rename, which is how
-// Kubernetes updates a mounted Secret — so a rotated credential is used without
-// a restart. `${env:NAME}` works here as anywhere in the file, and is read once,
-// when the file is.
+// A value marked SECRET is a [Secret]: written as it is, or `${file:/path}`,
+// the file's content without the whitespace around it, RE-READ WHEN IT CHANGES
+// -- replaced by a rename, which is how Kubernetes updates a mounted Secret --
+// so a rotated credential is used without a restart. `${env:NAME}` is read
+// once, when the configuration is.
 type ProxyAuthConfig struct {
 	// Kind is `password` or `bearer`; empty is no credential at all.
 	//
@@ -146,9 +145,9 @@ type ProxyAuthConfig struct {
 	// Username is `password`'s.
 	Username string `yaml:"username"`
 	// Password is `password`'s. SECRET.
-	Password string `yaml:"password"`
+	Password Secret `yaml:"password"`
 	// Token is `bearer`'s. SECRET.
-	Token string `yaml:"token"`
+	Token Secret `yaml:"token"`
 }
 
 // StorageConfig says where blobs and manifests are kept.

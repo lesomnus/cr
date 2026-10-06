@@ -23,9 +23,9 @@ package cli
 
 import (
 	"context"
-	"os"
 
 	"github.com/lesomnus/xli"
+	"github.com/lesomnus/xli/cfg"
 	"github.com/lesomnus/xli/flg"
 	"github.com/lesomnus/xli/mode"
 
@@ -38,11 +38,12 @@ import (
 // Cmd is this app's own command line: what payday supplies, plus whatever the
 // app has of its own.
 //
-// `config`, `config env` and `version` are payday's -- they are the commands
-// that run against a **deployment** rather than against a checkout, and every
-// one of them needs something only the app can hand over. `config env` is the
-// clearest: listing the variables a deployment can set means walking this
-// struct, and the struct is the app's.
+// `config`, `config env` and `version` are the commands that run against a
+// **deployment** rather than against a checkout, and every one of them needs
+// something only the app can hand over. `config env` is the clearest: listing
+// the variables a deployment can set means walking this struct, and the struct
+// is the app's. `version` is payday's; the two `config` are xli's, beside what
+// reads the configuration.
 //
 // `serve` is not among them and will not be. It is the one command whose body
 // is the stack -- which layers, in which order, with the wall on which server
@@ -51,8 +52,15 @@ import (
 // The configuration is read on the **root**, so it has happened whichever
 // subcommand runs -- `config` prints what came out, `serve` listens on what it
 // says. A command that loaded it for itself would be one more place for the
-// order to be wrong.
+// order to be wrong. What `c` holds when the loader is made is the defaults:
+// every load starts from it.
 func Cmd(c *cmd.Config) *xli.Command {
+	l := cfg.New(cmd.Name, c)
+
+	// `version` needs no configuration, and is what somebody runs to ask a
+	// deployment whose configuration is wrong what build it is.
+	version := pdcmd.NewCmdVersion()
+
 	// `cr binding add`, `cr repository ls` and the rest, for every entity the
 	// schema declares, served in-process on the host's database; see `local`.
 	t, err := pdcmd.New(&local{c: c})
@@ -64,11 +72,11 @@ func Cmd(c *cmd.Config) *xli.Command {
 		Name:  cmd.Name,
 		Brief: "cr",
 
-		Flags: flg.Flags{pdcmd.ConfigFlag()},
+		Flags: flg.Flags{cfg.ConfigFlag()},
 
 		Commands: append(xli.Commands{
-			pdcmd.NewCmdVersion(),
-			pdcmd.NewCmdConfig(cmd.Loader, c),
+			version,
+			cfg.NewCmdConfig(l),
 			NewCmdInit(c),
 			NewCmdServe(c),
 			NewCmdGc(c),
@@ -78,25 +86,19 @@ func Cmd(c *cmd.Config) *xli.Command {
 			NewCmdAuth(),
 		}, t.Commands()...),
 
-		Handler: xli.Chain(pdcmd.Load(cmd.Loader, c), located(c), xli.RequireSubcommand()),
+		Handler: xli.Chain(cfg.Load(l, version), located(l, c), xli.RequireSubcommand()),
 	}
 }
 
-// located writes down the file the configuration was read from, chosen the
-// way the loader chose it -- the one `--config` names, or the first of the
-// loader's paths that is there -- so that the files it names beside it are
-// found there.
-func located(c *cmd.Config) xli.Handler {
+// located writes down the file the configuration was read from, so that the
+// files it names beside it are found there. It is the loader's own answer --
+// the one `--config` names, none for `--config=`, or the first of its paths
+// that is there -- rather than the same choice made again beside it, which is
+// what this was while the loader did not say.
+func located(l *cfg.Loader[cmd.Config], c *cmd.Config) xli.Handler {
 	return xli.On(mode.Run, func(ctx context.Context, self *xli.Command, next xli.Next) error {
-		if p, _ := flg.Find[string](self, pdcmd.ConfigName); p != "" {
-			c.From = p
-			return next(ctx)
-		}
-		for _, p := range cmd.Loader.Paths() {
-			if _, err := os.Stat(p); err == nil {
-				c.From = p
-				break
-			}
+		if s := l.Current(); s != nil {
+			c.From = s.Path
 		}
 		return next(ctx)
 	})

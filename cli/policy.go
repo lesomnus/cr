@@ -14,7 +14,6 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/lesomnus/otx/log"
-	"github.com/lesomnus/payday/config"
 
 	"github.com/lesomnus/cr/auth"
 	"github.com/lesomnus/cr/cmd"
@@ -52,9 +51,6 @@ func policyPathOf(c *cmd.Config) string {
 // nothing asks for one: the registry is then open. A file that was named, or
 // asked for with `auth.enabled`, must be there.
 func policySource(c *cmd.Config) (*policyFile, error) {
-	if err := strictAuth(c.From); err != nil {
-		return nil, err
-	}
 	path, named := policyPath(c)
 	if path == "" {
 		if c.Auth.Enabled {
@@ -74,35 +70,6 @@ func policySource(c *cmd.Config) (*policyFile, error) {
 		return nil, fmt.Errorf("auth.enabled, and %s is not there", path)
 	}
 	return nil, nil
-}
-
-// strictAuth reads `auth:` of the configuration file at path again, and
-// refuses what it has that nothing reads. The loader ignores such a key, and
-// under `auth:` an ignored key is a rule that silently is not there.
-func strictAuth(path string) error {
-	if path == "" {
-		return nil
-	}
-	var raw struct {
-		Auth map[string]any `yaml:"auth"`
-	}
-	if err := config.ReadFile(path, &raw); err != nil {
-		return err
-	}
-	if raw.Auth == nil {
-		return nil
-	}
-	b, err := yaml.Marshal(map[string]any{"auth": raw.Auth})
-	if err != nil {
-		return err
-	}
-	var v struct {
-		Auth cmd.AuthConfig `yaml:"auth"`
-	}
-	if err := yaml.UnmarshalWithOptions(b, &v, yaml.Strict()); err != nil {
-		return fmt.Errorf("%s: %w", path, err)
-	}
-	return nil
 }
 
 // policyFile is [auth.Source] over a policy file. It is read whole every time

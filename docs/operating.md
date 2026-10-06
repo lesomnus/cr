@@ -657,7 +657,10 @@ volumeMounts:
 **The file is re-read when it changes**, so a rotated credential is used
 without a restart: a token a machine renews every few days, or a password
 replaced in the Secret. Unlike `${env:...}`, it is only understood in these two
-fields, and `cr config` prints the reference rather than what the file holds.
+fields -- anywhere else it is refused where the configuration is read -- and
+`cr config` prints the reference rather than what the file holds. Given in
+`CR_REGISTRY_PROXIES` instead, a value is a reference when it is one whole, and
+taken as it is otherwise.
 
 A `password` is read when a challenge is answered. A token the upstream issued
 from the old one is used until it expires or is refused; a refusal is answered
@@ -676,9 +679,13 @@ rename is atomic for content and not for permissions, so between the rename and
 the chown that follows it the file is there and unreadable, and failing a pull
 for that would be failing it because the credential was being renewed. A first
 read that fails, or finds the file empty, has nothing to fall back on, and the
-pull fails naming the file.
+pull fails naming the file. A file that is not there when cr starts is said once
+then, as a warning, and does not stop it: a credential may be put in place after
+the process that will use it.
 
-A value that begins `${file:` is always a reference; there is no escaping it.
+A value that is itself `${file:...}` is a reference. One that only begins like
+one is refused rather than taken as a password, and `$$` is a `$`, so a
+password that really does begin `${file:` is written `$${file:...}`.
 
 ## Health and telemetry
 
