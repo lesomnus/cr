@@ -121,12 +121,12 @@ The name is what a match's `for` names it by, and what goes in front of every
 subject it vouches for in the logs: `github:repo:acme/app:ref:refs/heads/main`.
 It is lowercase letters, digits, `-` and `_`, and it is not `anyone`.
 
-`oidc` is the kind there is. A caller gives an ID token the provider issued as
-the password, and cr checks it offline, against the keys the provider
-publishes: its signature, its `iss`, that its `aud` is `audience`, and that it
-has not expired. `audience` is required: without it, a token the provider
-issued for any other service would be good here. Every claim of the token is
-the caller's, for a match's `when`.
+`oidc` is the kind for CI and for people signing in. A caller gives an ID token
+the provider issued as the password, and cr checks it offline, against the keys
+the provider publishes: its signature, its `iss`, that its `aud` is `audience`,
+and that it has not expired. `audience` is required: without it, a token the
+provider issued for any other service would be good here. Every claim of the
+token is the caller's, for a match's `when`.
 
 `exchange` is how long a token `POST /token/exchange` trades one of the
 provider's credentials for lasts; see [below](#ci-without-secrets-openid-connect).
@@ -197,6 +197,95 @@ is the pin. A request with an `Authorization` header is who the header says,
 certificate or not, and a certificate on a listener without
 `client_ca_file` is never asked for. A runtime that is challenged asks
 `/token` without a password; the token it gets is for its certificate.
+
+### A password: `secret`
+
+```yaml
+# cr.auth.yaml
+providers:
+  breakglass:
+    kind: secret
+    username: admin
+    password: ${file:/etc/cr/breakglass/password}
+
+matches:
+  breakglass:
+    for: breakglass
+    grant:
+      - repos: ["**"]
+        actions: ["*"]
+```
+
+`secret` vouches for one caller, by a username and a password: the way in for
+an administrator when nothing else can be asked -- the CI provider is down, or
+a mistake in the policy locked everybody else out. It is a credential that
+lives as long as it is not changed, so it is for that and little else.
+
+The password stays out of the policy. `${file:/path}` is the file's content,
+without the whitespace around it, and the file is read again when it is
+replaced; `${env:NAME}` is a variable of the process. A password written as it
+is works too, but the policy is a file many people read, and one written into it
+is one they all have. A reference is a reference only as the whole value.
+
+The caller is `<provider>:<username>`, `breakglass:admin`, and its one claim is
+`username`. Being one caller, a match for it needs no `when`. It has no
+`exchange`: a password can be given again. Every login by it is logged as a
+warning, and every wrong password; `cr.auth.logins` counts the logins with
+`cr.auth.authenticator` `secret`.
+
+A password that cannot be read -- the file is not there, or is empty -- lets
+nobody in by this provider, and is logged when somebody tries; the rest of the
+policy stands, so a Secret that did not arrive does not lock out everybody
+else. Removing the provider, or replacing the file, takes the password away
+within `auth.refresh`; a token issued before lives its `auth.token.ttl` out.
+
+Another username is not this provider's, and the next provider is asked: a CI
+job that logs in as `-u oidc` goes on to `github`. So a `secret` provider's
+username should be none a client uses for another, such as `oidc`.
+
+On Kubernetes, the password is a Secret, mounted beside the policy:
+
+```sh
+kubectl -n registry create secret generic cr-breakglass \
+  --from-literal=password="$(openssl rand -base64 32)"
+```
+
+```yaml
+# the cr Deployment's pod
+volumes:
+  - name: breakglass
+    secret:
+      secretName: cr-breakglass
+containers:
+  - name: cr
+    volumeMounts:
+      - name: breakglass
+        mountPath: /etc/cr/breakglass
+        readOnly: true
+```
+
+Kubernetes replaces a mounted Secret by a rename, which is what cr watches for,
+so `kubectl apply` of a new password is in force without a restart. A
+`subPath` mount is never updated; mount the directory.
+
+Using it is `docker login`:
+
+```sh
+kubectl -n registry get secret cr-breakglass -o jsonpath='{.data.password}' | base64 -d \
+  | docker login cr.example.com -u admin --password-stdin
+```
+
+and a test case names it as any provider:
+
+```yaml
+cases:
+  - name: the administrator does anything
+    as:
+      provider: breakglass
+      claims: {username: admin}
+    repo: acme/app
+    allow: [pull, push, tag, delete]
+```
 
 ## Permissions
 
@@ -353,7 +442,7 @@ narrow as its `when`:
   read separately, and nothing carries a claim's value into a repository: a
   permission over `acme/**` granted `for` every `acme` repository lets the
   workflows of each push to all of them. A workflow that should reach only its
-  own repository needs a permission and a match of its own.
+  own repository needs a match of its own, with its permission written in it.
 
 ## Testing a policy
 

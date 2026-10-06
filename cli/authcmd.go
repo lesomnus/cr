@@ -36,6 +36,12 @@ func NewCmdAuth() *xli.Command {
 					if _, err := readPolicy(path); err != nil {
 						return err
 					}
+					// Not an error: the policy stands without them, and only
+					// their providers let nobody in. But here, before it is
+					// deployed, is where to hear of it.
+					for _, w := range unreadableSecrets(path) {
+						self.Printf("%s: warning: %s\n", path, w)
+					}
 					self.Printf("%s: ok\n", path)
 					return next(ctx)
 				}),
