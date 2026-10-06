@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/lesomnus/xli/cfg"
 	"github.com/stretchr/testify/require"
 
 	"github.com/lesomnus/cr/auth"
@@ -89,16 +90,17 @@ func TestPolicySource(t *testing.T) {
 	require.Equal(t, filepath.Join(dir, "cr.auth.yaml"), f.path)
 
 	// A key under auth: that nothing reads is refused rather than ignored,
-	// wherever it is.
-	write(t, from, "auth:\n  enabled: true\n  bindings: []\n")
-	_, err = policySource(config(cmd.AuthConfig{}))
-	require.ErrorContains(t, err, `unknown field "bindings"`)
-	write(t, from, "auth:\n  token:\n    keyz: [a.pem]\n")
-	_, err = policySource(config(cmd.AuthConfig{}))
-	require.ErrorContains(t, err, `unknown field "keyz"`)
-	write(t, from, "auth:\n  refresh: 1s\n  token:\n    ttl: 5m\n")
-	_, err = policySource(config(cmd.AuthConfig{}))
-	require.NoError(t, err)
+	// wherever it is -- by the loader now, for the whole file, where this
+	// used to read `auth:` again on its own.
+	load := func(body string) error {
+		write(t, from, body)
+		var c cmd.Config
+		_, err := cfg.New(cmd.Name, &c, cfg.WithPaths()).Read(from, nil)
+		return err
+	}
+	require.ErrorContains(t, load("auth:\n  enabled: true\n  bindings: []\n"), "auth.bindings: nothing reads this key")
+	require.ErrorContains(t, load("auth:\n  token:\n    keyz: [a.pem]\n"), `auth.token.keyz: nothing reads this key (did you mean "keys"?)`)
+	require.NoError(t, load("auth:\n  refresh: 1s\n  token:\n    ttl: 5m\n"))
 }
 
 func TestPolicyFileReloads(t *testing.T) {

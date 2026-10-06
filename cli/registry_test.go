@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/lesomnus/flob"
+	"github.com/lesomnus/xli/cfg"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lesomnus/cr/blob"
 	"github.com/lesomnus/cr/cmd"
 	"github.com/lesomnus/cr/registry"
 	"github.com/lesomnus/cr/trust"
@@ -48,24 +48,54 @@ func TestProxyAuth(t *testing.T) {
 		}}}, flob.NewMemStores(), nil)
 		return err
 	}
+	// A credential as the configuration gives one.
+	sec := func(v string) cmd.Secret {
+		var s cmd.Secret
+		require.NoError(t, s.UnmarshalText([]byte(v)))
+		return s
+	}
 
 	require.NoError(t, proxy(cmd.ProxyAuthConfig{}))
-	require.NoError(t, proxy(cmd.ProxyAuthConfig{Kind: "password", Username: "someone", Password: "dckr_pat_x"}))
-	require.NoError(t, proxy(cmd.ProxyAuthConfig{Kind: "password", Username: "someone", Password: "${file:/run/credentials/dockerhub}"}))
-	require.NoError(t, proxy(cmd.ProxyAuthConfig{Kind: "bearer", Token: "${file:/run/robot/token}"}))
+	require.NoError(t, proxy(cmd.ProxyAuthConfig{Kind: "password", Username: "someone", Password: sec("dckr_pat_x")}))
+	require.NoError(t, proxy(cmd.ProxyAuthConfig{Kind: "password", Username: "someone", Password: sec("${file:/run/credentials/dockerhub}")}))
+	require.NoError(t, proxy(cmd.ProxyAuthConfig{Kind: "bearer", Token: sec("${file:/run/robot/token}")}))
 
-	for a, want := range map[cmd.ProxyAuthConfig]string{
-		{Username: "someone", Password: "x"}:                               "registry.proxies[0].auth.kind: not set",
-		{Kind: "basic", Username: "someone", Password: "x"}:                `auth.kind: "basic" is not password or bearer`,
-		{Kind: "password", Password: "x"}:                                  "auth.username: not set",
-		{Kind: "password", Username: "someone"}:                            "auth.password: not set",
-		{Kind: "password", Username: "someone", Password: "x", Token: "y"}: "auth.token: is bearer's",
-		{Kind: "bearer"}: "auth.token: not set",
-		{Kind: "bearer", Username: "someone", Token: "y"}:  "are password's",
-		{Kind: "bearer", Token: "${file:}"}:                "want ${file:/path}",
-		{Kind: "bearer", Token: "${file:/run/robot/token"}: "want ${file:/path}",
+	for _, tc := range []struct {
+		a    cmd.ProxyAuthConfig
+		want string
+	}{
+		{cmd.ProxyAuthConfig{Username: "someone", Password: sec("x")}, "registry.proxies[0].auth.kind: not set"},
+		{cmd.ProxyAuthConfig{Kind: "basic", Username: "someone", Password: sec("x")}, `auth.kind: "basic" is not password or bearer`},
+		{cmd.ProxyAuthConfig{Kind: "password", Password: sec("x")}, "auth.username: not set"},
+		{cmd.ProxyAuthConfig{Kind: "password", Username: "someone"}, "auth.password: not set"},
+		{cmd.ProxyAuthConfig{Kind: "password", Username: "someone", Password: sec("x"), Token: sec("y")}, "auth.token: is bearer's"},
+		{cmd.ProxyAuthConfig{Kind: "bearer"}, "auth.token: not set"},
+		{cmd.ProxyAuthConfig{Kind: "bearer", Username: "someone", Token: sec("y")}, "are password's"},
 	} {
-		require.ErrorContains(t, proxy(a), want, a)
+		require.ErrorContains(t, proxy(tc.a), tc.want)
+	}
+}
+
+// A reference that is not one is refused where the configuration is read,
+// before anything is built from it.
+func TestProxyAuthReference(t *testing.T) {
+	for ref, want := range map[string]string{
+		"${file:}":                "names no file",
+		"${file:/run/robot/token": "a secret is a literal or exactly one reference",
+		"file:/run/robot/token":   "a reference is written ${file:/run/robot/token}",
+	} {
+		p := filepath.Join(t.TempDir(), "cr.yaml")
+		require.NoError(t, os.WriteFile(p, []byte(`
+registry:
+  proxies:
+    - prefix: docker.io
+      upstream: https://registry-1.docker.io
+      auth: {kind: bearer, token: "`+ref+`"}
+`), 0o600))
+
+		var c cmd.Config
+		_, err := cfg.New(cmd.Name, &c, cfg.WithPaths()).Read(p, nil)
+		require.ErrorContains(t, err, want, ref)
 	}
 }
 
@@ -79,20 +109,6 @@ func TestProxyAuthMoved(t *testing.T) {
 	}
 	require.ErrorContains(t, proxy(cmd.ProxyConfig{Username: "someone", Password: "x"}), "registry.proxies[0].username, password: moved to auth")
 	require.ErrorContains(t, proxy(cmd.ProxyConfig{TokenFile: "/run/robot/token"}), "registry.proxies[0].token_file: moved to auth")
-}
-
-func TestSecret(t *testing.T) {
-	s, err := secret("$not{file:a}")
-	require.NoError(t, err)
-	require.Equal(t, blob.Literal("$not{file:a}"), s)
-
-	path := filepath.Join(t.TempDir(), "pw")
-	require.NoError(t, os.WriteFile(path, []byte("hunter2\n"), 0o600))
-	s, err = secret("${file:" + path + "}")
-	require.NoError(t, err)
-	v, err := s.Value()
-	require.NoError(t, err)
-	require.Equal(t, "hunter2", v)
 }
 
 func TestS3Credentials(t *testing.T) {
