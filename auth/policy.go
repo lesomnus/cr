@@ -310,7 +310,11 @@ func NewPolicy(r Rules) (*Policy, error) {
 	}
 
 	whens := map[string]map[string]string{}
+	singular := map[string]bool{}
 	for _, pv := range p.providers {
+		if _, ok := pv.Authenticator.(interface{ singular() }); ok {
+			singular[pv.Name] = true
+		}
 		ok := true
 		for k, src := range pv.When {
 			if _, err := ParseGlob(src); err != nil {
@@ -334,7 +338,7 @@ func NewPolicy(r Rules) (*Policy, error) {
 	}
 
 	for _, name := range slices.Sorted(maps.Keys(r.Matches)) {
-		m, err := compileMatch(name, r.Matches[name], perms, names, whens)
+		m, err := compileMatch(name, r.Matches[name], perms, names, whens, singular)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("match %q: %w", name, err))
 			continue
@@ -397,8 +401,10 @@ func compilePermission(name string, v Permission) (*permission, error) {
 
 // compileMatch is the match v, under the claims its provider requires of
 // every match, from whens; a provider whose own claims did not check is not
-// there, and a match for it is refused rather than left without them.
-func compileMatch(name string, v Match, perms map[string]*permission, providers map[string]bool, whens map[string]map[string]string) (*match, error) {
+// there, and a match for it is refused rather than left without them. A
+// singular provider vouches for one caller, so a match for it needs no claims
+// to say which.
+func compileMatch(name string, v Match, perms map[string]*permission, providers map[string]bool, whens map[string]map[string]string, singular map[string]bool) (*match, error) {
 	pw, pwOK := whens[v.For]
 	switch {
 	case v.For == "":
@@ -409,7 +415,7 @@ func compileMatch(name string, v Match, perms map[string]*permission, providers 
 		return nil, fmt.Errorf("for %q: the provider's `when` does not check", v.For)
 	case v.For == Anyone && len(v.When) > 0:
 		return nil, errors.New("`when` for anyone: the anonymous caller has no claims")
-	case v.For != Anyone && len(v.When) == 0 && len(pw) == 0:
+	case v.For != Anyone && len(v.When) == 0 && len(pw) == 0 && !singular[v.For]:
 		return nil, fmt.Errorf("no `when`, here or on the provider: every credential %q issues, to anybody, would be under it", v.For)
 	case len(v.Grant) == 0:
 		return nil, errors.New("grants nothing")

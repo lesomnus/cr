@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 
 	"github.com/goccy/go-yaml"
@@ -227,7 +229,22 @@ func provider(name string, p cmd.ProviderConfig, oidcs map[oidcKey]*auth.OIDC) (
 	if p.Exchange < 0 {
 		return auth.Provider{}, errors.New("exchange: a negative duration")
 	}
+	if p.Kind != "secret" && (p.Username != "" || !p.Password.IsZero()) {
+		return auth.Provider{}, errors.New("username, password: are a secret provider's")
+	}
 	switch p.Kind {
+	case "secret":
+		switch {
+		case p.Issuer != "", p.Audience != "", p.SubjectClaim != "":
+			return auth.Provider{}, errors.New("issuer, audience, subject_claim: are an oidc provider's")
+		case p.Exchange != 0:
+			return auth.Provider{}, errors.New("exchange: a password can be given again; there is nothing to trade it for")
+		case p.Username == "":
+			return auth.Provider{}, errors.New("username: not set")
+		case p.Password.IsZero():
+			return auth.Provider{}, errors.New("password: not set; write it as ${file:/path}, to keep it out of this file")
+		}
+		return auth.Provider{Name: name, Authenticator: auth.NewSecret(name, p.Username, p.Password), When: p.When}, nil
 	case "oidc":
 		k := oidcKey{name: name, issuer: p.Issuer, audience: p.Audience, subjectClaim: p.SubjectClaim}
 		o, ok := oidcs[k]
@@ -258,5 +275,30 @@ func provider(name string, p cmd.ProviderConfig, oidcs map[oidcKey]*auth.OIDC) (
 	case "":
 		return auth.Provider{}, errors.New("no kind")
 	}
-	return auth.Provider{}, fmt.Errorf("kind %q: the kinds there are are oidc and mtls", p.Kind)
+	return auth.Provider{}, fmt.Errorf("kind %q: the kinds there are are oidc, mtls and secret", p.Kind)
+}
+
+// unreadableSecrets is the passwords of the policy file at path that cannot
+// be read here and now, by provider: a file that is not there, or is empty.
+// The file is taken to have checked.
+func unreadableSecrets(path string) []string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var f cmd.PolicyFile
+	if err := yaml.UnmarshalWithOptions(b, &f, yaml.Strict()); err != nil {
+		return nil
+	}
+	var out []string
+	for _, name := range slices.Sorted(maps.Keys(f.Providers)) {
+		p := f.Providers[name]
+		if p.Kind != "secret" || p.Password.IsZero() {
+			continue
+		}
+		if _, err := p.Password.Value(); err != nil {
+			out = append(out, fmt.Sprintf("providers.%s.password: %v; nobody logs in by it until it can be read", name, err))
+		}
+	}
+	return out
 }

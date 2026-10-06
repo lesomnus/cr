@@ -360,3 +360,88 @@ func TestPolicyCompactRefuses(t *testing.T) {
 		})
 	}
 }
+
+func TestPolicySecretProvider(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	pass := filepath.Join(dir, "breakglass")
+	path := write(t, filepath.Join(dir, "cr.auth.yaml"), `
+providers:
+  breakglass:
+    kind: secret
+    username: admin
+    password: ${file:`+pass+`}
+matches:
+  breakglass:
+    for: breakglass
+    grant:
+      - repos: ["**"]
+        actions: ["*"]
+`)
+	all := []auth.Action{auth.ActionPull, auth.ActionPush, auth.ActionTag, auth.ActionDelete}
+
+	// The file is not there yet: the policy stands, and nobody logs in by it.
+	p, err := readPolicy(path)
+	require.NoError(t, err)
+	_, err = p.Authenticate(ctx, "admin", "")
+	require.ErrorIs(t, err, auth.ErrUnauthenticated)
+
+	write(t, pass, "  b6c1e0f2-the-break-glass  \n")
+	admin, err := p.Authenticate(ctx, "admin", "b6c1e0f2-the-break-glass")
+	require.NoError(t, err, "the file's content, without the whitespace around it")
+	require.Equal(t, "breakglass:admin", admin.ID)
+	require.Equal(t, all, p.Allow(admin, "acme/app", all))
+	_, err = p.Authenticate(ctx, "admin", "guess")
+	require.ErrorIs(t, err, auth.ErrUnauthenticated)
+
+	// Replaced as a Secret is, by a rename: the new one, without a restart
+	// and without the policy changing.
+	write(t, pass+".new", "rotated\n")
+	require.NoError(t, os.Rename(pass+".new", pass))
+	_, err = p.Authenticate(ctx, "admin", "b6c1e0f2-the-break-glass")
+	require.ErrorIs(t, err, auth.ErrUnauthenticated)
+	_, err = p.Authenticate(ctx, "admin", "rotated")
+	require.NoError(t, err)
+
+	// What the file is not is the password: the reference is what the
+	// policy says.
+	_, err = p.Authenticate(ctx, "admin", "${file:"+pass+"}")
+	require.ErrorIs(t, err, auth.ErrUnauthenticated)
+}
+
+func TestPolicySecretProviderRefuses(t *testing.T) {
+	for name, c := range map[string]struct {
+		file string
+		want string
+	}{
+		"no username": {
+			"providers:\n  b:\n    kind: secret\n    password: ${file:/etc/cr/b}\n",
+			"username: not set",
+		},
+		"no password": {
+			"providers:\n  b:\n    kind: secret\n    username: admin\n",
+			"password: not set",
+		},
+		"one that exchanges": {
+			"providers:\n  b:\n    kind: secret\n    username: admin\n    password: ${file:/etc/cr/b}\n    exchange: 1h\n",
+			"nothing to trade it for",
+		},
+		"one with an issuer": {
+			"providers:\n  b:\n    kind: secret\n    username: admin\n    password: ${file:/etc/cr/b}\n    issuer: https://x\n",
+			"are an oidc provider's",
+		},
+		"a password on an oidc provider": {
+			"providers:\n  github:\n    kind: oidc\n    issuer: https://token.actions.githubusercontent.com\n    audience: cr\n    password: ${file:/etc/cr/b}\n",
+			"are a secret provider's",
+		},
+		"a username on an mtls provider": {
+			"providers:\n  engines:\n    kind: mtls\n    username: admin\n",
+			"are a secret provider's",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := readPolicy(write(t, filepath.Join(t.TempDir(), "p.yaml"), c.file))
+			require.ErrorContains(t, err, c.want)
+		})
+	}
+}

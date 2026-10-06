@@ -52,8 +52,9 @@ type PolicyFile struct {
 
 // ProviderConfig is one provider of credentials.
 type ProviderConfig struct {
-	// Kind is what the provider is: `oidc`, or `mtls` for a client
-	// certificate a listener verified.
+	// Kind is what the provider is: `oidc`, `mtls` for a client certificate
+	// a listener verified, or `secret` for one caller by a username and a
+	// password.
 	Kind string `yaml:"kind"`
 
 	// Issuer is an `oidc` provider as its ID tokens name it:
@@ -80,6 +81,15 @@ type ProviderConfig struct {
 	// once and not left out of the next match. A match for a provider with a
 	// When needs none of its own.
 	When map[string]string `yaml:"when"`
+
+	// Username is a `secret` provider's caller, as `docker login -u` gives it.
+	Username string `yaml:"username"`
+
+	// Password is a `secret` provider's password: `${file:/path}`, which
+	// keeps it out of the policy and is read again when the file is
+	// replaced, or `${env:NAME}`. A file not there yet lets nobody in by
+	// this provider, and the policy stands.
+	Password Secret `yaml:"password"`
 }
 
 // PermissionConfig is actions on repositories.
