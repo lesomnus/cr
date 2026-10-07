@@ -33,3 +33,34 @@ func TestSecretIsWithoutTheWhitespaceAroundIt(t *testing.T) {
 	var s cmd.Secret
 	require.Error(t, s.UnmarshalText([]byte(" \n")))
 }
+
+// TestSecretDoesNotSeeAnInPlaceRewrite is what is NOT noticed, held to on
+// purpose: a writer that rewrites the file in place, same length, inside one
+// tick. Nothing about it moved. That is the contract saying `rename` -- which
+// is how a credential is published -- rather than a reason to read the file on
+// every request.
+func TestSecretDoesNotSeeAnInPlaceRewrite(t *testing.T) {
+	x := require.New(t)
+
+	path := filepath.Join(t.TempDir(), "token")
+	x.NoError(os.WriteFile(path, []byte("first"), 0o600))
+
+	var s cmd.Secret
+	x.NoError(s.UnmarshalText([]byte("${file:" + path + "}")))
+	got, err := s.Value()
+	x.NoError(err)
+	x.Equal("first", got)
+	was, err := os.Stat(path)
+	x.NoError(err)
+
+	f, err := os.OpenFile(path, os.O_WRONLY, 0o600)
+	x.NoError(err)
+	_, err = f.WriteString("secnd")
+	x.NoError(err)
+	x.NoError(f.Close())
+	x.NoError(os.Chtimes(path, was.ModTime(), was.ModTime()))
+
+	got, err = s.Value()
+	x.NoError(err)
+	x.Equal("first", got)
+}

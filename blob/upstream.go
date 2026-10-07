@@ -79,8 +79,9 @@ func WithPassword(username string, password Secret) UpstreamOption {
 //
 // For an upstream whose credential is MINTED ELSEWHERE and expires: a robot
 // presents a device certificate to an authority, a token comes back, something
-// writes it to a file ([SecretFile]), and it is replaced long before it
-// expires. Nothing restarts when it is, so the file is re-read when it changes.
+// writes it to a file (`${file:...}`, see [Secret]), and it is replaced long
+// before it expires. Nothing restarts when it is, so the file is re-read when
+// it changes.
 //
 // It replaces the challenge flow rather than feeding it. A registry that hands
 // out tokens of its own gets [WithPassword] and the exchange in

@@ -8,8 +8,19 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/lesomnus/xli/cfg"
 	"github.com/stretchr/testify/require"
 )
+
+// fileSecret is a credential in the file at path, the way the configuration
+// gives one, `${file:path}`: re-read when the file changes, by cfg's rules.
+func fileSecret(t *testing.T, path string) Secret {
+	t.Helper()
+
+	var s cfg.Secret
+	require.NoError(t, s.UnmarshalText([]byte("${file:"+path+"}")))
+	return s
+}
 
 // write publishes a token the way one is published: a temporary name and a
 // rename, so a reader never sees half of it.
@@ -45,7 +56,7 @@ func TestUpstreamSendsTheTokenFile(t *testing.T) {
 
 	var seen []string
 	srv := bearers(t, &seen)
-	up, err := NewUpstream(srv.URL, WithBearer(SecretFile(path)))
+	up, err := NewUpstream(srv.URL, WithBearer(fileSecret(t, path)))
 	require.NoError(t, err)
 
 	_, err = up.do(context.Background(), http.MethodHead, "team/app", "/v2/team/app/manifests/1", nil)
@@ -62,7 +73,7 @@ func TestUpstreamPicksUpARotatedToken(t *testing.T) {
 
 	var seen []string
 	srv := bearers(t, &seen)
-	up, err := NewUpstream(srv.URL, WithBearer(SecretFile(path)))
+	up, err := NewUpstream(srv.URL, WithBearer(fileSecret(t, path)))
 	require.NoError(t, err)
 
 	ask := func() {
@@ -100,7 +111,7 @@ func TestUpstreamKeepsTheTokenWhileTheFileIsUnreadable(t *testing.T) {
 
 	var seen []string
 	srv := bearers(t, &seen)
-	up, err := NewUpstream(srv.URL, WithBearer(SecretFile(path)))
+	up, err := NewUpstream(srv.URL, WithBearer(fileSecret(t, path)))
 	require.NoError(t, err)
 
 	_, err = up.do(context.Background(), http.MethodHead, "team/app", "/v2/team/app/manifests/1", nil)
@@ -126,7 +137,7 @@ func TestUpstreamKeepsTheTokenWhileTheFileIsUnreadable(t *testing.T) {
 func TestUpstreamFailsWhenTheTokenWasNeverRead(t *testing.T) {
 	var seen []string
 	srv := bearers(t, &seen)
-	up, err := NewUpstream(srv.URL, WithBearer(SecretFile(filepath.Join(t.TempDir(), "absent"))))
+	up, err := NewUpstream(srv.URL, WithBearer(fileSecret(t, filepath.Join(t.TempDir(), "absent"))))
 	require.NoError(t, err)
 
 	_, err = up.do(context.Background(), http.MethodHead, "team/app", "/v2/team/app/manifests/1", nil)
@@ -143,51 +154,12 @@ func TestUpstreamRefusesAnEmptyTokenFile(t *testing.T) {
 
 	var seen []string
 	srv := bearers(t, &seen)
-	up, err := NewUpstream(srv.URL, WithBearer(SecretFile(path)))
+	up, err := NewUpstream(srv.URL, WithBearer(fileSecret(t, path)))
 	require.NoError(t, err)
 
 	_, err = up.do(context.Background(), http.MethodHead, "team/app", "/v2/team/app/manifests/1", nil)
 	require.ErrorIs(t, err, ErrUpstreamUnauthorized)
 	require.Empty(t, seen)
-}
-
-// The whitespace a token picks up from `echo` or a heredoc is not part of it; a
-// header value carrying a newline is rejected by the server for a reason nobody
-// guesses.
-func TestSecretFileTrimsWhatAToolLeaves(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "token")
-	write(t, path, "  first\n")
-
-	got, err := newSecretFile(path).Value()
-	require.NoError(t, err)
-	require.Equal(t, "first", got)
-}
-
-// What is NOT noticed, held to on purpose: a writer that rewrites the file in
-// place, same length, inside one tick. Nothing about it moved. That is the
-// contract saying `rename` — which is how a credential is published — rather
-// than a reason to read the file on every request.
-func TestSecretFileDoesNotSeeAnInPlaceRewrite(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "token")
-	write(t, path, "first")
-
-	tf := newSecretFile(path)
-	got, err := tf.Value()
-	require.NoError(t, err)
-	require.Equal(t, "first", got)
-	was, err := os.Stat(path)
-	require.NoError(t, err)
-
-	f, err := os.OpenFile(path, os.O_WRONLY, 0o600)
-	require.NoError(t, err)
-	_, err = f.WriteString("secnd")
-	require.NoError(t, err)
-	require.NoError(t, f.Close())
-	require.NoError(t, os.Chtimes(path, was.ModTime(), was.ModTime()))
-
-	got, err = tf.Value()
-	require.NoError(t, err)
-	require.Equal(t, "first", got)
 }
 
 // A password in a file is rotated the way a token is, and the next challenge
@@ -225,7 +197,7 @@ func TestUpstreamAnswersWithARotatedPassword(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	up, err := NewUpstream(srv.URL, WithPassword("someone", SecretFile(path)))
+	up, err := NewUpstream(srv.URL, WithPassword("someone", fileSecret(t, path)))
 	require.NoError(t, err)
 	ask := func() error {
 		t.Helper()
@@ -262,7 +234,7 @@ func TestUpstreamFailsWhenThePasswordWasNeverRead(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	up, err := NewUpstream(srv.URL, WithPassword("someone", SecretFile(filepath.Join(t.TempDir(), "absent"))))
+	up, err := NewUpstream(srv.URL, WithPassword("someone", fileSecret(t, filepath.Join(t.TempDir(), "absent"))))
 	require.NoError(t, err)
 
 	_, err = up.do(context.Background(), http.MethodHead, "team/app", "/v2/team/app/manifests/1", nil)

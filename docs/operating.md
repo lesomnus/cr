@@ -109,7 +109,7 @@ registry:
       access_key_id: ...
       secret_access_key: ${env:S3_SECRET_ACCESS_KEY}
       session_token: ""
-      credentials_file: ""                # the three above as one set, re-read; see below
+      credentials: ""                     # the three above as one set, e.g. ${file:...}, re-read; see below
       path_style: true                    # MinIO and most S3-compatible servers
       part_size: 16777216                 # buffered per part of an upload
       spool_dir: ""                       # where a blob waits to be uploaded; empty is the temporary directory
@@ -145,8 +145,9 @@ system's temporary directory, `$TMPDIR` or `/tmp`. A chunked upload is
 neither: it goes to the bucket a part at a time, `part_size` in memory each.
 
 The keys are either written into the configuration, where `${env:...}` keeps
-them out of the file and is read once, or kept in `credentials_file` instead:
-the JSON an AWS `credential_process` prints.
+them out of the file and is read once, or given as one set in `credentials`
+instead: the JSON an AWS `credential_process` prints, usually as
+`credentials: ${file:/run/aws/credentials.json}`.
 
 ```json
 {"Version": 1, "AccessKeyId": "...", "SecretAccessKey": "...", "SessionToken": "...", "Expiration": "2026-10-01T12:00:00Z"}
@@ -155,10 +156,15 @@ the JSON an AWS `credential_process` prints.
 `SessionToken` and `Expiration` are for temporary credentials, and `Version`
 may be left out. The file is **re-read when it changes**, by the same rules as a
 proxy's `${file:...}` (see [Credentials](#credentials)), so temporary
-credentials are replaced without a restart. The three keys are in one file
-because they are replaced together: three files would be read apart, and a
-request signed between two of the renames would pair a key with another
+credentials are replaced without a restart; a set that does not parse after a
+good one is a failed read, and the good one is kept. The three keys are in one
+file because they are replaced together: three files would be read apart, and
+a request signed between two of the renames would pair a key with another
 key's secret. For the same reason `${file:...}` is refused in the three fields.
+
+It was `credentials_file: /path` until it was read as a secret like the
+others; that is now `credentials: ${file:/path}`, and the old key is refused
+as one nothing reads.
 
 With `Expiration`, a redirect's presigned URL is not made to outlive it, and a
 request after it fails naming the time instead of a `403` from the service.
