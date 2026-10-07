@@ -115,7 +115,7 @@ func (f *policyFile) Load(ctx context.Context) (auth.Rules, error) {
 		s, _, err = f.file.Reload()
 	}
 	if err != nil {
-		return auth.Rules{}, fmt.Errorf("auth.policy: %w", about(f.path, err))
+		return auth.Rules{}, fmt.Errorf("auth.policy: %w", err)
 	}
 	if f.rules != nil && s.Revision == f.rev {
 		return *f.rules, nil
@@ -155,17 +155,6 @@ func (d *policyDoc) Validate() error {
 	return err
 }
 
-// about is err naming the policy file at path. cfg names it for what it read,
-// at the line; what the policy's own check finds is about the file as a
-// whole, and cfg does not say which file that was.
-func about(path string, err error) error {
-	var fe *cfg.FieldError
-	if errors.As(err, &fe) && fe.Origin.Name == "" {
-		return fmt.Errorf("%s: %w", path, err)
-	}
-	return err
-}
-
 // readPolicy reads and checks the policy file at path, as `cr serve` would.
 // What it cannot read yet is not an error and is in warnings: a password
 // whose file is not there, which keeps its provider from letting anybody in
@@ -173,7 +162,7 @@ func about(path string, err error) error {
 func readPolicy(path string) (p *auth.Policy, warnings []error, err error) {
 	s, err := cfg.NewFile[policyDoc](path).Load()
 	if err != nil {
-		return nil, nil, about(path, err)
+		return nil, nil, err
 	}
 	r, err := rulesOf((*cmd.PolicyFile)(s.Config), map[oidcKey]*auth.OIDC{})
 	if err != nil {
