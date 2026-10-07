@@ -33,14 +33,16 @@ func NewCmdAuth() *xli.Command {
 
 				Handler: xli.OnRun(func(ctx context.Context, self *xli.Command, next xli.Next) error {
 					path, _ := arg.Get[string](self, "POLICY")
-					if _, err := readPolicy(path); err != nil {
+					_, warnings, err := readPolicy(path)
+					if err != nil {
 						return err
 					}
 					// Not an error: the policy stands without them, and only
 					// their providers let nobody in. But here, before it is
-					// deployed, is where to hear of it.
-					for _, w := range unreadableSecrets(path) {
-						self.Printf("%s: warning: %s\n", path, w)
+					// deployed, is where to hear of it. What cannot be read is
+					// a password whose file is not there, or is empty.
+					for _, w := range warnings {
+						self.Printf("warning: %v, and its provider lets nobody in until then\n", w)
 					}
 					self.Printf("%s: ok\n", path)
 					return next(ctx)
@@ -55,7 +57,7 @@ func NewCmdAuth() *xli.Command {
 				Handler: xli.OnRun(func(ctx context.Context, self *xli.Command, next xli.Next) error {
 					path, _ := arg.Get[string](self, "POLICY")
 					tests, _ := arg.Get[string](self, "TESTS")
-					p, err := readPolicy(path)
+					p, _, err := readPolicy(path)
 					if err != nil {
 						return err
 					}
@@ -97,7 +99,7 @@ func NewCmdAuth() *xli.Command {
 
 				Handler: xli.OnRun(func(ctx context.Context, self *xli.Command, next xli.Next) error {
 					path, _ := arg.Get[string](self, "POLICY")
-					p, err := readPolicy(path)
+					p, _, err := readPolicy(path)
 					if err != nil {
 						return err
 					}

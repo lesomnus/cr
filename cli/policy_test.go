@@ -121,27 +121,43 @@ func TestPolicyFileReloads(t *testing.T) {
 	require.NoError(t, st.Refresh(ctx))
 	require.Equal(t, rev, st.Revision())
 
-	// A change is in force on the next read, and a provider configured as it
-	// was is the one there was, with the keys it had fetched.
+	// A change is in force once it has read the same twice running: the first
+	// read may have caught the file half written, and a policy cut short where
+	// a rule was is a policy that says something else. A provider configured
+	// as it was is the one there was, with the keys it had fetched.
 	write(t, path, policy+"  more:\n    for: anyone\n    grant: [cr-release]\n")
+	require.NoError(t, st.Refresh(ctx))
+	require.Equal(t, rev, st.Revision())
+	require.Empty(t, st.Current().Allow(anon, "lesomnus/cr", pull))
 	require.NoError(t, st.Refresh(ctx))
 	require.NotEqual(t, rev, st.Revision())
 	require.Equal(t, pull, st.Current().Allow(anon, "lesomnus/cr", pull))
 	require.Same(t, github, f.rules.Providers[0].Authenticator)
 	rev = st.Revision()
 
-	// A file that does not parse, does not check, or is gone keeps the
-	// policy in force.
-	for _, bad := range []func(){
-		func() { write(t, path, "matches: [") },
-		func() { write(t, path, "matches:\n  x:\n    for: github\n    grant: [cr-release]\n") },
-		func() { require.NoError(t, os.Remove(path)) },
+	// A file that does not parse, or does not check, keeps the policy in
+	// force, and says why from the read that would have taken it up; one that
+	// is gone says so at once.
+	for _, bad := range []string{
+		"matches: [",
+		"matches:\n  x:\n    for: github\n    grant: [cr-release]\n",
 	} {
-		bad()
+		write(t, path, bad)
+		require.NoError(t, st.Refresh(ctx))
 		require.Error(t, st.Refresh(ctx))
+		require.Error(t, st.Refresh(ctx), "and at every read after")
 		require.Equal(t, rev, st.Revision())
 		require.Equal(t, pull, st.Current().Allow(anon, "lesomnus/cr", pull))
 	}
+	require.NoError(t, os.Remove(path))
+	require.Error(t, st.Refresh(ctx))
+	require.Equal(t, rev, st.Revision())
+
+	// And put back as it was, it is the policy in force without a reload.
+	write(t, path, policy+"  more:\n    for: anyone\n    grant: [cr-release]\n")
+	require.NoError(t, st.Refresh(ctx))
+	require.Equal(t, rev, st.Revision())
+	require.Equal(t, pull, st.Current().Allow(anon, "lesomnus/cr", pull))
 }
 
 func TestReadPolicyRefuses(t *testing.T) {
@@ -150,7 +166,7 @@ func TestReadPolicyRefuses(t *testing.T) {
 		file string
 		want string
 	}{
-		"a field nothing reads":             {"permissions:\n  x:\n    repo: [a]\n    actions: [pull]\n", `unknown field "repo"`},
+		"a field nothing reads":             {"permissions:\n  x:\n    repo: [a]\n    actions: [pull]\n", `permissions.x.repo: nothing reads this key (did you mean "repos"?)`},
 		"a provider of no kind":             {"providers:\n  github:\n    issuer: x\n    audience: cr\n", "no kind"},
 		"a provider of a kind there is not": {"providers:\n  github:\n    kind: saml\n", `kind "saml"`},
 		"a provider with no audience":       {"providers:\n  github:\n    kind: oidc\n    issuer: x\n", "audience"},
@@ -163,10 +179,10 @@ func TestReadPolicyRefuses(t *testing.T) {
 		"an mtls provider with an issuer": {"providers:\n  engines:\n    kind: mtls\n    issuer: x\n", "configured by the listener's tls.client_ca_file"},
 		"an mtls provider that exchanges": {"providers:\n  engines:\n    kind: mtls\n    exchange: 1h\n", "a certificate is not traded"},
 		"two mtls providers":              {"providers:\n  engines:\n    kind: mtls\n  more:\n    kind: mtls\n", "there is one mtls provider or none"},
-		"a tag rule that names groups":    {"tag_rules:\n  - repo: '**'\n    tag: latest\n    kind: protected\n    groups: [release]\n", `unknown field "groups"`},
+		"a tag rule that names groups":    {"tag_rules:\n  - repo: '**'\n    tag: latest\n    kind: protected\n    groups: [release]\n", "tag_rules[0].groups: nothing reads this key"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := readPolicy(write(t, filepath.Join(t.TempDir(), "p.yaml"), c.file))
+			_, _, err := readPolicy(write(t, filepath.Join(t.TempDir(), "p.yaml"), c.file))
 			require.ErrorContains(t, err, c.want)
 		})
 	}
@@ -174,7 +190,7 @@ func TestReadPolicyRefuses(t *testing.T) {
 
 func TestCases(t *testing.T) {
 	dir := t.TempDir()
-	p, err := readPolicy(write(t, filepath.Join(dir, "cr.auth.yaml"), policy))
+	p, _, err := readPolicy(write(t, filepath.Join(dir, "cr.auth.yaml"), policy))
 	require.NoError(t, err)
 
 	cases, err := readCases(write(t, filepath.Join(dir, "ok.yaml"), `
@@ -278,7 +294,7 @@ matches:
 `
 
 func TestPolicyCompact(t *testing.T) {
-	p, err := readPolicy(write(t, filepath.Join(t.TempDir(), "cr.auth.yaml"), compact))
+	p, _, err := readPolicy(write(t, filepath.Join(t.TempDir(), "cr.auth.yaml"), compact))
 	require.NoError(t, err)
 
 	all := []auth.Action{auth.ActionPull, auth.ActionPush, auth.ActionTag}
@@ -355,7 +371,7 @@ func TestPolicyCompactRefuses(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := readPolicy(write(t, filepath.Join(t.TempDir(), "p.yaml"), c.file))
+			_, _, err := readPolicy(write(t, filepath.Join(t.TempDir(), "p.yaml"), c.file))
 			require.ErrorContains(t, err, c.want)
 		})
 	}
@@ -381,8 +397,11 @@ matches:
 	all := []auth.Action{auth.ActionPull, auth.ActionPush, auth.ActionTag, auth.ActionDelete}
 
 	// The file is not there yet: the policy stands, and nobody logs in by it.
-	p, err := readPolicy(path)
+	// `cr auth check` says so, as a warning.
+	p, warnings, err := readPolicy(path)
 	require.NoError(t, err)
+	require.Len(t, warnings, 1)
+	require.ErrorContains(t, warnings[0], "providers.breakglass.password: secret file "+pass)
 	_, err = p.Authenticate(ctx, "admin", "")
 	require.ErrorIs(t, err, auth.ErrUnauthenticated)
 
@@ -440,7 +459,7 @@ func TestPolicySecretProviderRefuses(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := readPolicy(write(t, filepath.Join(t.TempDir(), "p.yaml"), c.file))
+			_, _, err := readPolicy(write(t, filepath.Join(t.TempDir(), "p.yaml"), c.file))
 			require.ErrorContains(t, err, c.want)
 		})
 	}

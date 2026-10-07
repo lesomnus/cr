@@ -74,12 +74,19 @@ auth:
 ```
 
 **The file is the policy.** It is read again every `auth.refresh`, and when
-its content changed, what it says is in force; nothing restarts. A file that
-does not parse, does not check, or is gone keeps the policy in force, and the
-log says why every time it is read. Once the guard is on, nothing while the
-registry runs turns it off. The revision in force, the start of the file's
-SHA-256, is logged when it changes and reported as `cr.auth.policy.revision`,
-which is how replicas are seen to agree.
+its content changed and has read the same twice running, what it says is in
+force; nothing restarts. The second read is so that a file caught while it is
+being written is not taken for the policy: one cut short where a rule was says
+something else, and may say it validly. A file that does not parse, does not
+check, or is gone keeps the policy in force, and the log says why at every read
+from then on. Once the guard is on, nothing while the registry runs turns it
+off. The revision in force, the start of the file's SHA-256, is logged when it
+changes and reported as `cr.auth.policy.revision`, which is how replicas are
+seen to agree.
+
+The file is read the way `cr.yaml` is: a key nothing reads is refused, keys
+starting `x-` are left alone for anchors, and `${env:NAME}` is a variable of the
+process wherever it is written.
 
 | | |
 | --- | --- |

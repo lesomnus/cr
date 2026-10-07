@@ -2,20 +2,16 @@ package cli
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
-	"maps"
 	"os"
 	"path/filepath"
-	"slices"
 	"sync"
 
-	"github.com/goccy/go-yaml"
 	"github.com/lesomnus/otx/log"
+	"github.com/lesomnus/xli/cfg"
 
 	"github.com/lesomnus/cr/auth"
 	"github.com/lesomnus/cr/cmd"
@@ -74,15 +70,20 @@ func policySource(c *cmd.Config) (*policyFile, error) {
 	return nil, nil
 }
 
-// policyFile is [auth.Source] over a policy file. It is read whole every time
-// it is asked, and parsed only when its content changed. A file that is not
-// there, does not parse or does not check is an error, which keeps the policy
-// in force: a registry whose auth is on is never opened by a bad edit.
+// policyFile is [auth.Source] over a policy file, which cfg reads as a file
+// of its own ([cfg.File]): checked whenever it is asked, and new content is
+// taken up once it has read the same twice running, so that a file caught
+// while it is being written -- cut short where a rule was -- is not taken for
+// the policy. Content that does not load or does not check is an error, which
+// keeps the policy in force: a registry whose auth is on is never opened by a
+// bad edit.
 type policyFile struct {
 	path string
+	file *cfg.File[policyDoc]
 
-	mu    sync.Mutex
-	sum   [sha256.Size]byte
+	mu sync.Mutex
+	// rev is the revision of the content rules were made from.
+	rev   string
 	rules *auth.Rules
 
 	// oidcs are the providers built from the file, kept across reloads so
@@ -97,30 +98,36 @@ type oidcKey struct {
 }
 
 func newPolicyFile(path string) *policyFile {
-	return &policyFile{path: path, oidcs: map[oidcKey]*auth.OIDC{}}
+	return &policyFile{path: path, file: cfg.NewFile[policyDoc](path), oidcs: map[oidcKey]*auth.OIDC{}}
 }
 
 func (f *policyFile) Load(ctx context.Context) (auth.Rules, error) {
-	b, err := os.ReadFile(f.path)
-	if err != nil {
-		return auth.Rules{}, fmt.Errorf("auth.policy: %w", err)
-	}
-	sum := sha256.Sum256(b)
-
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.rules != nil && sum == f.sum {
+
+	var (
+		s   *cfg.Snapshot[policyDoc]
+		err error
+	)
+	if f.file.Current() == nil {
+		s, err = f.file.Load()
+	} else {
+		s, _, err = f.file.Reload()
+	}
+	if err != nil {
+		return auth.Rules{}, fmt.Errorf("auth.policy: %w", about(f.path, err))
+	}
+	if f.rules != nil && s.Revision == f.rev {
 		return *f.rules, nil
 	}
-	r, err := parsePolicy(b, f.oidcs)
-	if err == nil {
-		_, err = auth.NewPolicy(r)
-	}
+	// Checked as it was read; this is the same again, with the providers
+	// that are kept.
+	r, err := rulesOf((*cmd.PolicyFile)(s.Config), f.oidcs)
 	if err != nil {
 		return auth.Rules{}, fmt.Errorf("%s: %w", f.path, err)
 	}
-	f.sum, f.rules = sum, &r
-	log.From(ctx).InfoContext(ctx, "auth policy", slog.String("path", f.path), slog.String("revision", f.revision()))
+	f.rev, f.rules = s.Revision, &r
+	log.From(ctx).InfoContext(ctx, "auth policy", slog.String("path", f.path), slog.String("revision", f.rev))
 	return r, nil
 }
 
@@ -128,42 +135,61 @@ func (f *policyFile) Load(ctx context.Context) (auth.Rules, error) {
 func (f *policyFile) Revision() string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.revision()
-}
-
-func (f *policyFile) revision() string {
 	if f.rules == nil {
 		return ""
 	}
-	return hex.EncodeToString(f.sum[:6])
+	return f.rev
+}
+
+// policyDoc is a policy file as cfg reads it, checked as it is read: content
+// that does not make a policy is refused by the read itself, so it is never
+// the snapshot in force, and a reload keeps the one before.
+type policyDoc cmd.PolicyFile
+
+func (d *policyDoc) Validate() error {
+	r, err := rulesOf((*cmd.PolicyFile)(d), map[oidcKey]*auth.OIDC{})
+	if err != nil {
+		return err
+	}
+	_, err = auth.NewPolicy(r)
+	return err
+}
+
+// about is err naming the policy file at path. cfg names it for what it read,
+// at the line; what the policy's own check finds is about the file as a
+// whole, and cfg does not say which file that was.
+func about(path string, err error) error {
+	var fe *cfg.FieldError
+	if errors.As(err, &fe) && fe.Origin.Name == "" {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	return err
 }
 
 // readPolicy reads and checks the policy file at path, as `cr serve` would.
-func readPolicy(path string) (*auth.Policy, error) {
-	b, err := os.ReadFile(path)
+// What it cannot read yet is not an error and is in warnings: a password
+// whose file is not there, which keeps its provider from letting anybody in
+// until it can be read.
+func readPolicy(path string) (p *auth.Policy, warnings []error, err error) {
+	s, err := cfg.NewFile[policyDoc](path).Load()
 	if err != nil {
-		return nil, err
+		return nil, nil, about(path, err)
 	}
-	r, err := parsePolicy(b, map[oidcKey]*auth.OIDC{})
+	r, err := rulesOf((*cmd.PolicyFile)(s.Config), map[oidcKey]*auth.OIDC{})
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return nil, nil, fmt.Errorf("%s: %w", path, err)
 	}
-	p, err := auth.NewPolicy(r)
+	p, err = auth.NewPolicy(r)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return nil, nil, fmt.Errorf("%s: %w", path, err)
 	}
-	return p, nil
+	return p, s.Warnings, nil
 }
 
-// parsePolicy is a policy file as the auth package takes it. A field the file
-// has and nothing reads is an error: in a policy, a misspelt field is a rule
-// that silently is not there.
-func parsePolicy(b []byte, oidcs map[oidcKey]*auth.OIDC) (auth.Rules, error) {
-	var f cmd.PolicyFile
-	if err := yaml.UnmarshalWithOptions(b, &f, yaml.Strict()); err != nil {
-		return auth.Rules{}, err
-	}
-
+// rulesOf is a policy file as the auth package takes it. A field the file has
+// and nothing reads was refused as it was read: in a policy, a misspelt field
+// is a rule that silently is not there.
+func rulesOf(f *cmd.PolicyFile, oidcs map[oidcKey]*auth.OIDC) (auth.Rules, error) {
 	r := auth.Rules{
 		Permissions: map[string]auth.Permission{},
 		Matches:     map[string]auth.Match{},
@@ -276,29 +302,4 @@ func provider(name string, p cmd.ProviderConfig, oidcs map[oidcKey]*auth.OIDC) (
 		return auth.Provider{}, errors.New("no kind")
 	}
 	return auth.Provider{}, fmt.Errorf("kind %q: the kinds there are are oidc, mtls and secret", p.Kind)
-}
-
-// unreadableSecrets is the passwords of the policy file at path that cannot
-// be read here and now, by provider: a file that is not there, or is empty.
-// The file is taken to have checked.
-func unreadableSecrets(path string) []string {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-	var f cmd.PolicyFile
-	if err := yaml.UnmarshalWithOptions(b, &f, yaml.Strict()); err != nil {
-		return nil
-	}
-	var out []string
-	for _, name := range slices.Sorted(maps.Keys(f.Providers)) {
-		p := f.Providers[name]
-		if p.Kind != "secret" || p.Password.IsZero() {
-			continue
-		}
-		if _, err := p.Password.Value(); err != nil {
-			out = append(out, fmt.Sprintf("providers.%s.password: %v; nobody logs in by it until it can be read", name, err))
-		}
-	}
-	return out
 }
