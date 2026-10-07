@@ -11,7 +11,7 @@ import (
 // `${env:NAME}`, or `${file:/path}` -- the file's content, re-read when the
 // file changes, which is what lets a rotated credential be used without a
 // restart. See [cfg.SecretOf] for the rules a file is read by; they are the
-// ones `blob.SecretFile` keeps, which is where they came from.
+// ones cr kept in `blob` before cfg did, which is where they came from.
 //
 // `cr config` prints the reference, or `<redacted>` for a value written as it
 // is, and nothing prints what the file holds.

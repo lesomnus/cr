@@ -216,9 +216,9 @@ func proxyAuth(pc cmd.ProxyConfig) ([]blob.UpstreamOption, error) {
 	}
 }
 
-// s3Credentials is what an S3 store signs with: the file, re-read when it
-// changes, or the keys as they are written. The error names the field, for the
-// caller to put the store in front of.
+// s3Credentials is what an S3 store signs with: the set in `credentials`, as
+// it is when a request is signed, or the keys as they are written. The error
+// names the field, for the caller to put the store in front of.
 func s3Credentials(s cmd.S3StorageConfig) (flob.CredentialsProvider, error) {
 	for _, k := range []struct{ name, v string }{
 		{"access_key_id", s.AccessKeyId},
@@ -226,16 +226,29 @@ func s3Credentials(s cmd.S3StorageConfig) (flob.CredentialsProvider, error) {
 		{"session_token", s.SessionToken},
 	} {
 		switch {
-		case s.CredentialsFile != "" && k.v != "":
-			return nil, fmt.Errorf("%s: credentials_file is the whole set; set one or the other", k.name)
+		case !s.Credentials.IsZero() && k.v != "":
+			return nil, fmt.Errorf("%s: credentials is the whole set; set one or the other", k.name)
 		case strings.HasPrefix(k.v, "${file:"):
 			// Three files would be read apart, and a rotation caught between
-			// two of them signs with a key and another key's secret.
-			return nil, fmt.Errorf("%s: ${file:...} is not read here; put the set in credentials_file", k.name)
+			// two of them signs with a key and another key's secret. In the
+			// file this is refused as it is read; a variable is taken as
+			// it is, so this is where one is told.
+			return nil, fmt.Errorf("%s: ${file:...} is not read here; put the set in credentials", k.name)
 		}
 	}
-	if s.CredentialsFile != "" {
-		return blob.S3CredentialsFile(s.CredentialsFile), nil
+	if set := s.Credentials; !set.IsZero() {
+		return flob.CredentialsFunc(func(context.Context) (flob.Credentials, error) {
+			v, err := set.Value()
+			if err != nil {
+				return flob.Credentials{}, err
+			}
+			return flob.Credentials{
+				AccessKeyID:     v.AccessKeyId,
+				SecretAccessKey: v.SecretAccessKey,
+				SessionToken:    v.SessionToken,
+				Expires:         v.Expires,
+			}, nil
+		}), nil
 	}
 	return flob.Credentials{
 		AccessKeyID:     s.AccessKeyId,
