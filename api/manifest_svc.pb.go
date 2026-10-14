@@ -774,6 +774,7 @@ type ManifestListRequest struct {
 	xxx_hidden_Filters *[]*ManifestFilter     `protobuf:"bytes,1,rep,name=filters"`
 	xxx_hidden_Size    int32                  `protobuf:"varint,2,opt,name=size"`
 	xxx_hidden_After   string                 `protobuf:"bytes,3,opt,name=after"`
+	xxx_hidden_Reverse bool                   `protobuf:"varint,4,opt,name=reverse"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -826,6 +827,13 @@ func (x *ManifestListRequest) GetAfter() string {
 	return ""
 }
 
+func (x *ManifestListRequest) GetReverse() bool {
+	if x != nil {
+		return x.xxx_hidden_Reverse
+	}
+	return false
+}
+
 func (x *ManifestListRequest) SetFilters(v []*ManifestFilter) {
 	x.xxx_hidden_Filters = &v
 }
@@ -836,6 +844,10 @@ func (x *ManifestListRequest) SetSize(v int32) {
 
 func (x *ManifestListRequest) SetAfter(v string) {
 	x.xxx_hidden_After = v
+}
+
+func (x *ManifestListRequest) SetReverse(v bool) {
+	x.xxx_hidden_Reverse = v
 }
 
 type ManifestListRequest_builder struct {
@@ -853,6 +865,11 @@ type ManifestListRequest_builder struct {
 	// ahead of the page does not shift it and a caller reading through never sees
 	// one twice or misses one.
 	After string
+	// Read the order the other way round, every column of it at once -- newest
+	// first where it is oldest first -- which the index the order walks walks
+	// from the other end. A cursor is of the way it was read, so the next page
+	// carries on that way, and one of the other way is refused.
+	Reverse bool
 }
 
 func (b0 ManifestListRequest_builder) Build() *ManifestListRequest {
@@ -862,6 +879,7 @@ func (b0 ManifestListRequest_builder) Build() *ManifestListRequest {
 	x.xxx_hidden_Filters = &b.Filters
 	x.xxx_hidden_Size = b.Size
 	x.xxx_hidden_After = b.After
+	x.xxx_hidden_Reverse = b.Reverse
 	return m0
 }
 
@@ -1151,7 +1169,6 @@ type ManifestWatchRequest struct {
 	state                   protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_Filters      *[]*ManifestFilter     `protobuf:"bytes,1,rep,name=filters"`
 	xxx_hidden_SkipSnapshot bool                   `protobuf:"varint,2,opt,name=skip_snapshot,json=skipSnapshot"`
-	xxx_hidden_CreatedOnly  bool                   `protobuf:"varint,3,opt,name=created_only,json=createdOnly"`
 	unknownFields           protoimpl.UnknownFields
 	sizeCache               protoimpl.SizeCache
 }
@@ -1197,23 +1214,12 @@ func (x *ManifestWatchRequest) GetSkipSnapshot() bool {
 	return false
 }
 
-func (x *ManifestWatchRequest) GetCreatedOnly() bool {
-	if x != nil {
-		return x.xxx_hidden_CreatedOnly
-	}
-	return false
-}
-
 func (x *ManifestWatchRequest) SetFilters(v []*ManifestFilter) {
 	x.xxx_hidden_Filters = &v
 }
 
 func (x *ManifestWatchRequest) SetSkipSnapshot(v bool) {
 	x.xxx_hidden_SkipSnapshot = v
-}
-
-func (x *ManifestWatchRequest) SetCreatedOnly(v bool) {
-	x.xxx_hidden_CreatedOnly = v
 }
 
 type ManifestWatchRequest_builder struct {
@@ -1233,17 +1239,6 @@ type ManifestWatchRequest_builder struct {
 	// know the current state and did not ask for it holds something wrong until
 	// the next write happens to correct it.
 	SkipSnapshot bool
-	// Send only newly created manifests, after their transaction commits.
-	// Every filter must name a nonempty artifact_type; its other fields narrow
-	// that type the same way they do in List. Filters are alternatives.
-	//
-	// This mode sends no initial snapshot, regardless of skip_snapshot, and no
-	// updates or removals. Re-pushing a manifest already in the same repository
-	// is not a creation; copying it into a new repository is.
-	//
-	// Notifications use action "created". Delivery follows watch.broker and
-	// watch.outbox; use List to reconcile after a disconnect.
-	CreatedOnly bool
 }
 
 func (b0 ManifestWatchRequest_builder) Build() *ManifestWatchRequest {
@@ -1252,7 +1247,6 @@ func (b0 ManifestWatchRequest_builder) Build() *ManifestWatchRequest {
 	_, _ = b, x
 	x.xxx_hidden_Filters = &b.Filters
 	x.xxx_hidden_SkipSnapshot = b.SkipSnapshot
-	x.xxx_hidden_CreatedOnly = b.CreatedOnly
 	return m0
 }
 
@@ -1479,11 +1473,12 @@ const file_app_manifest_svc_g_proto_rawDesc = "" +
 	"\vdate_pulled\x18\x12 \x01(\bR\n" +
 	"datePulled\x12!\n" +
 	"\fdate_updated\x18\r \x01(\bR\vdateUpdated\x12!\n" +
-	"\fdate_created\x18\x0f \x01(\bR\vdateCreated\"|\n" +
+	"\fdate_created\x18\x0f \x01(\bR\vdateCreated\"\x9d\x01\n" +
 	"\x13ManifestListRequest\x12-\n" +
 	"\afilters\x18\x01 \x03(\v2\x13.app.ManifestFilterR\afilters\x12\x19\n" +
 	"\x04size\x18\x02 \x01(\x05B\x05\xaa\x01\x02\b\x02R\x04size\x12\x1b\n" +
-	"\x05after\x18\x03 \x01(\tB\x05\xaa\x01\x02\b\x02R\x05after\"V\n" +
+	"\x05after\x18\x03 \x01(\tB\x05\xaa\x01\x02\b\x02R\x05after\x12\x1f\n" +
+	"\areverse\x18\x04 \x01(\bB\x05\xaa\x01\x02\b\x02R\areverse\"V\n" +
 	"\x14ManifestListResponse\x12#\n" +
 	"\x05items\x18\x01 \x03(\v2\r.app.ManifestR\x05items\x12\x19\n" +
 	"\x04next\x18\x02 \x01(\tB\x05\xaa\x01\x02\b\x02R\x04next\"\x9f\x01\n" +
@@ -1492,11 +1487,10 @@ const file_app_manifest_svc_g_proto_rawDesc = "" +
 	"\x04repo\x18\x02 \x01(\tR\x04repo\x12\x16\n" +
 	"\x06digest\x18\x03 \x01(\tR\x06digest\x12\x18\n" +
 	"\asubject\x18\x04 \x01(\tR\asubject\x12#\n" +
-	"\rartifact_type\x18\x05 \x01(\tR\fartifactType\"\x9b\x01\n" +
+	"\rartifact_type\x18\x05 \x01(\tR\fartifactType\"q\n" +
 	"\x14ManifestWatchRequest\x12-\n" +
 	"\afilters\x18\x01 \x03(\v2\x13.app.ManifestFilterR\afilters\x12*\n" +
-	"\rskip_snapshot\x18\x02 \x01(\bB\x05\xaa\x01\x02\b\x02R\fskipSnapshot\x12(\n" +
-	"\fcreated_only\x18\x03 \x01(\bB\x05\xaa\x01\x02\b\x02R\vcreatedOnly\"E\n" +
+	"\rskip_snapshot\x18\x02 \x01(\bB\x05\xaa\x01\x02\b\x02R\fskipSnapshot\"E\n" +
 	"\x15ManifestWatchResponse\x12,\n" +
 	"\x05items\x18\x01 \x03(\v2\x16.app.ManifestWatchItemR\x05items\"g\n" +
 	"\x11ManifestWatchItem\x12\x0e\n" +

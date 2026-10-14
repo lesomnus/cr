@@ -655,32 +655,65 @@ finds cosign bundles in creation order, a page at a time:
 Pass a response's `next` as `after` to read the next page. `next` is empty on
 the final page; it is a page cursor, not a persistent polling checkpoint.
 
-`ManifestService.Watch` also supports that filter with `created_only` enabled:
+Subscribe to `/payday.ResourceService/Watch` with a CEL expression for new
+manifests of that type:
 
 ```json
-{"filters":[{"artifactType":"application/vnd.dev.sigstore.bundle.v0.3+json"}],"createdOnly":true}
+{"filter":"has(event.value) && type(event.value) == app.Manifest && event.kind == payday.CHANGE_KIND_CREATED && event.value.artifact_type == \"application/vnd.dev.sigstore.bundle.v0.3+json\""}
 ```
 
-Every filter in this mode must name a nonempty artifact type. Add `repo`,
-`digest`, or `subject` in the same filter to narrow it further. The stream
-subscribes before returning its response headers and sends no initial
-snapshot. Each item carries the manifest row and `action: "created"`, only
-after the transaction that inserted it has committed. Pushing the same digest
-again in the same repository sends nothing; copying it into another repository
-creates a new row there and sends a notification. Pull bookkeeping, updates,
-and removals send nothing in this mode.
+CEL can combine fields with `&&` and alternatives with `||`. Add
+`event.value.repo == "stage"` or a digest/subject condition to narrow the
+subscription. An empty filter accepts all events the caller can read, across
+resource types. Guard dynamic payload fields with presence and type checks as
+above. The existing `ManifestService.Watch` keeps its ref-based current-state
+behavior.
+
+The subscription is installed before response headers are sent and has no
+initial snapshot. Each `WatchEvent` carries the manifest in `value` (a protobuf
+`Any` whose type is `app.Manifest`) and `kind: "CHANGE_KIND_CREATED"`. Its `id`
+identifies the event; the manifest's ID is inside `value`. `dateCreated` is the
+time the event was recorded inside the write transaction, not its commit time
+or the manifest's creation time. Registry and CLI index insertions name
+`/cr.index.Manifest/Put` in `method` and `callMethod`; this identifies a direct
+index operation, not a callable RPC.
+
+Events are published only after the inserting transaction commits. Re-pushing
+the same digest into the same repository sends nothing; copying it into a new
+repository creates a new row and sends a notification. The index publishes
+manifest creations only; pull bookkeeping and registry removals do not emit
+resource events. Management writes to other resources use payday's generated
+recorder. Updates include their new value; previous update values are disabled.
 
 Delivery uses `watch.broker`: `memory` within one process, or `postgres`
-across replicas. With `watch.outbox: true`, insertions are queued in their
-transaction and published by the outbox drainer; notifications can arrive
-more than once. A live stream does not replay missed notifications. To
-reconcile on startup or after a disconnect, open the stream, await its response
-headers, then List the type while keeping subsequent notifications. Handle
-duplicates by row ID.
+across replicas. With `watch.outbox: true`, the exact event ID, timestamp and
+payload are saved in the inserting transaction and published by the drainer.
+Later edits or deletion cannot change that creation payload. Failed publication
+is retried with the same event ID. Delivery may repeat and does not provide a
+global event order or replay for disconnected subscribers.
 
-Manifests are global management entities. Access to their methods allows
-reads across repositories; the registry's per-repository permissions do not
-narrow these reads.
+To reconcile on startup or after a disconnect, open the stream, await its
+response headers, then List the type while retaining subsequent events. Merge
+List results and creation events by manifest ID; deduplicate event retries by
+event ID. A resource stream is not a durable subscription or polling checkpoint.
+
+Credentials need `/payday.ResourceService/Watch` and `/app.ManifestService/Get`
+for manifest notifications, plus `/app.ManifestService/List` for reconciliation.
+The current Get policy and read scope are applied to each recorded image before
+CEL evaluation. Manifests are global management entities: allowing their reads
+permits access across repositories; registry per-repository permissions do not
+narrow management reads.
+
+Existing databases need the new manifest artifact-type index, nullable
+`Outbox.event` column, and schema changes included in the payday upgrade
+(the `Archived` table and audit index). Run the normal schema migration before
+deploying, and
+upgrade all replicas and outbox drainers before relying on resource events.
+Legacy outbox entries continue to serve key-based watches but carry no resource
+payload for this stream.
+
+`/payday.ResourceService/Batch` provides the existing transactional batch API.
+`/payday.BatchService/Do` remains available for existing clients and is deprecated.
 
 ## The management page
 

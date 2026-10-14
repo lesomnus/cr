@@ -6,6 +6,9 @@ import (
 	"github.com/protobuf-orm/ent/dialect/sql"
 )
 
+// Archived is the predicate function for archived builders.
+type Archived func(*sql.Selector)
+
 // Audit is the predicate function for audit builders.
 type Audit func(*sql.Selector)
 

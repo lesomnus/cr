@@ -72,6 +72,12 @@ func (_c *OutboxCreate) SetNillableDateCreated(v *time.Time) *OutboxCreate {
 	return _c
 }
 
+// SetEvent sets the "event" field.
+func (_c *OutboxCreate) SetEvent(v []byte) *OutboxCreate {
+	_c.mutation.SetEvent(v)
+	return _c
+}
+
 // SetId sets the "id" field.
 func (_c *OutboxCreate) SetId(v uuid.UUID) *OutboxCreate {
 	_c.mutation.SetId(v)
@@ -196,6 +202,10 @@ func (_c *OutboxCreate) createSpec() (*Outbox, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.DateCreated(); ok {
 		_spec.SetField(outbox.FieldDateCreated, field.TypeTime, value)
 		_node.DateCreated = value
+	}
+	if value, ok := _c.mutation.Event(); ok {
+		_spec.SetField(outbox.FieldEvent, field.TypeBytes, value)
+		_node.Event = &value
 	}
 	return _node, _spec
 }

@@ -31,7 +31,10 @@ receives none of them. The registry has credentials and a per-repository
 authorization of its own, so `registry/` talks to `index.Index`, and `entindex`
 uses the generated ent client directly. The management plane goes through the
 whole stack, so a change to a tag rule is audited and watched like any payday
-row.
+row. The index explicitly captures manifest insertions for
+`payday.ResourceService.Watch`: it reads the persisted image in the write
+transaction and publishes it after commit, or saves the same envelope in the
+transactional outbox. Rollbacks discard both the row and its notification.
 
 **The registry's tables are payday entities too** -- `Repository`, `Manifest`,
 `ManifestBlob`, `Tag` -- global, erased for good, and read-only over the API,

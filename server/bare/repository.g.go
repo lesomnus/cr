@@ -12,12 +12,15 @@ import (
 	repository "github.com/lesomnus/cr/internal/ent/repository"
 	patchpb "github.com/lesomnus/protobuf-patch/patchpb"
 	ent1 "github.com/protobuf-orm/ent"
+	dialect "github.com/protobuf-orm/ent/dialect"
+	sql "github.com/protobuf-orm/ent/dialect/sql"
 	sqlgraph "github.com/protobuf-orm/ent/dialect/sql/sqlgraph"
 	ormpatch "github.com/protobuf-orm/protobuf-orm/ormpatch"
 	entpatch "github.com/protobuf-orm/protoc-gen-orm-ent/runtime/entpatch"
 	entuuid "github.com/protobuf-orm/protoc-gen-orm-ent/runtime/entuuid"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	proto "google.golang.org/protobuf/proto"
 	uuid "uuid"
 )
 
@@ -76,6 +79,22 @@ func (s RepositoryServiceServer) narrow(ctx context.Context, p predicate.Reposit
 	return RepositoryNarrow(ctx, s.Scope, p)
 }
 
+func (s RepositoryServiceServer) snapshot(ctx context.Context, p predicate.Repository, lock bool) (*ent.Repository, error) {
+	q := s.Db.Repository.Query().Where(p)
+	q.Modify(func(q *sql.Selector) {
+		if lock && s.Db.Dialect() != dialect.SQLite {
+			q.ForUpdate()
+		}
+	})
+	return q.Only(ctx)
+}
+func (s RepositoryServiceServer) image(v *api.Repository) *api.Repository {
+	if v == nil {
+		return nil
+	}
+	out := proto.Clone(v).(*api.Repository)
+	return out
+}
 func (s RepositoryServiceServer) Get(ctx context.Context, req *api.RepositoryGetRequest) (*api.Repository, error) {
 	p, err := RepositoryPick(req.GetRef())
 	if err != nil {
@@ -239,6 +258,18 @@ func (s RepositoryServiceServer) apply(ctx context.Context, ref *api.RepositoryR
 		return nil, err
 	}
 
+	var previous *api.Repository
+	images := snapshotOptions(s.Rec, by)
+	if images.Previous && mod != nil {
+		u, err := st.snapshot(ctx, p, true)
+		if err != nil {
+			if ent.IsNotFound(err) {
+				return nil, status.Error(codes.NotFound, "resource not found")
+			}
+			return nil, err
+		}
+		previous = s.image(u.Proto())
+	}
 	if mod == nil {
 		q := st.Db.Repository.Query().Where(p)
 		if pred != nil {
@@ -287,20 +318,25 @@ func (s RepositoryServiceServer) apply(ctx context.Context, ref *api.RepositoryR
 		}
 	}
 
+	out, err := st.Get(ctx, at.Pick())
+	if err != nil {
+		return nil, err
+	}
 	if mod != nil {
+		var value *api.Repository
+		if images.Value {
+			value = s.image(out)
+		}
 		if err := record(ctx, s.Rec, st.Db, Change{
-			By:    by,
-			Key:   k,
-			Patch: doc,
+			By:       by,
+			Key:      k,
+			Patch:    doc,
+			Previous: previous, Value: value,
 		}); err != nil {
 			return nil, err
 		}
 	}
 
-	out, err := st.Get(ctx, at.Pick())
-	if err != nil {
-		return nil, err
-	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}

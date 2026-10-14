@@ -29,6 +29,7 @@ type Server interface {
 	GcRun() GcRunServiceServer
 	Manifest() ManifestServiceServer
 	ManifestBlob() ManifestBlobServiceServer
+	Archived() ArchivedServiceServer
 	Audit() AuditServiceServer
 	Tenant() TenantServiceServer
 	Holder() HolderServiceServer
@@ -47,6 +48,7 @@ func RegisterServer(g grpc.ServiceRegistrar, s Server) {
 	RegisterGcRunServiceServer(g, s.GcRun())
 	RegisterManifestServiceServer(g, s.Manifest())
 	RegisterManifestBlobServiceServer(g, s.ManifestBlob())
+	RegisterArchivedServiceServer(g, s.Archived())
 	RegisterAuditServiceServer(g, s.Audit())
 	RegisterTenantServiceServer(g, s.Tenant())
 	RegisterHolderServiceServer(g, s.Holder())
@@ -61,6 +63,7 @@ type UnimplementedServer struct {
 	GcRunServer             GcRunServiceServer
 	ManifestServer          ManifestServiceServer
 	ManifestBlobServer      ManifestBlobServiceServer
+	ArchivedServer          ArchivedServiceServer
 	AuditServer             AuditServiceServer
 	TenantServer            TenantServiceServer
 	HolderServer            HolderServiceServer
@@ -77,6 +80,9 @@ func (UnimplementedServer) Manifest() ManifestServiceServer {
 }
 func (UnimplementedServer) ManifestBlob() ManifestBlobServiceServer {
 	return UnimplementedManifestBlobServiceServer{}
+}
+func (UnimplementedServer) Archived() ArchivedServiceServer {
+	return UnimplementedArchivedServiceServer{}
 }
 func (UnimplementedServer) Audit() AuditServiceServer   { return UnimplementedAuditServiceServer{} }
 func (UnimplementedServer) Tenant() TenantServiceServer { return UnimplementedTenantServiceServer{} }
@@ -95,6 +101,7 @@ type StaticServer struct {
 	GcRunServer             GcRunServiceServer
 	ManifestServer          ManifestServiceServer
 	ManifestBlobServer      ManifestBlobServiceServer
+	ArchivedServer          ArchivedServiceServer
 	AuditServer             AuditServiceServer
 	TenantServer            TenantServiceServer
 	HolderServer            HolderServiceServer
@@ -108,6 +115,7 @@ type StaticServer struct {
 func (s StaticServer) GcRun() GcRunServiceServer               { return s.GcRunServer }
 func (s StaticServer) Manifest() ManifestServiceServer         { return s.ManifestServer }
 func (s StaticServer) ManifestBlob() ManifestBlobServiceServer { return s.ManifestBlobServer }
+func (s StaticServer) Archived() ArchivedServiceServer         { return s.ArchivedServer }
 func (s StaticServer) Audit() AuditServiceServer               { return s.AuditServer }
 func (s StaticServer) Tenant() TenantServiceServer             { return s.TenantServer }
 func (s StaticServer) Holder() HolderServiceServer             { return s.HolderServer }
@@ -123,6 +131,7 @@ type Client interface {
 	GcRun() GcRunServiceClient
 	Manifest() ManifestServiceClient
 	ManifestBlob() ManifestBlobServiceClient
+	Archived() ArchivedServiceClient
 	Audit() AuditServiceClient
 	Tenant() TenantServiceClient
 	Holder() HolderServiceClient
@@ -138,6 +147,7 @@ func NewClient(c *grpc.ClientConn) Client {
 		_GcRun:             NewGcRunServiceClient(c),
 		_Manifest:          NewManifestServiceClient(c),
 		_ManifestBlob:      NewManifestBlobServiceClient(c),
+		_Archived:          NewArchivedServiceClient(c),
 		_Audit:             NewAuditServiceClient(c),
 		_Tenant:            NewTenantServiceClient(c),
 		_Holder:            NewHolderServiceClient(c),
@@ -153,6 +163,7 @@ type client struct {
 	_GcRun             GcRunServiceClient
 	_Manifest          ManifestServiceClient
 	_ManifestBlob      ManifestBlobServiceClient
+	_Archived          ArchivedServiceClient
 	_Audit             AuditServiceClient
 	_Tenant            TenantServiceClient
 	_Holder            HolderServiceClient
@@ -166,6 +177,7 @@ type client struct {
 func (c *client) GcRun() GcRunServiceClient                         { return c._GcRun }
 func (c *client) Manifest() ManifestServiceClient                   { return c._Manifest }
 func (c *client) ManifestBlob() ManifestBlobServiceClient           { return c._ManifestBlob }
+func (c *client) Archived() ArchivedServiceClient                   { return c._Archived }
 func (c *client) Audit() AuditServiceClient                         { return c._Audit }
 func (c *client) Tenant() TenantServiceClient                       { return c._Tenant }
 func (c *client) Holder() HolderServiceClient                       { return c._Holder }

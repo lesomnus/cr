@@ -18,6 +18,7 @@ import (
 	"github.com/lesomnus/cr/server/pd"
 	"github.com/lesomnus/payday/config"
 	"github.com/lesomnus/payday/pdid"
+	"github.com/lesomnus/payday/pdpb"
 	"github.com/lesomnus/payday/spin"
 	"github.com/lesomnus/payday/watch"
 	"github.com/opencontainers/go-digest"
@@ -79,6 +80,10 @@ func TestPostgresManifestCreationWatch(t *testing.T) {
 			t.Cleanup(func() { cancel(); <-done })
 			g := grpc.NewServer()
 			api.RegisterManifestServiceServer(g, b.Ungated.Manifest())
+			guard := c.Server.Guard(nil)
+			resources, err := pd.Resources(b.Ungated, b.Drv, guard, b.Watch, pd.ResourceProjector(b.Ent, nil, guard))
+			require.NoError(t, err)
+			pdpb.RegisterResourceServiceServer(g, resources)
 			l := bufconn.Listen(1 << 20)
 			go g.Serve(l)
 			t.Cleanup(func() { g.Stop(); l.Close() })
@@ -93,7 +98,7 @@ func TestPostgresManifestCreationWatch(t *testing.T) {
 			streamCtx, streamCancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer streamCancel()
 			client := api.NewManifestServiceClient(conn)
-			stream, err := client.Watch(streamCtx, api.ManifestWatchRequest_builder{Filters: []*api.ManifestFilter{f}, CreatedOnly: true}.Build())
+			stream, err := pdpb.NewResourceServiceClient(conn).Watch(streamCtx, pdpb.WatchRequest_builder{Filter: `has(event.value) && type(event.value) == app.Manifest && event.kind == payday.CHANGE_KIND_CREATED && event.value.artifact_type == "` + kind + `"`}.Build())
 			require.NoError(t, err)
 			_, err = stream.Header()
 			require.NoError(t, err)
@@ -115,18 +120,20 @@ func TestPostgresManifestCreationWatch(t *testing.T) {
 			d := push("stage", kind)
 			first, err := stream.Recv()
 			require.NoError(t, err)
-			require.Len(t, first.GetItems(), 1)
-			require.Equal(t, "stage", first.GetItems()[0].GetValue().GetRepo())
-			require.Equal(t, api.ManifestCreatedAction, first.GetItems()[0].GetAction())
+			firstValue := &api.Manifest{}
+			require.NoError(t, first.GetValue().UnmarshalTo(firstValue))
+			require.Equal(t, "stage", firstValue.GetRepo())
+			require.Equal(t, pdpb.ChangeKind_CHANGE_KIND_CREATED, first.GetKind())
 			push("stage", kind)
 			push("stage", "application/sbom")
 			push("prod", kind)
 			second, err := stream.Recv()
 			require.NoError(t, err)
-			require.Len(t, second.GetItems(), 1)
-			require.Equal(t, "prod", second.GetItems()[0].GetValue().GetRepo())
-			require.Equal(t, d.String(), second.GetItems()[0].GetValue().GetDigest())
-			require.NotEqual(t, first.GetItems()[0].GetId(), second.GetItems()[0].GetId())
+			secondValue := &api.Manifest{}
+			require.NoError(t, second.GetValue().UnmarshalTo(secondValue))
+			require.Equal(t, "prod", secondValue.GetRepo())
+			require.Equal(t, d.String(), secondValue.GetDigest())
+			require.NotEqual(t, firstValue.GetId(), secondValue.GetId())
 			res, err := client.List(t.Context(), api.ManifestListRequest_builder{Filters: []*api.ManifestFilter{f}}.Build())
 			require.NoError(t, err)
 			require.Len(t, res.GetItems(), 2)

@@ -29,6 +29,9 @@ func (Outbox) Fields() []ent.Field {
 		field.Time("date_created").
 			Immutable().
 			Optional(),
+		field.Bytes("event").
+			Nillable().
+			Optional(),
 	}
 }
 

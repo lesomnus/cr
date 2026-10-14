@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file app/manifest_svc.g.proto.
  */
 export const file_app_manifest_svc_g: GenFile = /*@__PURE__*/
-  fileDesc("ChhhcHAvbWFuaWZlc3Rfc3ZjLmcucHJvdG8SA2FwcCJYChJNYW5pZmVzdEdldFJlcXVlc3QSHQoDcmVmGAEgASgLMhAuYXBwLk1hbmlmZXN0UmVmEiMKBnNlbGVjdBgCIAEoCzITLmFwcC5NYW5pZmVzdFNlbGVjdCJTCgtNYW5pZmVzdFJlZhIMCgJpZBgBIAEoDEgAEi8KCWJ5X2RpZ2VzdBgIIAEoCzIaLmFwcC5NYW5pZmVzdFJlZkJ5QnlEaWdlc3RIAEIFCgNrZXkiNQoVTWFuaWZlc3RSZWZCeUJ5RGlnZXN0EgwKBHJlcG8YCCABKAkSDgoGZGlnZXN0GAkgASgJItsBCg5NYW5pZmVzdFNlbGVjdBILCgNhbGwYASABKAgSDAoEcmVwbxgIIAEoCBIOCgZkaWdlc3QYCSABKAgSEgoKbWVkaWFfdHlwZRgKIAEoCBIVCg1hcnRpZmFjdF90eXBlGAsgASgIEg8KB3N1YmplY3QYDCABKAgSDAoEc2l6ZRgQIAEoCBITCgthbm5vdGF0aW9ucxgRIAEoCBITCgtkYXRlX3B1bGxlZBgSIAEoCBIUCgxkYXRlX3VwZGF0ZWQYDSABKAgSFAoMZGF0ZV9jcmVhdGVkGA8gASgIImYKE01hbmlmZXN0TGlzdFJlcXVlc3QSJAoHZmlsdGVycxgBIAMoCzITLmFwcC5NYW5pZmVzdEZpbHRlchITCgRzaXplGAIgASgFQgWqAQIIAhIUCgVhZnRlchgDIAEoCUIFqgECCAIiSQoUTWFuaWZlc3RMaXN0UmVzcG9uc2USHAoFaXRlbXMYASADKAsyDS5hcHAuTWFuaWZlc3QSEwoEbmV4dBgCIAEoCUIFqgECCAIidQoOTWFuaWZlc3RGaWx0ZXISHQoDcmVmGAEgASgLMhAuYXBwLk1hbmlmZXN0UmVmEgwKBHJlcG8YAiABKAkSDgoGZGlnZXN0GAMgASgJEg8KB3N1YmplY3QYBCABKAkSFQoNYXJ0aWZhY3RfdHlwZRgFIAEoCSJ3ChRNYW5pZmVzdFdhdGNoUmVxdWVzdBIkCgdmaWx0ZXJzGAEgAygLMhMuYXBwLk1hbmlmZXN0RmlsdGVyEhwKDXNraXBfc25hcHNob3QYAiABKAhCBaoBAggCEhsKDGNyZWF0ZWRfb25seRgDIAEoCEIFqgECCAIiPgoVTWFuaWZlc3RXYXRjaFJlc3BvbnNlEiUKBWl0ZW1zGAEgAygLMhYuYXBwLk1hbmlmZXN0V2F0Y2hJdGVtIlQKEU1hbmlmZXN0V2F0Y2hJdGVtEgoKAmlkGAEgASgMEhwKBXZhbHVlGAIgASgLMg0uYXBwLk1hbmlmZXN0EhUKBmFjdGlvbhgDIAEoCUIFqgECCAIyvwEKD01hbmlmZXN0U2VydmljZRItCgNHZXQSFy5hcHAuTWFuaWZlc3RHZXRSZXF1ZXN0Gg0uYXBwLk1hbmlmZXN0EjsKBExpc3QSGC5hcHAuTWFuaWZlc3RMaXN0UmVxdWVzdBoZLmFwcC5NYW5pZmVzdExpc3RSZXNwb25zZRJACgVXYXRjaBIZLmFwcC5NYW5pZmVzdFdhdGNoUmVxdWVzdBoaLmFwcC5NYW5pZmVzdFdhdGNoUmVzcG9uc2UwAUIcWhpnaXRodWIuY29tL2xlc29tbnVzL2NyL2FwaWIIZWRpdGlvbnNw6Ac", [file_app_manifest]);
+  fileDesc("ChhhcHAvbWFuaWZlc3Rfc3ZjLmcucHJvdG8SA2FwcCJYChJNYW5pZmVzdEdldFJlcXVlc3QSHQoDcmVmGAEgASgLMhAuYXBwLk1hbmlmZXN0UmVmEiMKBnNlbGVjdBgCIAEoCzITLmFwcC5NYW5pZmVzdFNlbGVjdCJTCgtNYW5pZmVzdFJlZhIMCgJpZBgBIAEoDEgAEi8KCWJ5X2RpZ2VzdBgIIAEoCzIaLmFwcC5NYW5pZmVzdFJlZkJ5QnlEaWdlc3RIAEIFCgNrZXkiNQoVTWFuaWZlc3RSZWZCeUJ5RGlnZXN0EgwKBHJlcG8YCCABKAkSDgoGZGlnZXN0GAkgASgJItsBCg5NYW5pZmVzdFNlbGVjdBILCgNhbGwYASABKAgSDAoEcmVwbxgIIAEoCBIOCgZkaWdlc3QYCSABKAgSEgoKbWVkaWFfdHlwZRgKIAEoCBIVCg1hcnRpZmFjdF90eXBlGAsgASgIEg8KB3N1YmplY3QYDCABKAgSDAoEc2l6ZRgQIAEoCBITCgthbm5vdGF0aW9ucxgRIAEoCBITCgtkYXRlX3B1bGxlZBgSIAEoCBIUCgxkYXRlX3VwZGF0ZWQYDSABKAgSFAoMZGF0ZV9jcmVhdGVkGA8gASgIIn4KE01hbmlmZXN0TGlzdFJlcXVlc3QSJAoHZmlsdGVycxgBIAMoCzITLmFwcC5NYW5pZmVzdEZpbHRlchITCgRzaXplGAIgASgFQgWqAQIIAhIUCgVhZnRlchgDIAEoCUIFqgECCAISFgoHcmV2ZXJzZRgEIAEoCEIFqgECCAIiSQoUTWFuaWZlc3RMaXN0UmVzcG9uc2USHAoFaXRlbXMYASADKAsyDS5hcHAuTWFuaWZlc3QSEwoEbmV4dBgCIAEoCUIFqgECCAIidQoOTWFuaWZlc3RGaWx0ZXISHQoDcmVmGAEgASgLMhAuYXBwLk1hbmlmZXN0UmVmEgwKBHJlcG8YAiABKAkSDgoGZGlnZXN0GAMgASgJEg8KB3N1YmplY3QYBCABKAkSFQoNYXJ0aWZhY3RfdHlwZRgFIAEoCSJaChRNYW5pZmVzdFdhdGNoUmVxdWVzdBIkCgdmaWx0ZXJzGAEgAygLMhMuYXBwLk1hbmlmZXN0RmlsdGVyEhwKDXNraXBfc25hcHNob3QYAiABKAhCBaoBAggCIj4KFU1hbmlmZXN0V2F0Y2hSZXNwb25zZRIlCgVpdGVtcxgBIAMoCzIWLmFwcC5NYW5pZmVzdFdhdGNoSXRlbSJUChFNYW5pZmVzdFdhdGNoSXRlbRIKCgJpZBgBIAEoDBIcCgV2YWx1ZRgCIAEoCzINLmFwcC5NYW5pZmVzdBIVCgZhY3Rpb24YAyABKAlCBaoBAggCMr8BCg9NYW5pZmVzdFNlcnZpY2USLQoDR2V0EhcuYXBwLk1hbmlmZXN0R2V0UmVxdWVzdBoNLmFwcC5NYW5pZmVzdBI7CgRMaXN0EhguYXBwLk1hbmlmZXN0TGlzdFJlcXVlc3QaGS5hcHAuTWFuaWZlc3RMaXN0UmVzcG9uc2USQAoFV2F0Y2gSGS5hcHAuTWFuaWZlc3RXYXRjaFJlcXVlc3QaGi5hcHAuTWFuaWZlc3RXYXRjaFJlc3BvbnNlMAFCHFoaZ2l0aHViLmNvbS9sZXNvbW51cy9jci9hcGliCGVkaXRpb25zcOgH", [file_app_manifest]);
 
 /**
  * @generated from message app.ManifestGetRequest
@@ -184,6 +184,16 @@ export type ManifestListRequest = Message<"app.ManifestListRequest"> & {
    * @generated from field: string after = 3 [features.field_presence = IMPLICIT];
    */
   after: string;
+
+  /**
+   * Read the order the other way round, every column of it at once -- newest
+   * first where it is oldest first -- which the index the order walks walks
+   * from the other end. A cursor is of the way it was read, so the next page
+   * carries on that way, and one of the other way is refused.
+   *
+   * @generated from field: bool reverse = 4 [features.field_presence = IMPLICIT];
+   */
+  reverse: boolean;
 };
 
 /**
@@ -287,22 +297,6 @@ export type ManifestWatchRequest = Message<"app.ManifestWatchRequest"> & {
    * @generated from field: bool skip_snapshot = 2 [features.field_presence = IMPLICIT];
    */
   skipSnapshot: boolean;
-
-  /**
-   * Send only newly created manifests, after their transaction commits.
-   * Every filter must name a nonempty artifact_type; its other fields narrow
-   * that type the same way they do in List. Filters are alternatives.
-   *
-   * This mode sends no initial snapshot, regardless of skip_snapshot, and no
-   * updates or removals. Re-pushing a manifest already in the same repository
-   * is not a creation; copying it into a new repository is.
-   *
-   * Notifications use action "created". Delivery follows watch.broker and
-   * watch.outbox; use List to reconcile after a disconnect.
-   *
-   * @generated from field: bool created_only = 3 [features.field_presence = IMPLICIT];
-   */
-  createdOnly: boolean;
 };
 
 /**

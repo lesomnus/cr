@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/lesomnus/cr/internal/ent/archived"
 	"github.com/lesomnus/cr/internal/ent/audit"
 	"github.com/lesomnus/cr/internal/ent/gcrun"
 	"github.com/lesomnus/cr/internal/ent/holder"
@@ -83,6 +84,7 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
+			archived.Table:          archived.ValidColumn,
 			audit.Table:             audit.ValidColumn,
 			gcrun.Table:             gcrun.ValidColumn,
 			holder.Table:            holder.ValidColumn,

@@ -105,6 +105,18 @@ func (_u *OutboxUpdate) SetPatch(v []byte) *OutboxUpdate {
 	return _u
 }
 
+// SetEvent sets the "event" field.
+func (_u *OutboxUpdate) SetEvent(v []byte) *OutboxUpdate {
+	_u.mutation.SetEvent(v)
+	return _u
+}
+
+// ClearEvent clears the value of the "event" field.
+func (_u *OutboxUpdate) ClearEvent() *OutboxUpdate {
+	_u.mutation.ClearEvent()
+	return _u
+}
+
 // Mutation returns the OutboxMutation object of the builder.
 func (_u *OutboxUpdate) Mutation() *OutboxMutation {
 	return _u.mutation
@@ -172,6 +184,12 @@ func (_u *OutboxUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.DateCreatedCleared() {
 		_spec.ClearField(outbox.FieldDateCreated, field.TypeTime)
+	}
+	if value, ok := _u.mutation.Event(); ok {
+		_spec.SetField(outbox.FieldEvent, field.TypeBytes, value)
+	}
+	if _u.mutation.EventCleared() {
+		_spec.ClearField(outbox.FieldEvent, field.TypeBytes)
 	}
 	_spec.AddModifiers(_u.modifiers...)
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
@@ -268,6 +286,18 @@ func (_u *OutboxUpdateOne) SetNillableObjectId(v *uuid.UUID) *OutboxUpdateOne {
 // SetPatch sets the "patch" field.
 func (_u *OutboxUpdateOne) SetPatch(v []byte) *OutboxUpdateOne {
 	_u.mutation.SetPatch(v)
+	return _u
+}
+
+// SetEvent sets the "event" field.
+func (_u *OutboxUpdateOne) SetEvent(v []byte) *OutboxUpdateOne {
+	_u.mutation.SetEvent(v)
+	return _u
+}
+
+// ClearEvent clears the value of the "event" field.
+func (_u *OutboxUpdateOne) ClearEvent() *OutboxUpdateOne {
+	_u.mutation.ClearEvent()
 	return _u
 }
 
@@ -368,6 +398,12 @@ func (_u *OutboxUpdateOne) sqlSave(ctx context.Context) (_node *Outbox, err erro
 	}
 	if _u.mutation.DateCreatedCleared() {
 		_spec.ClearField(outbox.FieldDateCreated, field.TypeTime)
+	}
+	if value, ok := _u.mutation.Event(); ok {
+		_spec.SetField(outbox.FieldEvent, field.TypeBytes, value)
+	}
+	if _u.mutation.EventCleared() {
+		_spec.ClearField(outbox.FieldEvent, field.TypeBytes)
 	}
 	_spec.AddModifiers(_u.modifiers...)
 	_node = &Outbox{config: _u.config}
