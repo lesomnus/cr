@@ -155,6 +155,11 @@ func toManifest(v *ent.Manifest) index.Manifest {
 type manifests struct{ ix *Index }
 
 func (r manifests) Put(ctx context.Context, repo string, m index.Manifest, holds []digest.Digest) error {
+	if !r.ix.inTx && r.ix.o.watch != nil {
+		return r.ix.Tx(ctx, repo, func(tx index.Index) error {
+			return tx.Manifest().Put(ctx, repo, m, holds)
+		})
+	}
 	c := r.ix.client
 	exists, err := c.Manifest.Query().Where(manifest.Repo(repo), manifest.Digest(m.Digest.String())).Exist(ctx)
 	if err != nil || exists {
@@ -170,8 +175,9 @@ func (r manifests) Put(ctx context.Context, repo string, m index.Manifest, holds
 	if annotations == nil {
 		annotations = map[string]string{}
 	}
+	key := pdid.New(pd.ManifestDomain)
 	if _, err := c.Manifest.Create().
-		SetId(pdid.New(pd.ManifestDomain).Uuid()).
+		SetId(key.Uuid()).
 		SetRepo(repo).
 		SetDigest(m.Digest.String()).
 		SetMediaType(m.MediaType).
@@ -204,7 +210,7 @@ func (r manifests) Put(ctx context.Context, repo string, m index.Manifest, holds
 			return err
 		}
 	}
-	return nil
+	return r.ix.recordCreated(ctx, key)
 }
 
 func (r manifests) Get(ctx context.Context, repo string, d digest.Digest) (index.Manifest, error) {

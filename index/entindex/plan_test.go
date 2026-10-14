@@ -62,6 +62,7 @@ func TestSqlitePlans(t *testing.T) {
 		{"Tags.Of", "SELECT * FROM tag WHERE repo = ? AND digest = ? ORDER BY name", "tag_repo_digest_name"},
 		{"Tags.Newest", "SELECT * FROM tag WHERE repo = ? ORDER BY date_moved DESC LIMIT 1", "tag_repo_date_moved"},
 		{"management list", "SELECT * FROM tag WHERE repo = ? ORDER BY date_created, id LIMIT 21", "tag_repo_date_created_id"},
+		{"artifact list", "SELECT * FROM manifest WHERE artifact_type = ? ORDER BY date_created, id LIMIT 21", "manifest_artifact_type_date_created_id"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			args := []any{"r", "sha256:x"}[:strings.Count(tc.query, "?")]
@@ -108,7 +109,14 @@ func TestPostgresPlans(t *testing.T) {
 		`INSERT INTO tag (id, name, repo, digest, date_moved, date_updated, date_created)
 		 SELECT gen_random_uuid(), 'v' || i, 'tiny', 'sha256:' || md5('t' || i::text), now(), now(), now()
 		 FROM generate_series(1, 5) i`,
+		`INSERT INTO manifest (id, repo, digest, media_type, artifact_type, subject, size, date_updated, date_created)
+		 SELECT gen_random_uuid(), 'r', 'sha256:' || md5(i::text), 'manifest', 'image', '', 1, now(), now()
+		 FROM generate_series(1, 2000) i`,
+		`INSERT INTO manifest (id, repo, digest, media_type, artifact_type, subject, size, date_updated, date_created)
+		 SELECT gen_random_uuid(), 'r', 'sha256:' || md5('t' || i::text), 'manifest', 'tiny', '', 1, now(), now()
+		 FROM generate_series(1, 5) i`,
 		"ANALYZE tag",
+		"ANALYZE manifest",
 		"SET plan_cache_mode = force_generic_plan",
 	} {
 		_, err := conn.ExecContext(ctx, q)
@@ -121,6 +129,7 @@ func TestPostgresPlans(t *testing.T) {
 		{"Tags.Of", "SELECT * FROM tag WHERE repo = $1 AND digest = $2 ORDER BY name", "tag_repo_digest_name"},
 		{"Tags.Newest", "SELECT * FROM tag WHERE repo = $1 ORDER BY date_moved DESC LIMIT 1", "tag_repo_date_moved"},
 		{"management list", "SELECT * FROM tag WHERE repo = $1 ORDER BY date_created, id LIMIT 21", "tag_repo_date_created_id"},
+		{"artifact list", "SELECT * FROM manifest WHERE artifact_type = $1 ORDER BY date_created, id LIMIT 21", "manifest_artifact_type_date_created_id"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			name := fmt.Sprintf("q%d", i)

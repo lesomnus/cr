@@ -47,6 +47,7 @@ func (Manifest) Fields() []ent.Field {
 func (Manifest) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("date_created", "id"),
+		index.Fields("artifact_type", "date_created", "id"),
 		index.Fields("repo", "digest").
 			Unique(),
 		index.Fields("repo", "subject"),

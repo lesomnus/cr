@@ -90,6 +90,7 @@ message ManifestFilter {
   string repo = 2;
   string digest = 3;
   string subject = 4;
+  string artifact_type = 5;
 }
 
 message ManifestWatchRequest {
@@ -101,13 +102,23 @@ message ManifestWatchRequest {
   // the entity, for as long as the stream is open. A watch with no filters is
   // the whole table, forever, which is the one shape that has no cap at all.
   repeated ManifestFilter filters = 1;
-
   // Skip what is there now and send only what changes from here.
   //
   // Off by default, and the default is the safe one: a client that does not
   // know the current state and did not ask for it holds something wrong until
   // the next write happens to correct it.
   bool skip_snapshot = 2 [features.field_presence = IMPLICIT];
+  // Send only newly created manifests, after their transaction commits.
+  // Every filter must name a nonempty artifact_type; its other fields narrow
+  // that type the same way they do in List. Filters are alternatives.
+  //
+  // This mode sends no initial snapshot, regardless of skip_snapshot, and no
+  // updates or removals. Re-pushing a manifest already in the same repository
+  // is not a creation; copying it into a new repository is.
+  //
+  // Notifications use action "created". Delivery follows watch.broker and
+  // watch.outbox; use List to reconcile after a disconnect.
+  bool created_only = 3 [features.field_presence = IMPLICIT];
 }
 
 message ManifestWatchResponse {

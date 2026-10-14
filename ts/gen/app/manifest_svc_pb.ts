@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file app/manifest_svc.g.proto.
  */
 export const file_app_manifest_svc_g: GenFile = /*@__PURE__*/
-  fileDesc("ChhhcHAvbWFuaWZlc3Rfc3ZjLmcucHJvdG8SA2FwcCJYChJNYW5pZmVzdEdldFJlcXVlc3QSHQoDcmVmGAEgASgLMhAuYXBwLk1hbmlmZXN0UmVmEiMKBnNlbGVjdBgCIAEoCzITLmFwcC5NYW5pZmVzdFNlbGVjdCJTCgtNYW5pZmVzdFJlZhIMCgJpZBgBIAEoDEgAEi8KCWJ5X2RpZ2VzdBgIIAEoCzIaLmFwcC5NYW5pZmVzdFJlZkJ5QnlEaWdlc3RIAEIFCgNrZXkiNQoVTWFuaWZlc3RSZWZCeUJ5RGlnZXN0EgwKBHJlcG8YCCABKAkSDgoGZGlnZXN0GAkgASgJItsBCg5NYW5pZmVzdFNlbGVjdBILCgNhbGwYASABKAgSDAoEcmVwbxgIIAEoCBIOCgZkaWdlc3QYCSABKAgSEgoKbWVkaWFfdHlwZRgKIAEoCBIVCg1hcnRpZmFjdF90eXBlGAsgASgIEg8KB3N1YmplY3QYDCABKAgSDAoEc2l6ZRgQIAEoCBITCgthbm5vdGF0aW9ucxgRIAEoCBITCgtkYXRlX3B1bGxlZBgSIAEoCBIUCgxkYXRlX3VwZGF0ZWQYDSABKAgSFAoMZGF0ZV9jcmVhdGVkGA8gASgIImYKE01hbmlmZXN0TGlzdFJlcXVlc3QSJAoHZmlsdGVycxgBIAMoCzITLmFwcC5NYW5pZmVzdEZpbHRlchITCgRzaXplGAIgASgFQgWqAQIIAhIUCgVhZnRlchgDIAEoCUIFqgECCAIiSQoUTWFuaWZlc3RMaXN0UmVzcG9uc2USHAoFaXRlbXMYASADKAsyDS5hcHAuTWFuaWZlc3QSEwoEbmV4dBgCIAEoCUIFqgECCAIiXgoOTWFuaWZlc3RGaWx0ZXISHQoDcmVmGAEgASgLMhAuYXBwLk1hbmlmZXN0UmVmEgwKBHJlcG8YAiABKAkSDgoGZGlnZXN0GAMgASgJEg8KB3N1YmplY3QYBCABKAkiWgoUTWFuaWZlc3RXYXRjaFJlcXVlc3QSJAoHZmlsdGVycxgBIAMoCzITLmFwcC5NYW5pZmVzdEZpbHRlchIcCg1za2lwX3NuYXBzaG90GAIgASgIQgWqAQIIAiI+ChVNYW5pZmVzdFdhdGNoUmVzcG9uc2USJQoFaXRlbXMYASADKAsyFi5hcHAuTWFuaWZlc3RXYXRjaEl0ZW0iVAoRTWFuaWZlc3RXYXRjaEl0ZW0SCgoCaWQYASABKAwSHAoFdmFsdWUYAiABKAsyDS5hcHAuTWFuaWZlc3QSFQoGYWN0aW9uGAMgASgJQgWqAQIIAjK/AQoPTWFuaWZlc3RTZXJ2aWNlEi0KA0dldBIXLmFwcC5NYW5pZmVzdEdldFJlcXVlc3QaDS5hcHAuTWFuaWZlc3QSOwoETGlzdBIYLmFwcC5NYW5pZmVzdExpc3RSZXF1ZXN0GhkuYXBwLk1hbmlmZXN0TGlzdFJlc3BvbnNlEkAKBVdhdGNoEhkuYXBwLk1hbmlmZXN0V2F0Y2hSZXF1ZXN0GhouYXBwLk1hbmlmZXN0V2F0Y2hSZXNwb25zZTABQhxaGmdpdGh1Yi5jb20vbGVzb21udXMvY3IvYXBpYghlZGl0aW9uc3DoBw", [file_app_manifest]);
+  fileDesc("ChhhcHAvbWFuaWZlc3Rfc3ZjLmcucHJvdG8SA2FwcCJYChJNYW5pZmVzdEdldFJlcXVlc3QSHQoDcmVmGAEgASgLMhAuYXBwLk1hbmlmZXN0UmVmEiMKBnNlbGVjdBgCIAEoCzITLmFwcC5NYW5pZmVzdFNlbGVjdCJTCgtNYW5pZmVzdFJlZhIMCgJpZBgBIAEoDEgAEi8KCWJ5X2RpZ2VzdBgIIAEoCzIaLmFwcC5NYW5pZmVzdFJlZkJ5QnlEaWdlc3RIAEIFCgNrZXkiNQoVTWFuaWZlc3RSZWZCeUJ5RGlnZXN0EgwKBHJlcG8YCCABKAkSDgoGZGlnZXN0GAkgASgJItsBCg5NYW5pZmVzdFNlbGVjdBILCgNhbGwYASABKAgSDAoEcmVwbxgIIAEoCBIOCgZkaWdlc3QYCSABKAgSEgoKbWVkaWFfdHlwZRgKIAEoCBIVCg1hcnRpZmFjdF90eXBlGAsgASgIEg8KB3N1YmplY3QYDCABKAgSDAoEc2l6ZRgQIAEoCBITCgthbm5vdGF0aW9ucxgRIAEoCBITCgtkYXRlX3B1bGxlZBgSIAEoCBIUCgxkYXRlX3VwZGF0ZWQYDSABKAgSFAoMZGF0ZV9jcmVhdGVkGA8gASgIImYKE01hbmlmZXN0TGlzdFJlcXVlc3QSJAoHZmlsdGVycxgBIAMoCzITLmFwcC5NYW5pZmVzdEZpbHRlchITCgRzaXplGAIgASgFQgWqAQIIAhIUCgVhZnRlchgDIAEoCUIFqgECCAIiSQoUTWFuaWZlc3RMaXN0UmVzcG9uc2USHAoFaXRlbXMYASADKAsyDS5hcHAuTWFuaWZlc3QSEwoEbmV4dBgCIAEoCUIFqgECCAIidQoOTWFuaWZlc3RGaWx0ZXISHQoDcmVmGAEgASgLMhAuYXBwLk1hbmlmZXN0UmVmEgwKBHJlcG8YAiABKAkSDgoGZGlnZXN0GAMgASgJEg8KB3N1YmplY3QYBCABKAkSFQoNYXJ0aWZhY3RfdHlwZRgFIAEoCSJ3ChRNYW5pZmVzdFdhdGNoUmVxdWVzdBIkCgdmaWx0ZXJzGAEgAygLMhMuYXBwLk1hbmlmZXN0RmlsdGVyEhwKDXNraXBfc25hcHNob3QYAiABKAhCBaoBAggCEhsKDGNyZWF0ZWRfb25seRgDIAEoCEIFqgECCAIiPgoVTWFuaWZlc3RXYXRjaFJlc3BvbnNlEiUKBWl0ZW1zGAEgAygLMhYuYXBwLk1hbmlmZXN0V2F0Y2hJdGVtIlQKEU1hbmlmZXN0V2F0Y2hJdGVtEgoKAmlkGAEgASgMEhwKBXZhbHVlGAIgASgLMg0uYXBwLk1hbmlmZXN0EhUKBmFjdGlvbhgDIAEoCUIFqgECCAIyvwEKD01hbmlmZXN0U2VydmljZRItCgNHZXQSFy5hcHAuTWFuaWZlc3RHZXRSZXF1ZXN0Gg0uYXBwLk1hbmlmZXN0EjsKBExpc3QSGC5hcHAuTWFuaWZlc3RMaXN0UmVxdWVzdBoZLmFwcC5NYW5pZmVzdExpc3RSZXNwb25zZRJACgVXYXRjaBIZLmFwcC5NYW5pZmVzdFdhdGNoUmVxdWVzdBoaLmFwcC5NYW5pZmVzdFdhdGNoUmVzcG9uc2UwAUIcWhpnaXRodWIuY29tL2xlc29tbnVzL2NyL2FwaWIIZWRpdGlvbnNw6Ac", [file_app_manifest]);
 
 /**
  * @generated from message app.ManifestGetRequest
@@ -246,6 +246,11 @@ export type ManifestFilter = Message<"app.ManifestFilter"> & {
    * @generated from field: string subject = 4;
    */
   subject: string;
+
+  /**
+   * @generated from field: string artifact_type = 5;
+   */
+  artifactType: string;
 };
 
 /**
@@ -282,6 +287,22 @@ export type ManifestWatchRequest = Message<"app.ManifestWatchRequest"> & {
    * @generated from field: bool skip_snapshot = 2 [features.field_presence = IMPLICIT];
    */
   skipSnapshot: boolean;
+
+  /**
+   * Send only newly created manifests, after their transaction commits.
+   * Every filter must name a nonempty artifact_type; its other fields narrow
+   * that type the same way they do in List. Filters are alternatives.
+   *
+   * This mode sends no initial snapshot, regardless of skip_snapshot, and no
+   * updates or removals. Re-pushing a manifest already in the same repository
+   * is not a creation; copying it into a new repository is.
+   *
+   * Notifications use action "created". Delivery follows watch.broker and
+   * watch.outbox; use List to reconcile after a disconnect.
+   *
+   * @generated from field: bool created_only = 3 [features.field_presence = IMPLICIT];
+   */
+  createdOnly: boolean;
 };
 
 /**

@@ -26,6 +26,7 @@ import (
 	"github.com/lesomnus/cr/index"
 	"github.com/lesomnus/cr/internal/ent"
 	"github.com/lesomnus/cr/telemetry"
+	"github.com/lesomnus/payday/watch"
 )
 
 // Index is [index.Index] over an ent client.
@@ -34,14 +35,17 @@ type Index struct {
 	dialect string
 
 	// Set on the Index a transaction hands to its function.
-	inTx bool
+	inTx    bool
+	created []watch.Change
 
 	o *options
 }
 
 type options struct {
-	wait time.Duration
-	now  func() time.Time
+	wait   time.Duration
+	now    func() time.Time
+	watch  *watch.Watch
+	outbox bool
 
 	// The per-repository lock where the database has none to offer, and the
 	// single writer SQLite wants, so two transactions never race to upgrade.
@@ -205,7 +209,11 @@ func (ix *Index) Tx(ctx context.Context, repo string, fn func(index.Index) error
 		tx.Rollback()
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	child.publishCreated(ctx)
+	return nil
 }
 
 func (ix *Index) lockPostgres(ctx context.Context, tx dialect.Tx, repo string) error {

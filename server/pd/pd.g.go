@@ -1426,6 +1426,9 @@ func filterManifest(f *api.ManifestFilter) (predicate.Manifest, error) {
 	if f.HasSubject() {
 		ps = append(ps, manifest.SubjectEQ(f.GetSubject()))
 	}
+	if f.HasArtifactType() {
+		ps = append(ps, manifest.ArtifactTypeEQ(f.GetArtifactType()))
+	}
 	if len(ps) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "a filter that names nothing")
 	}

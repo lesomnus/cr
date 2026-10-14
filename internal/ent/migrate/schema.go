@@ -164,6 +164,11 @@ var (
 				Columns: []*schema.Column{ManifestColumns[10], ManifestColumns[0]},
 			},
 			{
+				Name:    "manifest_artifact_type_date_created_id",
+				Unique:  false,
+				Columns: []*schema.Column{ManifestColumns[4], ManifestColumns[10], ManifestColumns[0]},
+			},
+			{
 				Name:    "manifest_repo_digest",
 				Unique:  true,
 				Columns: []*schema.Column{ManifestColumns[1], ManifestColumns[2]},

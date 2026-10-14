@@ -26,6 +26,7 @@ import (
 	app "github.com/lesomnus/cr/api"
 	"github.com/lesomnus/cr/internal/ent"
 	"github.com/lesomnus/cr/server/bare"
+	"github.com/lesomnus/cr/server/manifestwatch"
 	"github.com/lesomnus/cr/server/pd"
 )
 
@@ -175,7 +176,7 @@ func Build(ctx context.Context, c Config) (*Server, error) {
 
 	// The stack a caller reaches. `pd.Gate` is outermost, so nothing behind it
 	// asks again.
-	stacked, err := app.Build(walled.WithWatch(w), pd.AuditBuild(), pd.GateBuild())
+	stacked, err := app.Build(walled.WithWatch(w), manifestwatch.Build(w), pd.AuditBuild(), pd.GateBuild())
 	if err != nil {
 		db.Close()
 		return nil, err
@@ -186,7 +187,7 @@ func Build(ctx context.Context, c Config) (*Server, error) {
 	// holds: it is an instance somebody was handed, so going around the wall
 	// is a line of wiring a reader can find rather than a rule that opens up
 	// whenever nobody is asking.
-	ungated, err := app.Build(sink.WithWatch(w), pd.AuditBuild())
+	ungated, err := app.Build(sink.WithWatch(w), manifestwatch.Build(w), pd.AuditBuild())
 	if err != nil {
 		db.Close()
 		return nil, err

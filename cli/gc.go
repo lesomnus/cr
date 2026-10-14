@@ -36,7 +36,7 @@ func open(ctx context.Context, c *cmd.Config) (*cmd.Server, *entindex.Index, fun
 		s.Close()
 		return nil, nil, nil, err
 	}
-	var opts []entindex.Option
+	opts := []entindex.Option{entindex.WithManifestWatch(s.Watch, c.Watch.Outbox)}
 	if c.Registry.LockWait > 0 {
 		opts = append(opts, entindex.WithWait(c.Registry.LockWait))
 	}

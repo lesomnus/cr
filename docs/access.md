@@ -641,6 +641,47 @@ cr repository ls -o table
 cr repository patch <id> '{"desc": "the storefront"}'
 ```
 
+### Finding new artifacts
+
+`ManifestService.List` accepts an exact `artifact_type` filter across all
+repositories. Fields in one filter are combined with AND; multiple filters
+are alternatives. For example, this request to `/app.ManifestService/List`
+finds cosign bundles in creation order, a page at a time:
+
+```json
+{"filters":[{"artifactType":"application/vnd.dev.sigstore.bundle.v0.3+json"}],"size":100}
+```
+
+Pass a response's `next` as `after` to read the next page. `next` is empty on
+the final page; it is a page cursor, not a persistent polling checkpoint.
+
+`ManifestService.Watch` also supports that filter with `created_only` enabled:
+
+```json
+{"filters":[{"artifactType":"application/vnd.dev.sigstore.bundle.v0.3+json"}],"createdOnly":true}
+```
+
+Every filter in this mode must name a nonempty artifact type. Add `repo`,
+`digest`, or `subject` in the same filter to narrow it further. The stream
+subscribes before returning its response headers and sends no initial
+snapshot. Each item carries the manifest row and `action: "created"`, only
+after the transaction that inserted it has committed. Pushing the same digest
+again in the same repository sends nothing; copying it into another repository
+creates a new row there and sends a notification. Pull bookkeeping, updates,
+and removals send nothing in this mode.
+
+Delivery uses `watch.broker`: `memory` within one process, or `postgres`
+across replicas. With `watch.outbox: true`, insertions are queued in their
+transaction and published by the outbox drainer; notifications can arrive
+more than once. A live stream does not replay missed notifications. To
+reconcile on startup or after a disconnect, open the stream, await its response
+headers, then List the type while keeping subsequent notifications. Handle
+duplicates by row ID.
+
+Manifests are global management entities. Access to their methods allows
+reads across repositories; the registry's per-repository permissions do not
+narrow these reads.
+
 ## The management page
 
 `ts/` holds a page over the management API: repositories and their
