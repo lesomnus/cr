@@ -614,6 +614,65 @@ curl -sX POST https://cr.example.com/app.TagRuleService/List \
   -H 'Content-Type: application/json' -H 'Connect-Protocol-Version: 1' -d '{}'
 ```
 
+Configuration tokens can read without creating a holder or tenant row. A
+missing tenant has no tenant-owned read scope; manifests and other global
+entities are still readable when their methods are allowed. Writes require a
+registered holder and otherwise return `permission_denied` with the holder's
+name. Configuration is never copied into database rows.
+
+Give one token an `allow` list, or share a role through a group:
+
+```yaml
+management:
+  tokens:
+    - holder: '@operator/kamino'
+      token_sha256: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+  policy:
+    roles:
+      '@operator/artifact-reader':
+        methods:
+          - /app.ManifestService/List
+          - /app.ManifestService/Get
+          - /payday.ResourceService/Watch
+    groups:
+      '@operator/readers':
+        members: ['@operator/kamino']
+    bindings:
+      - role: '@operator/artifact-reader'
+        group: '@operator/readers'
+```
+
+Bindings name either `holder` or `group`. Groups are explicit, unnested lists;
+all names in a binding belong to the same tenant. These are payday's shared
+RBAC rules, also used by roster's file provider. They are evaluated read-only,
+independently of any database groups. A token's optional `allow` further narrows
+its roles; it cannot add permissions. `allow: []` grants nothing. With `policy`
+present, an unbound holder gets nothing. For compatibility, omitting both
+`policy` and `allow` retains the whole management grant.
+
+Method patterns use `/package.Service/Method`, with `*` as a whole component:
+`/app.ManifestService/*`, `/app.*/Get`, or `/*.*/*`. They do not use the
+registry's repository globs. A method outside the grant returns
+`permission_denied`; an unknown token returns `unauthenticated`. Batch checks
+each operation, and Watch checks the entity's Get permission for each image.
+
+For live updates, move `tokens` and `policy` together into a separate file:
+
+```yaml
+management:
+  file: management.yaml
+  refresh: 5s
+```
+
+The path is relative to cr's config file. The document has `tokens` and `policy`
+at its root, in the same shape as above. Inline tokens and policy are loaded
+only at startup and cannot accompany `file`. Invalid initial files prevent
+startup. Reload waits for two identical reads, then replaces credentials and
+policy atomically; invalid or missing files log an error and retain the last
+valid revision. A valid empty policy revokes its grants. An accepted change
+ends existing configured-token streams with `unauthenticated`, prompting a
+reconnect. Removing a token also prevents subsequent authentication.
+
 With no tokens and no roster, nothing over the network may use it; `cr <entity>
 ...` on the host still can. With `management.roster`, a key
 [roster](https://github.com/lesomnus/roster) issued is a caller too, for the
