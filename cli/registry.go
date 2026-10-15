@@ -59,6 +59,7 @@ func Registry(ctx context.Context, c *cmd.Config, s *cmd.Server) error {
 		Index:     ix,
 		Policy:    policy,
 		Untagged:  c.Registry.Gc.Untagged,
+		Orphaned:  c.Registry.Gc.Orphaned,
 		Delay:     c.Registry.Gc.Delay,
 		Every:     c.Registry.Gc.Every,
 		FullEvery: c.Registry.Gc.FullEvery,

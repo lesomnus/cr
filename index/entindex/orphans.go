@@ -36,8 +36,13 @@ func (r orphans) observe(ctx context.Context, repo string, subject digest.Digest
 }
 
 func (r orphans) Seed(ctx context.Context, repo string) (bool, error) {
+	// Completed repositories need one indexed read and no write lock.
+	complete, err := r.ix.client.OrphanScan.Query().Where(orphanscan.Repo(repo), orphanscan.Complete(true)).Exist(ctx)
+	if err != nil || complete {
+		return complete, err
+	}
 	done := false
-	err := r.ix.Tx(ctx, repo, func(ix index.Index) error {
+	err = r.ix.Tx(ctx, repo, func(ix index.Index) error {
 		tx := ix.(*Index)
 		scans := tx.client.OrphanScan
 		scan, err := scans.Query().Where(orphanscan.Repo(repo)).Only(ctx)

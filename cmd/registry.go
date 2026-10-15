@@ -253,6 +253,10 @@ type GcConfig struct {
 	// before it is deleted; zero keeps them.
 	Untagged time.Duration `yaml:"untagged"`
 
+	// Orphaned is the grace after an absent subject becomes a GC candidate;
+	// zero disables orphan collection independently of Untagged.
+	Orphaned time.Duration `yaml:"orphaned"`
+
 	// Delay is how long a blob must have been in a repository before a full
 	// collection's sweep erases it, so that a push in flight keeps its blobs;
 	// zero is an hour, and a negative duration erases at once.
