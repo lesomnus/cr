@@ -393,6 +393,10 @@ tags, index references, manifest age and recent pulls under the repository
 lock. Protected referrers retain their candidate for a later run. Collected
 signatures do not return if the subject is pushed again afterward; a missing
 subject does not otherwise prevent querying its referrers by digest.
+Candidates are removed when their subject returns or, after the grace period,
+no referrers remain. Deleting a repository removes all its candidates and scan
+state. With orphan collection disabled, candidates persist until collection is
+enabled or the repository is deleted.
 
 On first enabling orphan collection for a repository, old manifests are checked
 in batches of 500. The database stores the cursor and completion, so a restart
@@ -406,6 +410,24 @@ subsequent changes maintain the candidates.
 `cr gc` and `cr gc --full` use the same `orphaned` setting as online collection.
 With both `untagged` and `orphaned` disabled, unused referrers in ordinary
 repositories remain until explicitly deleted.
+
+To repeat discovery after it has completed, run:
+
+```sh
+cr gc --rescan-orphans
+# SQLite: stop the server first, then run:
+cr gc --rescan-orphans --offline
+```
+
+This requires `registry.gc.orphaned > 0` and restarts the checkpointed scan in
+each repository using orphan collection; positive cache retention still takes
+precedence. Existing candidates and their grace start times are preserved;
+newly discovered candidates get a fresh grace period. The command also runs
+normal collection, so already eligible candidates may be collected. If
+interrupted, a later ordinary GC resumes the saved progress; passing
+`--rescan-orphans` again starts another scan from the beginning. `--full` may be
+combined with it to sweep blobs as well; `--full` alone does not restart orphan
+discovery.
 
 Every step removes a reference the index no longer has, so a push racing it can
 leave a blob behind and cannot lose one.

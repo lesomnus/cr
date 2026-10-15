@@ -90,6 +90,13 @@ func (r orphans) Seed(ctx context.Context, repo string) (bool, error) {
 	return done, err
 }
 
+func (r orphans) ResetScan(ctx context.Context, repo string) error {
+	return r.ix.Tx(ctx, repo, func(ix index.Index) error {
+		_, err := ix.(*Index).client.OrphanScan.Delete().Where(orphanscan.Repo(repo)).Exec(ctx)
+		return err
+	})
+}
+
 func (r orphans) Get(ctx context.Context, repo string, subject digest.Digest) (index.OrphanCandidate, error) {
 	v, err := r.ix.client.OrphanCandidate.Query().Where(orphancandidate.Repo(repo), orphancandidate.Subject(subject.String())).Only(ctx)
 	if err != nil {

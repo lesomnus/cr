@@ -253,6 +253,10 @@ type Orphans interface {
 	// this repository's one-time scan is complete; later calls do no scan.
 	// Progress and candidates commit together and survive process restarts.
 	Seed(ctx context.Context, repo string) (bool, error)
+	// ResetScan forgets only the scan checkpoint under the repository lock.
+	// The next Seed starts from the beginning; existing candidates and their
+	// observed times are preserved.
+	ResetScan(ctx context.Context, repo string) error
 	Get(ctx context.Context, repo string, subject digest.Digest) (OrphanCandidate, error)
 	// List returns candidates in subject order after p.Last.
 	List(ctx context.Context, repo string, p Page) ([]OrphanCandidate, error)

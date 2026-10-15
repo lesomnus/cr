@@ -10,9 +10,14 @@ import (
 )
 
 // orphaned drains work recorded by manifest writes. Only the first run for
-// an existing repository scans its manifests; the checkpoint persists in the
-// database and each seeding batch releases the repository lock.
+// an existing repository scans its manifests unless a rescan was requested;
+// the checkpoint persists and each seeding batch releases the repository lock.
 func (c *Collector) orphaned(ctx context.Context, repo string) (int, error) {
+	if c.c.RescanOrphans {
+		if err := c.c.Index.Orphan().ResetScan(ctx, repo); err != nil {
+			return 0, err
+		}
+	}
 	for {
 		if err := ctx.Err(); err != nil {
 			return 0, err

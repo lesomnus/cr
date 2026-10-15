@@ -55,10 +55,19 @@ func TestSqliteOrphanCheckpointRestart(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, done)
 	mu.Lock()
-	defer mu.Unlock()
-	require.Len(t, queries, 1, "completed scans need only the checkpoint lookup")
-	require.Contains(t, queries[0], orphanscan.Table)
-	require.False(t, strings.Contains(queries[0], "FROM `manifest`"))
+	completedQueries := append([]string(nil), queries...)
+	mu.Unlock()
+	require.Len(t, completedQueries, 1, "completed scans need only the checkpoint lookup")
+	require.Contains(t, completedQueries[0], orphanscan.Table)
+	require.False(t, strings.Contains(completedQueries[0], "FROM `manifest`"))
+
+	require.NoError(t, restarted.Orphan().ResetScan(ctx, "repo"))
+	done, err = ix.Orphan().Seed(ctx, "repo")
+	require.NoError(t, err)
+	require.False(t, done, "a separate client sees the durable reset")
+	done, err = restarted.Orphan().Seed(ctx, "repo")
+	require.NoError(t, err)
+	require.True(t, done, "ordinary seeding resumes the rescan's cursor")
 }
 
 func TestSqliteOrphanCandidateSurvivesRestart(t *testing.T) {

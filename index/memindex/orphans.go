@@ -60,6 +60,13 @@ func (r orphans) Seed(ctx context.Context, repo string) (bool, error) {
 	return done, err
 }
 
+func (r orphans) ResetScan(ctx context.Context, repo string) error {
+	return view(r).do(ctx, func(s *state) error {
+		delete(s.scans, repo)
+		return nil
+	})
+}
+
 func (r orphans) Get(ctx context.Context, repo string, subject digest.Digest) (index.OrphanCandidate, error) {
 	var out index.OrphanCandidate
 	err := view(r).do(ctx, func(s *state) error {

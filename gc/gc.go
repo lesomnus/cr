@@ -47,6 +47,11 @@ type Config struct {
 	// disables this independent collection, without stopping candidate tracking.
 	Orphaned time.Duration
 
+	// RescanOrphans restarts discovery before each orphan collection. Intended
+	// for a one-off manual run; ignored when Orphaned is disabled or a cache's
+	// retention takes precedence. Existing candidate grace periods are kept.
+	RescanOrphans bool
+
 	// Delay is how long a blob must have been in a repository before a sweep
 	// erases it, which keeps the blobs of a push whose manifest has not
 	// arrived; zero is an hour, and a negative duration erases at once.

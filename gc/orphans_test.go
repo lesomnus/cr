@@ -115,6 +115,67 @@ func TestOrphanedInitialDiscoveryAndChains(t *testing.T) {
 	require.False(t, e.indexed(repo, second.Digest))
 }
 
+func TestOrphanedRescan(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	const repo = "acme/app"
+	absent := v1.Descriptor{Digest: digest.FromString("absent"), MediaType: v1.MediaTypeImageManifest, Size: 1}
+	old := e.referrer(repo, absent, "old")
+	missing := v1.Descriptor{Digest: digest.FromString("missing"), MediaType: v1.MediaTypeImageManifest, Size: 1}
+	legacy := e.referrer(repo, missing, "legacy")
+	done, err := e.ix.Orphan().Seed(ctx, repo)
+	require.NoError(t, err)
+	require.True(t, done)
+	require.NoError(t, e.ix.Orphan().Erase(ctx, repo, missing.Digest))
+	e.clock.Add(2 * time.Hour)
+	collector := gc.New(gc.Config{Stores: e.stores, Index: e.ix, Now: e.clock.Now, Orphaned: time.Hour, RescanOrphans: true})
+	r, err := collector.Collect(ctx, gc.KindOnline, gc.TriggerCli)
+	require.NoError(t, err)
+	require.Equal(t, 1, r.Manifests, "existing candidates keep their original grace")
+	require.False(t, e.indexed(repo, old.Digest))
+	require.True(t, e.indexed(repo, legacy.Digest), "new discoveries get a fresh grace")
+	candidate, err := e.ix.Orphan().Get(ctx, repo, missing.Digest)
+	require.NoError(t, err)
+	require.Equal(t, e.clock.Now(), candidate.ObservedAt)
+	cs, err := e.ix.Orphan().List(ctx, repo, index.Page{})
+	require.NoError(t, err)
+	require.Len(t, cs, 1, "collected candidates are removed")
+	e.clock.Add(2 * time.Hour)
+	r, err = gc.New(gc.Config{Stores: e.stores, Index: e.ix, Now: e.clock.Now, Orphaned: time.Hour}).Collect(ctx, gc.KindOnline, gc.TriggerCli)
+	require.NoError(t, err)
+	require.Equal(t, 1, r.Manifests)
+	cs, err = e.ix.Orphan().List(ctx, repo, index.Page{})
+	require.NoError(t, err)
+	require.Empty(t, cs)
+}
+
+func TestOrphanedRescanSkipped(t *testing.T) {
+	for _, reason := range []string{"disabled", "cache retention"} {
+		t.Run(reason, func(t *testing.T) {
+			ctx := context.Background()
+			e := newEnv(t)
+			const repo = "acme/app"
+			absent := v1.Descriptor{Digest: digest.FromString("absent"), MediaType: v1.MediaTypeImageManifest, Size: 1}
+			ref := e.referrer(repo, absent, "ref")
+			done, err := e.ix.Orphan().Seed(ctx, repo)
+			require.NoError(t, err)
+			require.True(t, done)
+			require.NoError(t, e.ix.Orphan().Erase(ctx, repo, absent.Digest))
+			cfg := gc.Config{Stores: e.stores, Index: e.ix, Now: e.clock.Now, RescanOrphans: true}
+			if reason == "cache retention" {
+				cfg.Orphaned = time.Hour
+				cfg.Cache = func(string) time.Duration { return 24 * time.Hour }
+			}
+			r, err := gc.New(cfg).Run(ctx)
+			require.NoError(t, err)
+			require.Zero(t, r.Manifests)
+			_, err = e.ix.Orphan().Get(ctx, repo, absent.Digest)
+			require.ErrorIs(t, err, index.ErrNotFound, "no discovery in skipped repositories")
+			require.True(t, e.indexed(repo, ref.Digest))
+		})
+	}
+}
+
 // Change the index after enumeration but before a deletion transaction. Each
 // deletion must read the current candidate and subject, not the stale list.
 type beforeDeleteIndex struct {
