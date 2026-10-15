@@ -32,6 +32,7 @@ type Index interface {
 	Tag() Tags
 	Pulled() Pulled
 	Snapshot() Snapshots
+	Orphan() Orphans
 
 	// Tx runs fn inside one transaction and hands it the Index to use; the
 	// outer one sees nothing until fn returns nil. When repo is not empty the
@@ -234,6 +235,31 @@ type Snapshots interface {
 
 	// List is the snapshots of repo, in subject order after p.Last.
 	List(ctx context.Context, repo string, p Page) ([]Snapshot, error)
+	Erase(ctx context.Context, repo string, subject digest.Digest) error
+}
+
+// OrphanCandidate schedules one subject, not each of its referrers. ObservedAt
+// is refreshed by a deletion or a new referrer whose subject is absent. It is
+// a grace-period clock, not a history of continuous absence.
+type OrphanCandidate struct {
+	Subject    digest.Digest
+	ObservedAt time.Time
+}
+
+// Orphans is the durable work list maintained by Manifest.Put and Erase in
+// the same transaction as the change. The collector rechecks it under Tx.
+type Orphans interface {
+	// Seed discovers preexisting orphans in one bounded batch. true means
+	// this repository's one-time scan is complete; later calls do no scan.
+	// Progress and candidates commit together and survive process restarts.
+	Seed(ctx context.Context, repo string) (bool, error)
+	// ResetScan forgets only the scan checkpoint under the repository lock.
+	// The next Seed starts from the beginning; existing candidates and their
+	// observed times are preserved.
+	ResetScan(ctx context.Context, repo string) error
+	Get(ctx context.Context, repo string, subject digest.Digest) (OrphanCandidate, error)
+	// List returns candidates in subject order after p.Last.
+	List(ctx context.Context, repo string, p Page) ([]OrphanCandidate, error)
 	Erase(ctx context.Context, repo string, subject digest.Digest) error
 }
 

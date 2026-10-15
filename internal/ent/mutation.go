@@ -16,6 +16,8 @@ import (
 	"github.com/lesomnus/cr/internal/ent/holder"
 	"github.com/lesomnus/cr/internal/ent/manifest"
 	"github.com/lesomnus/cr/internal/ent/manifestblob"
+	"github.com/lesomnus/cr/internal/ent/orphancandidate"
+	"github.com/lesomnus/cr/internal/ent/orphanscan"
 	"github.com/lesomnus/cr/internal/ent/outbox"
 	"github.com/lesomnus/cr/internal/ent/referrerssnapshot"
 	"github.com/lesomnus/cr/internal/ent/repository"
@@ -40,6 +42,8 @@ const (
 	TypeHolder            = "Holder"
 	TypeManifest          = "Manifest"
 	TypeManifestBlob      = "ManifestBlob"
+	TypeOrphanCandidate   = "OrphanCandidate"
+	TypeOrphanScan        = "OrphanScan"
 	TypeOutbox            = "Outbox"
 	TypeReferrersSnapshot = "ReferrersSnapshot"
 	TypeRepository        = "Repository"
@@ -1887,6 +1891,360 @@ func (m *ManifestBlobMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldDateCreated(ctx)
 	}
 	return nil, fmt.Errorf("unknown ManifestBlob field %s", name)
+}
+
+// OrphanCandidateMutation represents an operation that mutates the OrphanCandidate nodes in the graph.
+type OrphanCandidateMutation struct {
+	orphancandidate.Mutation
+	config
+	id       *uuid.UUID
+	done     bool
+	oldValue func(context.Context) (*OrphanCandidate, error)
+}
+
+var _ ent.Mutation = (*OrphanCandidateMutation)(nil)
+
+// orphancandidateOption allows management of the mutation configuration using functional options.
+type orphancandidateOption func(*OrphanCandidateMutation)
+
+// newOrphanCandidateMutation creates new mutation for the OrphanCandidate entity.
+func newOrphanCandidateMutation(c config, op Op, opts ...orphancandidateOption) *OrphanCandidateMutation {
+	m := &OrphanCandidateMutation{
+		Mutation: *orphancandidate.NewMutation(op),
+		config:   c,
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// SetId sets the value of the id field. Note that this
+// operation is only accepted on creation of OrphanCandidate entities.
+func (m *OrphanCandidateMutation) SetId(id uuid.UUID) {
+	m.id = &id
+}
+
+// Id returns the Id value in the mutation. Note that the Id is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *OrphanCandidateMutation) Id() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// withOrphanCandidateId sets the Id field of the mutation.
+func withOrphanCandidateId(id uuid.UUID) orphancandidateOption {
+	return func(m *OrphanCandidateMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *OrphanCandidate
+		)
+		m.oldValue = func(ctx context.Context) (*OrphanCandidate, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().OrphanCandidate.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withOrphanCandidate sets the old OrphanCandidate of the mutation.
+func withOrphanCandidate(node *OrphanCandidate) orphancandidateOption {
+	return func(m *OrphanCandidateMutation) {
+		m.oldValue = func(context.Context) (*OrphanCandidate, error) {
+			return node, nil
+		}
+		m.id = &node.Id
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m OrphanCandidateMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m OrphanCandidateMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// Ids queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *OrphanCandidateMutation) Ids(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.Op().Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.Id()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.Op().Is(OpUpdate | OpDelete):
+		return m.Client().OrphanCandidate.Query().Where(m.Predicates()...).Ids(ctx)
+	default:
+		return nil, fmt.Errorf("Ids is not allowed on %s operations", m.Op())
+	}
+}
+
+// OldRepo returns the old "repo" field's value of the OrphanCandidate entity.
+// If the OrphanCandidate object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OrphanCandidateMutation) OldRepo(ctx context.Context) (v string, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldRepo is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldRepo requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRepo: %w", err)
+	}
+	return oldValue.Repo, nil
+}
+
+// OldSubject returns the old "subject" field's value of the OrphanCandidate entity.
+// If the OrphanCandidate object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OrphanCandidateMutation) OldSubject(ctx context.Context) (v string, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldSubject is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldSubject requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSubject: %w", err)
+	}
+	return oldValue.Subject, nil
+}
+
+// OldDateObserved returns the old "date_observed" field's value of the OrphanCandidate entity.
+// If the OrphanCandidate object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OrphanCandidateMutation) OldDateObserved(ctx context.Context) (v time.Time, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldDateObserved is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldDateObserved requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDateObserved: %w", err)
+	}
+	return oldValue.DateObserved, nil
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *OrphanCandidateMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case orphancandidate.FieldRepo:
+		return m.OldRepo(ctx)
+	case orphancandidate.FieldSubject:
+		return m.OldSubject(ctx)
+	case orphancandidate.FieldDateObserved:
+		return m.OldDateObserved(ctx)
+	}
+	return nil, fmt.Errorf("unknown OrphanCandidate field %s", name)
+}
+
+// OrphanScanMutation represents an operation that mutates the OrphanScan nodes in the graph.
+type OrphanScanMutation struct {
+	orphanscan.Mutation
+	config
+	id       *uuid.UUID
+	done     bool
+	oldValue func(context.Context) (*OrphanScan, error)
+}
+
+var _ ent.Mutation = (*OrphanScanMutation)(nil)
+
+// orphanscanOption allows management of the mutation configuration using functional options.
+type orphanscanOption func(*OrphanScanMutation)
+
+// newOrphanScanMutation creates new mutation for the OrphanScan entity.
+func newOrphanScanMutation(c config, op Op, opts ...orphanscanOption) *OrphanScanMutation {
+	m := &OrphanScanMutation{
+		Mutation: *orphanscan.NewMutation(op),
+		config:   c,
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// SetId sets the value of the id field. Note that this
+// operation is only accepted on creation of OrphanScan entities.
+func (m *OrphanScanMutation) SetId(id uuid.UUID) {
+	m.id = &id
+}
+
+// Id returns the Id value in the mutation. Note that the Id is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *OrphanScanMutation) Id() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// withOrphanScanId sets the Id field of the mutation.
+func withOrphanScanId(id uuid.UUID) orphanscanOption {
+	return func(m *OrphanScanMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *OrphanScan
+		)
+		m.oldValue = func(ctx context.Context) (*OrphanScan, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().OrphanScan.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withOrphanScan sets the old OrphanScan of the mutation.
+func withOrphanScan(node *OrphanScan) orphanscanOption {
+	return func(m *OrphanScanMutation) {
+		m.oldValue = func(context.Context) (*OrphanScan, error) {
+			return node, nil
+		}
+		m.id = &node.Id
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m OrphanScanMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m OrphanScanMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// Ids queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *OrphanScanMutation) Ids(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.Op().Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.Id()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.Op().Is(OpUpdate | OpDelete):
+		return m.Client().OrphanScan.Query().Where(m.Predicates()...).Ids(ctx)
+	default:
+		return nil, fmt.Errorf("Ids is not allowed on %s operations", m.Op())
+	}
+}
+
+// OldRepo returns the old "repo" field's value of the OrphanScan entity.
+// If the OrphanScan object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OrphanScanMutation) OldRepo(ctx context.Context) (v string, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldRepo is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldRepo requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRepo: %w", err)
+	}
+	return oldValue.Repo, nil
+}
+
+// OldCursor returns the old "cursor" field's value of the OrphanScan entity.
+// If the OrphanScan object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OrphanScanMutation) OldCursor(ctx context.Context) (v string, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldCursor is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldCursor requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCursor: %w", err)
+	}
+	return oldValue.Cursor, nil
+}
+
+// OldComplete returns the old "complete" field's value of the OrphanScan entity.
+// If the OrphanScan object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OrphanScanMutation) OldComplete(ctx context.Context) (v bool, err error) {
+	if !m.Op().Is(OpUpdateOne) {
+		return v, errors.New("OldComplete is only allowed on UpdateOne operations")
+	}
+	if _, exists := m.Id(); !exists || m.oldValue == nil {
+		return v, errors.New("OldComplete requires an Id field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldComplete: %w", err)
+	}
+	return oldValue.Complete, nil
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *OrphanScanMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case orphanscan.FieldRepo:
+		return m.OldRepo(ctx)
+	case orphanscan.FieldCursor:
+		return m.OldCursor(ctx)
+	case orphanscan.FieldComplete:
+		return m.OldComplete(ctx)
+	}
+	return nil, fmt.Errorf("unknown OrphanScan field %s", name)
 }
 
 // OutboxMutation represents an operation that mutates the Outbox nodes in the graph.

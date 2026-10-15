@@ -56,12 +56,17 @@ func NewCmdGc(c *cmd.Config) *xli.Command {
 
 		Flags: flg.Flags{
 			&flg.Switch{Name: "full", Brief: "also sweep every repository's store"},
+			&flg.Switch{Name: "rescan-orphans", Brief: "restart orphan discovery, preserving existing candidate grace periods"},
 			&flg.Switch{Name: "offline", Brief: "on SQLite, say that no server is running on this database"},
 		},
 
 		Handler: xli.OnRun(func(ctx context.Context, self *xli.Command, next xli.Next) error {
 			full, _ := flg.Find[bool](self, "full")
+			rescanOrphans, _ := flg.Find[bool](self, "rescan-orphans")
 			offline, _ := flg.Find[bool](self, "offline")
+			if rescanOrphans && c.Registry.Gc.Orphaned <= 0 {
+				return errors.New("--rescan-orphans requires registry.gc.orphaned > 0")
+			}
 
 			ctx, done, err := Telemetry(ctx, c)
 			if err != nil {
@@ -101,15 +106,17 @@ func NewCmdGc(c *cmd.Config) *xli.Command {
 			}
 
 			col := gc.New(gc.Config{
-				Stores:   stores,
-				Index:    ix,
-				Policy:   policy.Current,
-				Untagged: c.Registry.Gc.Untagged,
-				Delay:    c.Registry.Gc.Delay,
-				Leader:   ix,
-				Runs:     entruns.New(s.Ent),
-				Cache:    cache,
-				Meter:    meterOf(ctx),
+				Stores:        stores,
+				Index:         ix,
+				Policy:        policy.Current,
+				Untagged:      c.Registry.Gc.Untagged,
+				Orphaned:      c.Registry.Gc.Orphaned,
+				RescanOrphans: rescanOrphans,
+				Delay:         c.Registry.Gc.Delay,
+				Leader:        ix,
+				Runs:          entruns.New(s.Ent),
+				Cache:         cache,
+				Meter:         meterOf(ctx),
 			})
 			kind := gc.KindOnline
 			if full {

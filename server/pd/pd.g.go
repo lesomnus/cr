@@ -94,6 +94,8 @@ const (
 	HolderDomain            pdid.Domain = 2  // "holder"
 	ManifestDomain          pdid.Domain = 9  // "manifest"
 	ManifestBlobDomain      pdid.Domain = 10 // "manifest-blob"
+	OrphanCandidateDomain   pdid.Domain = 16 // "orphan-candidate"
+	OrphanScanDomain        pdid.Domain = 17 // "orphan-scan"
 	OutboxDomain            pdid.Domain = 4  // "outbox"
 	ReferrersSnapshotDomain pdid.Domain = 15 // "referrers-snapshot"
 	RepositoryDomain        pdid.Domain = 8  // "repository"
@@ -109,6 +111,8 @@ func init() {
 	pdid.Register("app.Holder", HolderDomain, "holder")
 	pdid.Register("app.Manifest", ManifestDomain, "manifest")
 	pdid.Register("app.ManifestBlob", ManifestBlobDomain, "manifest-blob")
+	pdid.Register("app.OrphanCandidate", OrphanCandidateDomain, "orphan-candidate")
+	pdid.Register("app.OrphanScan", OrphanScanDomain, "orphan-scan")
 	pdid.Register("app.Outbox", OutboxDomain, "outbox")
 	pdid.Register("app.ReferrersSnapshot", ReferrersSnapshotDomain, "referrers-snapshot")
 	pdid.Register("app.Repository", RepositoryDomain, "repository")
@@ -128,6 +132,8 @@ var Domains = map[string]pdid.Domain{
 	"app.Holder":            HolderDomain,
 	"app.Manifest":          ManifestDomain,
 	"app.ManifestBlob":      ManifestBlobDomain,
+	"app.OrphanCandidate":   OrphanCandidateDomain,
+	"app.OrphanScan":        OrphanScanDomain,
 	"app.Outbox":            OutboxDomain,
 	"app.ReferrersSnapshot": ReferrersSnapshotDomain,
 	"app.Repository":        RepositoryDomain,
@@ -215,6 +221,16 @@ func (wall) ManifestScope(ctx context.Context) (predicate.Manifest, error) {
 
 // ManifestBlobScope: declared `global`, so it is not behind the wall at all.
 func (wall) ManifestBlobScope(ctx context.Context) (predicate.ManifestBlob, error) {
+	return nil, nil
+}
+
+// OrphanCandidateScope: declared `global`, so it is not behind the wall at all.
+func (wall) OrphanCandidateScope(ctx context.Context) (predicate.OrphanCandidate, error) {
+	return nil, nil
+}
+
+// OrphanScanScope: declared `global`, so it is not behind the wall at all.
+func (wall) OrphanScanScope(ctx context.Context) (predicate.OrphanScan, error) {
 	return nil, nil
 }
 
@@ -5950,6 +5966,8 @@ func Resources(s api.Server, drv dialect.Driver, guard batch.Guard, w *watch.Wat
 		&api.Holder{},
 		&api.Manifest{},
 		&api.ManifestBlob{},
+		&api.OrphanCandidate{},
+		&api.OrphanScan{},
 		&api.Outbox{},
 		&api.ReferrersSnapshot{},
 		&api.Repository{},

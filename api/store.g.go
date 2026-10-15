@@ -29,6 +29,8 @@ type Server interface {
 	GcRun() GcRunServiceServer
 	Manifest() ManifestServiceServer
 	ManifestBlob() ManifestBlobServiceServer
+	OrphanCandidate() OrphanCandidateServiceServer
+	OrphanScan() OrphanScanServiceServer
 	Archived() ArchivedServiceServer
 	Audit() AuditServiceServer
 	Tenant() TenantServiceServer
@@ -48,6 +50,8 @@ func RegisterServer(g grpc.ServiceRegistrar, s Server) {
 	RegisterGcRunServiceServer(g, s.GcRun())
 	RegisterManifestServiceServer(g, s.Manifest())
 	RegisterManifestBlobServiceServer(g, s.ManifestBlob())
+	RegisterOrphanCandidateServiceServer(g, s.OrphanCandidate())
+	RegisterOrphanScanServiceServer(g, s.OrphanScan())
 	RegisterArchivedServiceServer(g, s.Archived())
 	RegisterAuditServiceServer(g, s.Audit())
 	RegisterTenantServiceServer(g, s.Tenant())
@@ -63,6 +67,8 @@ type UnimplementedServer struct {
 	GcRunServer             GcRunServiceServer
 	ManifestServer          ManifestServiceServer
 	ManifestBlobServer      ManifestBlobServiceServer
+	OrphanCandidateServer   OrphanCandidateServiceServer
+	OrphanScanServer        OrphanScanServiceServer
 	ArchivedServer          ArchivedServiceServer
 	AuditServer             AuditServiceServer
 	TenantServer            TenantServiceServer
@@ -80,6 +86,12 @@ func (UnimplementedServer) Manifest() ManifestServiceServer {
 }
 func (UnimplementedServer) ManifestBlob() ManifestBlobServiceServer {
 	return UnimplementedManifestBlobServiceServer{}
+}
+func (UnimplementedServer) OrphanCandidate() OrphanCandidateServiceServer {
+	return UnimplementedOrphanCandidateServiceServer{}
+}
+func (UnimplementedServer) OrphanScan() OrphanScanServiceServer {
+	return UnimplementedOrphanScanServiceServer{}
 }
 func (UnimplementedServer) Archived() ArchivedServiceServer {
 	return UnimplementedArchivedServiceServer{}
@@ -101,6 +113,8 @@ type StaticServer struct {
 	GcRunServer             GcRunServiceServer
 	ManifestServer          ManifestServiceServer
 	ManifestBlobServer      ManifestBlobServiceServer
+	OrphanCandidateServer   OrphanCandidateServiceServer
+	OrphanScanServer        OrphanScanServiceServer
 	ArchivedServer          ArchivedServiceServer
 	AuditServer             AuditServiceServer
 	TenantServer            TenantServiceServer
@@ -112,14 +126,16 @@ type StaticServer struct {
 	TagRuleServer           TagRuleServiceServer
 }
 
-func (s StaticServer) GcRun() GcRunServiceServer               { return s.GcRunServer }
-func (s StaticServer) Manifest() ManifestServiceServer         { return s.ManifestServer }
-func (s StaticServer) ManifestBlob() ManifestBlobServiceServer { return s.ManifestBlobServer }
-func (s StaticServer) Archived() ArchivedServiceServer         { return s.ArchivedServer }
-func (s StaticServer) Audit() AuditServiceServer               { return s.AuditServer }
-func (s StaticServer) Tenant() TenantServiceServer             { return s.TenantServer }
-func (s StaticServer) Holder() HolderServiceServer             { return s.HolderServer }
-func (s StaticServer) Outbox() OutboxServiceServer             { return s.OutboxServer }
+func (s StaticServer) GcRun() GcRunServiceServer                     { return s.GcRunServer }
+func (s StaticServer) Manifest() ManifestServiceServer               { return s.ManifestServer }
+func (s StaticServer) ManifestBlob() ManifestBlobServiceServer       { return s.ManifestBlobServer }
+func (s StaticServer) OrphanCandidate() OrphanCandidateServiceServer { return s.OrphanCandidateServer }
+func (s StaticServer) OrphanScan() OrphanScanServiceServer           { return s.OrphanScanServer }
+func (s StaticServer) Archived() ArchivedServiceServer               { return s.ArchivedServer }
+func (s StaticServer) Audit() AuditServiceServer                     { return s.AuditServer }
+func (s StaticServer) Tenant() TenantServiceServer                   { return s.TenantServer }
+func (s StaticServer) Holder() HolderServiceServer                   { return s.HolderServer }
+func (s StaticServer) Outbox() OutboxServiceServer                   { return s.OutboxServer }
 func (s StaticServer) ReferrersSnapshot() ReferrersSnapshotServiceServer {
 	return s.ReferrersSnapshotServer
 }
@@ -131,6 +147,8 @@ type Client interface {
 	GcRun() GcRunServiceClient
 	Manifest() ManifestServiceClient
 	ManifestBlob() ManifestBlobServiceClient
+	OrphanCandidate() OrphanCandidateServiceClient
+	OrphanScan() OrphanScanServiceClient
 	Archived() ArchivedServiceClient
 	Audit() AuditServiceClient
 	Tenant() TenantServiceClient
@@ -147,6 +165,8 @@ func NewClient(c *grpc.ClientConn) Client {
 		_GcRun:             NewGcRunServiceClient(c),
 		_Manifest:          NewManifestServiceClient(c),
 		_ManifestBlob:      NewManifestBlobServiceClient(c),
+		_OrphanCandidate:   NewOrphanCandidateServiceClient(c),
+		_OrphanScan:        NewOrphanScanServiceClient(c),
 		_Archived:          NewArchivedServiceClient(c),
 		_Audit:             NewAuditServiceClient(c),
 		_Tenant:            NewTenantServiceClient(c),
@@ -163,6 +183,8 @@ type client struct {
 	_GcRun             GcRunServiceClient
 	_Manifest          ManifestServiceClient
 	_ManifestBlob      ManifestBlobServiceClient
+	_OrphanCandidate   OrphanCandidateServiceClient
+	_OrphanScan        OrphanScanServiceClient
 	_Archived          ArchivedServiceClient
 	_Audit             AuditServiceClient
 	_Tenant            TenantServiceClient
@@ -177,6 +199,8 @@ type client struct {
 func (c *client) GcRun() GcRunServiceClient                         { return c._GcRun }
 func (c *client) Manifest() ManifestServiceClient                   { return c._Manifest }
 func (c *client) ManifestBlob() ManifestBlobServiceClient           { return c._ManifestBlob }
+func (c *client) OrphanCandidate() OrphanCandidateServiceClient     { return c._OrphanCandidate }
+func (c *client) OrphanScan() OrphanScanServiceClient               { return c._OrphanScan }
 func (c *client) Archived() ArchivedServiceClient                   { return c._Archived }
 func (c *client) Audit() AuditServiceClient                         { return c._Audit }
 func (c *client) Tenant() TenantServiceClient                       { return c._Tenant }

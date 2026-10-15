@@ -52,6 +52,8 @@ type state struct {
 	manifests map[string]map[digest.Digest]entry
 	tags      map[string]map[string]index.Tag
 	snapshots map[string]map[digest.Digest]index.Snapshot
+	orphans   map[string]map[digest.Digest]index.OrphanCandidate
+	scans     map[string]orphanScan
 }
 
 func newState() *state {
@@ -60,6 +62,8 @@ func newState() *state {
 		manifests: map[string]map[digest.Digest]entry{},
 		tags:      map[string]map[string]index.Tag{},
 		snapshots: map[string]map[digest.Digest]index.Snapshot{},
+		orphans:   map[string]map[digest.Digest]index.OrphanCandidate{},
+		scans:     map[string]orphanScan{},
 	}
 }
 
@@ -75,6 +79,10 @@ func (s *state) clone() *state {
 	for k, v := range s.snapshots {
 		c.snapshots[k] = maps.Clone(v)
 	}
+	for k, v := range s.orphans {
+		c.orphans[k] = maps.Clone(v)
+	}
+	maps.Copy(c.scans, s.scans)
 	return c
 }
 
@@ -141,6 +149,7 @@ func (ix *Index) Manifest() index.Manifests { return manifests(view{ix: ix}) }
 func (ix *Index) Tag() index.Tags           { return tags(view{ix: ix}) }
 func (ix *Index) Pulled() index.Pulled      { return pulled(view{ix: ix}) }
 func (ix *Index) Snapshot() index.Snapshots { return snapshots(view{ix: ix}) }
+func (ix *Index) Orphan() index.Orphans     { return orphans(view{ix: ix}) }
 
 func (ix *Index) Tx(ctx context.Context, repo string, fn func(index.Index) error) error {
 	return view{ix: ix}.Tx(ctx, repo, fn)
@@ -175,6 +184,7 @@ func (v view) Manifest() index.Manifests { return manifests(v) }
 func (v view) Tag() index.Tags           { return tags(v) }
 func (v view) Pulled() index.Pulled      { return pulled(v) }
 func (v view) Snapshot() index.Snapshots { return snapshots(v) }
+func (v view) Orphan() index.Orphans     { return orphans(v) }
 
 func (v view) Lock(ctx context.Context, repo string) (func(), error) {
 	if v.s != nil {
@@ -305,6 +315,8 @@ func (r repos) Erase(ctx context.Context, name string) error {
 		delete(s.manifests, name)
 		delete(s.tags, name)
 		delete(s.snapshots, name)
+		delete(s.orphans, name)
+		delete(s.scans, name)
 		return nil
 	})
 }
@@ -326,6 +338,11 @@ func (r manifests) Put(ctx context.Context, repo string, m index.Manifest, holds
 		}
 		m.Annotations = maps.Clone(m.Annotations)
 		vs[m.Digest] = entry{m: m, holds: slices.Clone(holds)}
+		if m.Subject != "" {
+			if _, exists := vs[m.Subject]; !exists {
+				observe(s, repo, m.Subject, r.ix.now(), true)
+			}
+		}
 		return nil
 	})
 }
@@ -360,6 +377,12 @@ func (r manifests) Erase(ctx context.Context, repo string, d digest.Digest) ([]d
 			return index.ErrNotFound
 		}
 		delete(s.manifests[repo], d)
+		for _, ref := range s.manifests[repo] {
+			if ref.m.Subject == d {
+				observe(s, repo, d, r.ix.now(), true)
+				break
+			}
+		}
 		for _, b := range e.holds {
 			if holds(s, repo, b) {
 				continue

@@ -40,6 +40,11 @@ transactional outbox. Rollbacks discard both the row and its notification.
 `ManifestBlob`, `Tag` -- global, erased for good, and read-only over the API,
 so that `pd gen` owns their schema and migrations and the page reads them like
 any other entity.
+The internal `OrphanCandidate` and `OrphanScan` tables have no RPC methods.
+Manifest insertion and deletion maintain candidates inside the repository
+transaction; GC checkpoints its initial legacy scan and then uses only that work
+list. Keep this bookkeeping in `index`, so registry, import, rebuild and GC
+writes all participate.
 
 ## Testing
 

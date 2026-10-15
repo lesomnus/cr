@@ -24,6 +24,10 @@ type Tx struct {
 	Manifest *ManifestClient
 	// ManifestBlob is the client for interacting with the ManifestBlob builders.
 	ManifestBlob *ManifestBlobClient
+	// OrphanCandidate is the client for interacting with the OrphanCandidate builders.
+	OrphanCandidate *OrphanCandidateClient
+	// OrphanScan is the client for interacting with the OrphanScan builders.
+	OrphanScan *OrphanScanClient
 	// Outbox is the client for interacting with the Outbox builders.
 	Outbox *OutboxClient
 	// ReferrersSnapshot is the client for interacting with the ReferrersSnapshot builders.
@@ -173,6 +177,8 @@ func (tx *Tx) init() {
 	tx.Holder = NewHolderClient(tx.config)
 	tx.Manifest = NewManifestClient(tx.config)
 	tx.ManifestBlob = NewManifestBlobClient(tx.config)
+	tx.OrphanCandidate = NewOrphanCandidateClient(tx.config)
+	tx.OrphanScan = NewOrphanScanClient(tx.config)
 	tx.Outbox = NewOutboxClient(tx.config)
 	tx.ReferrersSnapshot = NewReferrersSnapshotClient(tx.config)
 	tx.Repository = NewRepositoryClient(tx.config)

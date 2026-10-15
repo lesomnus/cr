@@ -43,6 +43,15 @@ type Config struct {
 	// must be before it goes; zero keeps them.
 	Untagged time.Duration
 
+	// Orphaned is the grace after a subject was registered as absent. Zero
+	// disables this independent collection, without stopping candidate tracking.
+	Orphaned time.Duration
+
+	// RescanOrphans restarts discovery before each orphan collection. Intended
+	// for a one-off manual run; ignored when Orphaned is disabled or a cache's
+	// retention takes precedence. Existing candidate grace periods are kept.
+	RescanOrphans bool
+
 	// Delay is how long a blob must have been in a repository before a sweep
 	// erases it, which keeps the blobs of a push whose manifest has not
 	// arrived; zero is an hour, and a negative duration erases at once.
@@ -312,6 +321,13 @@ func (c *Collector) Run(ctx context.Context) (Report, error) {
 					errs = append(errs, err)
 				}
 				continue
+			}
+			if c.c.Orphaned > 0 {
+				n, err := c.orphaned(ctx, name)
+				r.Manifests += n
+				if err != nil {
+					errs = append(errs, err)
+				}
 			}
 			if c.c.Untagged > 0 {
 				n, err := c.untagged(ctx, name)
@@ -601,6 +617,25 @@ func old(m index.Manifest, cutoff time.Time) bool {
 // manifest holds it, and it is not a referrer of a manifest that is here --
 // unless a snapshot of that manifest's referrers, newer than d, omits it.
 func (c *Collector) deleteManifest(ctx context.Context, repo string, d digest.Digest, cutoff time.Time) (bool, error) {
+	return c.removeManifest(ctx, repo, d, func(ix index.Index, m index.Manifest) (bool, error) {
+		if !old(m, cutoff) {
+			return false, nil
+		}
+		if m.Subject != "" {
+			if _, err := ix.Manifest().Get(ctx, repo, m.Subject); err == nil {
+				listed, err := stillListed(ctx, ix, repo, m)
+				return !listed, err
+			} else if !errors.Is(err, index.ErrNotFound) {
+				return false, err
+			}
+		}
+		return true, nil
+	})
+}
+
+// removeManifest applies a collection's eligibility rule and the shared tag
+// and holder protection in the same repository transaction as the deletion.
+func (c *Collector) removeManifest(ctx context.Context, repo string, d digest.Digest, eligible func(index.Index, index.Manifest) (bool, error)) (bool, error) {
 	var released []digest.Digest
 	deleted := false
 	err := c.c.Index.Tx(ctx, repo, func(ix index.Index) error {
@@ -611,23 +646,14 @@ func (c *Collector) deleteManifest(ctx context.Context, repo string, d digest.Di
 		if err != nil {
 			return err
 		}
-		if !old(m, cutoff) {
-			return nil
+		if ok, err := eligible(ix, m); err != nil || !ok {
+			return err
 		}
 		if ts, err := ix.Tag().Of(ctx, repo, d); err != nil || len(ts) > 0 {
 			return err
 		}
 		if held, err := ix.Manifest().Holds(ctx, repo, d); err != nil || held {
 			return err
-		}
-		if m.Subject != "" {
-			if _, err := ix.Manifest().Get(ctx, repo, m.Subject); err == nil {
-				if listed, err := stillListed(ctx, ix, repo, m); err != nil || listed {
-					return err
-				}
-			} else if !errors.Is(err, index.ErrNotFound) {
-				return err
-			}
 		}
 		released, err = ix.Manifest().Erase(ctx, repo, d)
 		if err != nil {
