@@ -16,6 +16,8 @@ import (
 	"github.com/lesomnus/cr/internal/ent"
 	"github.com/lesomnus/cr/internal/ent/manifest"
 	"github.com/lesomnus/cr/internal/ent/manifestblob"
+	"github.com/lesomnus/cr/internal/ent/orphancandidate"
+	"github.com/lesomnus/cr/internal/ent/orphanscan"
 	"github.com/lesomnus/cr/internal/ent/referrerssnapshot"
 	"github.com/lesomnus/cr/internal/ent/repository"
 	"github.com/lesomnus/cr/internal/ent/tag"
@@ -119,6 +121,9 @@ func (r repos) Search(ctx context.Context, s string, p index.Page) ([]index.Repo
 }
 
 func (r repos) Erase(ctx context.Context, name string) error {
+	if !r.ix.inTx {
+		return r.ix.Tx(ctx, name, func(ix index.Index) error { return ix.Repo().Erase(ctx, name) })
+	}
 	c := r.ix.client
 	if _, err := c.Tag.Delete().Where(tag.Repo(name)).Exec(ctx); err != nil {
 		return err
@@ -130,6 +135,12 @@ func (r repos) Erase(ctx context.Context, name string) error {
 		return err
 	}
 	if _, err := c.ReferrersSnapshot.Delete().Where(referrerssnapshot.Repo(name)).Exec(ctx); err != nil {
+		return err
+	}
+	if _, err := c.OrphanCandidate.Delete().Where(orphancandidate.Repo(name)).Exec(ctx); err != nil {
+		return err
+	}
+	if _, err := c.OrphanScan.Delete().Where(orphanscan.Repo(name)).Exec(ctx); err != nil {
 		return err
 	}
 	_, err := c.Repository.Delete().Where(repository.Name(name)).Exec(ctx)
@@ -155,7 +166,7 @@ func toManifest(v *ent.Manifest) index.Manifest {
 type manifests struct{ ix *Index }
 
 func (r manifests) Put(ctx context.Context, repo string, m index.Manifest, holds []digest.Digest) error {
-	if !r.ix.inTx && r.ix.o.watch != nil {
+	if !r.ix.inTx {
 		return r.ix.Tx(ctx, repo, func(tx index.Index) error {
 			return tx.Manifest().Put(ctx, repo, m, holds)
 		})
@@ -210,6 +221,17 @@ func (r manifests) Put(ctx context.Context, repo string, m index.Manifest, holds
 			return err
 		}
 	}
+	if m.Subject != "" {
+		present, err := c.Manifest.Query().Where(manifest.Repo(repo), manifest.Digest(m.Subject.String())).Exist(ctx)
+		if err != nil {
+			return err
+		}
+		if !present {
+			if err := (orphans{r.ix}).observe(ctx, repo, m.Subject, true); err != nil {
+				return err
+			}
+		}
+	}
 	return r.ix.recordCreated(ctx, key)
 }
 
@@ -222,6 +244,15 @@ func (r manifests) Get(ctx context.Context, repo string, d digest.Digest) (index
 }
 
 func (r manifests) Erase(ctx context.Context, repo string, d digest.Digest) ([]digest.Digest, error) {
+	if !r.ix.inTx {
+		var released []digest.Digest
+		err := r.ix.Tx(ctx, repo, func(ix index.Index) error {
+			var err error
+			released, err = ix.Manifest().Erase(ctx, repo, d)
+			return err
+		})
+		return released, err
+	}
 	c := r.ix.client
 	v, err := c.Manifest.Query().Where(manifest.Repo(repo), manifest.Digest(d.String())).Only(ctx)
 	if err != nil {
@@ -242,6 +273,17 @@ func (r manifests) Erase(ctx context.Context, repo string, d digest.Digest) ([]d
 		return nil, err
 	}
 
+	// Avoid retaining work for ordinary deletions with no referrers. This
+	// is an indexed existence check, not enumeration of the referrers.
+	refs, err := c.Manifest.Query().Where(manifest.Repo(repo), manifest.Subject(d.String())).Exist(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if refs {
+		if err := (orphans{r.ix}).observe(ctx, repo, d, true); err != nil {
+			return nil, err
+		}
+	}
 	slices.Sort(holds)
 	holds = slices.Compact(holds)
 

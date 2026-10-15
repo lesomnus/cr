@@ -1,0 +1,39 @@
+edition = "2023";
+
+package app;
+
+import "google/protobuf/timestamp.proto";
+import "orm.proto";
+import "payday.proto";
+
+option features.field_presence = IMPLICIT;
+option go_package = "github.com/lesomnus/cr/api";
+
+// OrphanCandidate schedules a subject for inspection by garbage collection.
+// Registry writes maintain this internal table in their own transaction;
+// it is not a management API entity.
+message OrphanCandidate {
+  bytes id = 1 [(orm.field) = {type: TYPE_UUID, key: true, default: ""}];
+  string repo = 8 [(orm.field) = {immutable: true}];
+  string subject = 9 [(orm.field) = {immutable: true}];
+  google.protobuf.Timestamp date_observed = 10 [(orm.field) = {default: ""}];
+
+  option (payday.entity) = {domain: 16, global: {}, erase: {hard: {}}};
+  option (orm.message) = {
+    indexes: [{name: "by_subject", refs: [{name: "repo", number: 8}, {name: "subject", number: 9}], unique: true}]
+  };
+}
+
+// OrphanScan checkpoints the one-time discovery of candidates in an existing
+// repository. Completed scans never run again, including after a restart.
+message OrphanScan {
+  bytes id = 1 [(orm.field) = {type: TYPE_UUID, key: true, default: ""}];
+  string repo = 8 [(orm.field) = {immutable: true}];
+  string cursor = 9;
+  bool complete = 10;
+
+  option (payday.entity) = {domain: 17, global: {}, erase: {hard: {}}};
+  option (orm.message) = {
+    indexes: [{name: "by_repo", refs: [{name: "repo", number: 8}], unique: true}]
+  };
+}

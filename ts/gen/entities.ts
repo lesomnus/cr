@@ -19,6 +19,7 @@ import { GcRunSchema } from './app/gc_run_pb.js'
 import { HolderSchema } from './app/payday/holder_pb.js'
 import { ManifestSchema } from './app/manifest_pb.js'
 import { ManifestBlobSchema } from './app/manifest_blob_pb.js'
+import { OrphanCandidateSchema, OrphanScanSchema } from './app/orphan_candidate_pb.js'
 import { OutboxSchema } from './app/payday/outbox_pb.js'
 import { ReferrersSnapshotSchema } from './app/referrers_snapshot_pb.js'
 import { RepositorySchema } from './app/repository_pb.js'
@@ -31,6 +32,7 @@ import { GcRunService } from './app/gc_run_svc_pb.js'
 import { HolderService } from './app/payday/holder_svc_pb.js'
 import { ManifestService } from './app/manifest_svc_pb.js'
 import { ManifestBlobService } from './app/manifest_blob_svc_pb.js'
+import { OrphanCandidateService, OrphanScanService } from './app/orphan_candidate_svc_pb.js'
 import { OutboxService } from './app/payday/outbox_svc_pb.js'
 import { ReferrersSnapshotService } from './app/referrers_snapshot_svc_pb.js'
 import { RepositoryService } from './app/repository_svc_pb.js'
@@ -104,6 +106,26 @@ export const ManifestBlob = {
 	service: ManifestBlobService,
 } as const satisfies EntityDesc
 
+/** app.OrphanCandidate, as the store holds it. */
+export const OrphanCandidate = {
+	typeName: "app.OrphanCandidate",
+	schema: OrphanCandidateSchema,
+	domain: 16,
+	key: "id",
+	ids: ["id"],
+	service: OrphanCandidateService,
+} as const satisfies EntityDesc
+
+/** app.OrphanScan, as the store holds it. */
+export const OrphanScan = {
+	typeName: "app.OrphanScan",
+	schema: OrphanScanSchema,
+	domain: 17,
+	key: "id",
+	ids: ["id"],
+	service: OrphanScanService,
+} as const satisfies EntityDesc
+
 /** app.Outbox, as the store holds it. */
 export const Outbox = {
 	typeName: "app.Outbox",
@@ -173,5 +195,5 @@ export const Tenant = {
 } as const satisfies EntityDesc
 
 /** Every entity of this app, which is what a store is opened over. */
-export const entities = [Archived, Audit, GcRun, Holder, Manifest, ManifestBlob, Outbox, ReferrersSnapshot, Repository, Tag, TagRule, Tenant] as const
+export const entities = [Archived, Audit, GcRun, Holder, Manifest, ManifestBlob, OrphanCandidate, OrphanScan, Outbox, ReferrersSnapshot, Repository, Tag, TagRule, Tenant] as const
 

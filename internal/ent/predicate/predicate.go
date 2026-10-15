@@ -24,6 +24,12 @@ type Manifest func(*sql.Selector)
 // ManifestBlob is the predicate function for manifestblob builders.
 type ManifestBlob func(*sql.Selector)
 
+// OrphanCandidate is the predicate function for orphancandidate builders.
+type OrphanCandidate func(*sql.Selector)
+
+// OrphanScan is the predicate function for orphanscan builders.
+type OrphanScan func(*sql.Selector)
+
 // Outbox is the predicate function for outbox builders.
 type Outbox func(*sql.Selector)
 

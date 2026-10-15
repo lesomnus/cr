@@ -30,6 +30,12 @@ export const ManifestDomain = 9
 /** The domain identifiers of app.ManifestBlob carry. */
 export const ManifestBlobDomain = 10
 
+/** The domain identifiers of app.OrphanCandidate carry. */
+export const OrphanCandidateDomain = 16
+
+/** The domain identifiers of app.OrphanScan carry. */
+export const OrphanScanDomain = 17
+
 /** The domain identifiers of app.Outbox carry. */
 export const OutboxDomain = 4
 
@@ -56,6 +62,8 @@ pdid.register("app.GcRun", GcRunDomain, "gc-run")
 pdid.register("app.Holder", HolderDomain, "holder")
 pdid.register("app.Manifest", ManifestDomain, "manifest")
 pdid.register("app.ManifestBlob", ManifestBlobDomain, "manifest-blob")
+pdid.register("app.OrphanCandidate", OrphanCandidateDomain, "orphan-candidate")
+pdid.register("app.OrphanScan", OrphanScanDomain, "orphan-scan")
 pdid.register("app.Outbox", OutboxDomain, "outbox")
 pdid.register("app.ReferrersSnapshot", ReferrersSnapshotDomain, "referrers-snapshot")
 pdid.register("app.Repository", RepositoryDomain, "repository")

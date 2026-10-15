@@ -81,6 +81,30 @@ func (f ManifestBlobFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ManifestBlobMutation", m)
 }
 
+// The OrphanCandidateFunc type is an adapter to allow the use of ordinary
+// function as OrphanCandidate mutator.
+type OrphanCandidateFunc func(context.Context, *ent.OrphanCandidateMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f OrphanCandidateFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.OrphanCandidateMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OrphanCandidateMutation", m)
+}
+
+// The OrphanScanFunc type is an adapter to allow the use of ordinary
+// function as OrphanScan mutator.
+type OrphanScanFunc func(context.Context, *ent.OrphanScanMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f OrphanScanFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.OrphanScanMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OrphanScanMutation", m)
+}
+
 // The OutboxFunc type is an adapter to allow the use of ordinary
 // function as Outbox mutator.
 type OutboxFunc func(context.Context, *ent.OutboxMutation) (ent.Value, error)

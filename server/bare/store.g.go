@@ -14,6 +14,8 @@ import (
 	holder "github.com/lesomnus/cr/internal/ent/holder"
 	manifest "github.com/lesomnus/cr/internal/ent/manifest"
 	manifestblob "github.com/lesomnus/cr/internal/ent/manifestblob"
+	orphancandidate "github.com/lesomnus/cr/internal/ent/orphancandidate"
+	orphanscan "github.com/lesomnus/cr/internal/ent/orphanscan"
 	outbox "github.com/lesomnus/cr/internal/ent/outbox"
 	predicate "github.com/lesomnus/cr/internal/ent/predicate"
 	referrerssnapshot "github.com/lesomnus/cr/internal/ent/referrerssnapshot"
@@ -370,6 +372,8 @@ type Scope interface {
 	GcRunScope(ctx context.Context) (predicate.GcRun, error)
 	ManifestScope(ctx context.Context) (predicate.Manifest, error)
 	ManifestBlobScope(ctx context.Context) (predicate.ManifestBlob, error)
+	OrphanCandidateScope(ctx context.Context) (predicate.OrphanCandidate, error)
+	OrphanScanScope(ctx context.Context) (predicate.OrphanScan, error)
 	ArchivedScope(ctx context.Context) (predicate.Archived, error)
 	AuditScope(ctx context.Context) (predicate.Audit, error)
 	TenantScope(ctx context.Context) (predicate.Tenant, error)
@@ -400,6 +404,12 @@ func (Unscoped) ManifestScope(_ context.Context) (predicate.Manifest, error) {
 	return nil, nil
 }
 func (Unscoped) ManifestBlobScope(_ context.Context) (predicate.ManifestBlob, error) {
+	return nil, nil
+}
+func (Unscoped) OrphanCandidateScope(_ context.Context) (predicate.OrphanCandidate, error) {
+	return nil, nil
+}
+func (Unscoped) OrphanScanScope(_ context.Context) (predicate.OrphanScan, error) {
 	return nil, nil
 }
 func (Unscoped) ArchivedScope(_ context.Context) (predicate.Archived, error) {
@@ -507,6 +517,46 @@ func (ss Scopes) ManifestBlobScope(ctx context.Context) (predicate.ManifestBlob,
 	}
 
 	return manifestblob.And(ps...), nil
+}
+
+func (ss Scopes) OrphanCandidateScope(ctx context.Context) (predicate.OrphanCandidate, error) {
+	ps := make([]predicate.OrphanCandidate, 0, len(ss))
+	for _, s := range ss {
+		p, err := s.OrphanCandidateScope(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if p == nil {
+			continue
+		}
+
+		ps = append(ps, p)
+	}
+	if len(ps) == 0 {
+		return nil, nil
+	}
+
+	return orphancandidate.And(ps...), nil
+}
+
+func (ss Scopes) OrphanScanScope(ctx context.Context) (predicate.OrphanScan, error) {
+	ps := make([]predicate.OrphanScan, 0, len(ss))
+	for _, s := range ss {
+		p, err := s.OrphanScanScope(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if p == nil {
+			continue
+		}
+
+		ps = append(ps, p)
+	}
+	if len(ps) == 0 {
+		return nil, nil
+	}
+
+	return orphanscan.And(ps...), nil
 }
 
 func (ss Scopes) ArchivedScope(ctx context.Context) (predicate.Archived, error) {
@@ -811,6 +861,12 @@ func (s Server) GcRun() api.GcRunServiceServer       { return GcRunServiceServer
 func (s Server) Manifest() api.ManifestServiceServer { return ManifestServiceServer{Store: s.Store} }
 func (s Server) ManifestBlob() api.ManifestBlobServiceServer {
 	return ManifestBlobServiceServer{Store: s.Store}
+}
+func (s Server) OrphanCandidate() api.OrphanCandidateServiceServer {
+	return OrphanCandidateServiceServer{Store: s.Store}
+}
+func (s Server) OrphanScan() api.OrphanScanServiceServer {
+	return OrphanScanServiceServer{Store: s.Store}
 }
 func (s Server) Archived() api.ArchivedServiceServer { return ArchivedServiceServer{Store: s.Store} }
 func (s Server) Audit() api.AuditServiceServer       { return AuditServiceServer{Store: s.Store} }

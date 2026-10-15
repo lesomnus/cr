@@ -249,6 +249,46 @@ var (
 			},
 		},
 	}
+	// OrphancandidateColumns holds the columns for the "orphancandidate" table.
+	OrphancandidateColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUuid, Unique: true},
+		{Name: "repo", Type: field.TypeString},
+		{Name: "subject", Type: field.TypeString},
+		{Name: "date_observed", Type: field.TypeTime, Nullable: true},
+	}
+	// OrphancandidateTable holds the schema information for the "orphancandidate" table.
+	OrphancandidateTable = &schema.Table{
+		Name:       "orphancandidate",
+		Columns:    OrphancandidateColumns,
+		PrimaryKey: []*schema.Column{OrphancandidateColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "orphancandidate_repo_subject",
+				Unique:  true,
+				Columns: []*schema.Column{OrphancandidateColumns[1], OrphancandidateColumns[2]},
+			},
+		},
+	}
+	// OrphanscanColumns holds the columns for the "orphanscan" table.
+	OrphanscanColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUuid, Unique: true},
+		{Name: "repo", Type: field.TypeString},
+		{Name: "cursor", Type: field.TypeString},
+		{Name: "complete", Type: field.TypeBool},
+	}
+	// OrphanscanTable holds the schema information for the "orphanscan" table.
+	OrphanscanTable = &schema.Table{
+		Name:       "orphanscan",
+		Columns:    OrphanscanColumns,
+		PrimaryKey: []*schema.Column{OrphanscanColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "orphanscan_repo",
+				Unique:  true,
+				Columns: []*schema.Column{OrphanscanColumns[1]},
+			},
+		},
+	}
 	// OutboxColumns holds the columns for the "outbox" table.
 	OutboxColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUuid, Unique: true},
@@ -443,6 +483,8 @@ var (
 		HolderTable,
 		ManifestTable,
 		ManifestblobTable,
+		OrphancandidateTable,
+		OrphanscanTable,
 		OutboxTable,
 		ReferrerssnapshotTable,
 		RepositoryTable,
@@ -471,6 +513,12 @@ func init() {
 	}
 	ManifestblobTable.Annotation = &entsql.Annotation{
 		Table: "manifestblob",
+	}
+	OrphancandidateTable.Annotation = &entsql.Annotation{
+		Table: "orphancandidate",
+	}
+	OrphanscanTable.Annotation = &entsql.Annotation{
+		Table: "orphanscan",
 	}
 	OutboxTable.Annotation = &entsql.Annotation{
 		Table: "outbox",

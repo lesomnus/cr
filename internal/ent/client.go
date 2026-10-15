@@ -16,6 +16,8 @@ import (
 	"github.com/lesomnus/cr/internal/ent/holder"
 	"github.com/lesomnus/cr/internal/ent/manifest"
 	"github.com/lesomnus/cr/internal/ent/manifestblob"
+	"github.com/lesomnus/cr/internal/ent/orphancandidate"
+	"github.com/lesomnus/cr/internal/ent/orphanscan"
 	"github.com/lesomnus/cr/internal/ent/outbox"
 	"github.com/lesomnus/cr/internal/ent/referrerssnapshot"
 	"github.com/lesomnus/cr/internal/ent/repository"
@@ -43,6 +45,10 @@ type Client struct {
 	Manifest *ManifestClient
 	// ManifestBlob is the client for interacting with the ManifestBlob builders.
 	ManifestBlob *ManifestBlobClient
+	// OrphanCandidate is the client for interacting with the OrphanCandidate builders.
+	OrphanCandidate *OrphanCandidateClient
+	// OrphanScan is the client for interacting with the OrphanScan builders.
+	OrphanScan *OrphanScanClient
 	// Outbox is the client for interacting with the Outbox builders.
 	Outbox *OutboxClient
 	// ReferrersSnapshot is the client for interacting with the ReferrersSnapshot builders.
@@ -71,6 +77,8 @@ func (c *Client) init() {
 	c.Holder = NewHolderClient(c.config)
 	c.Manifest = NewManifestClient(c.config)
 	c.ManifestBlob = NewManifestBlobClient(c.config)
+	c.OrphanCandidate = NewOrphanCandidateClient(c.config)
+	c.OrphanScan = NewOrphanScanClient(c.config)
 	c.Outbox = NewOutboxClient(c.config)
 	c.ReferrersSnapshot = NewReferrersSnapshotClient(c.config)
 	c.Repository = NewRepositoryClient(c.config)
@@ -175,6 +183,8 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Holder:            NewHolderClient(cfg),
 		Manifest:          NewManifestClient(cfg),
 		ManifestBlob:      NewManifestBlobClient(cfg),
+		OrphanCandidate:   NewOrphanCandidateClient(cfg),
+		OrphanScan:        NewOrphanScanClient(cfg),
 		Outbox:            NewOutboxClient(cfg),
 		ReferrersSnapshot: NewReferrersSnapshotClient(cfg),
 		Repository:        NewRepositoryClient(cfg),
@@ -206,6 +216,8 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Holder:            NewHolderClient(cfg),
 		Manifest:          NewManifestClient(cfg),
 		ManifestBlob:      NewManifestBlobClient(cfg),
+		OrphanCandidate:   NewOrphanCandidateClient(cfg),
+		OrphanScan:        NewOrphanScanClient(cfg),
 		Outbox:            NewOutboxClient(cfg),
 		ReferrersSnapshot: NewReferrersSnapshotClient(cfg),
 		Repository:        NewRepositoryClient(cfg),
@@ -287,8 +299,9 @@ func (c *Client) InTx() bool {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.Archived, c.Audit, c.GcRun, c.Holder, c.Manifest, c.ManifestBlob, c.Outbox,
-		c.ReferrersSnapshot, c.Repository, c.Tag, c.TagRule, c.Tenant,
+		c.Archived, c.Audit, c.GcRun, c.Holder, c.Manifest, c.ManifestBlob,
+		c.OrphanCandidate, c.OrphanScan, c.Outbox, c.ReferrersSnapshot, c.Repository,
+		c.Tag, c.TagRule, c.Tenant,
 	} {
 		n.Use(hooks...)
 	}
@@ -298,8 +311,9 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.Archived, c.Audit, c.GcRun, c.Holder, c.Manifest, c.ManifestBlob, c.Outbox,
-		c.ReferrersSnapshot, c.Repository, c.Tag, c.TagRule, c.Tenant,
+		c.Archived, c.Audit, c.GcRun, c.Holder, c.Manifest, c.ManifestBlob,
+		c.OrphanCandidate, c.OrphanScan, c.Outbox, c.ReferrersSnapshot, c.Repository,
+		c.Tag, c.TagRule, c.Tenant,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -320,6 +334,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Manifest.mutate(ctx, m)
 	case *ManifestBlobMutation:
 		return c.ManifestBlob.mutate(ctx, m)
+	case *OrphanCandidateMutation:
+		return c.OrphanCandidate.mutate(ctx, m)
+	case *OrphanScanMutation:
+		return c.OrphanScan.mutate(ctx, m)
 	case *OutboxMutation:
 		return c.Outbox.mutate(ctx, m)
 	case *ReferrersSnapshotMutation:
@@ -1151,6 +1169,272 @@ func (c *ManifestBlobClient) mutate(ctx context.Context, m *ManifestBlobMutation
 	}
 }
 
+// OrphanCandidateClient is a client for the OrphanCandidate schema.
+type OrphanCandidateClient struct {
+	config
+}
+
+// NewOrphanCandidateClient returns a client for the OrphanCandidate from the given config.
+func NewOrphanCandidateClient(c config) *OrphanCandidateClient {
+	return &OrphanCandidateClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `orphancandidate.Hooks(f(g(h())))`.
+func (c *OrphanCandidateClient) Use(hooks ...Hook) {
+	c.hooks.OrphanCandidate = append(c.hooks.OrphanCandidate, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `orphancandidate.Intercept(f(g(h())))`.
+func (c *OrphanCandidateClient) Intercept(interceptors ...Interceptor) {
+	c.inters.OrphanCandidate = append(c.inters.OrphanCandidate, interceptors...)
+}
+
+// Create returns a builder for creating a OrphanCandidate entity.
+func (c *OrphanCandidateClient) Create() *OrphanCandidateCreate {
+	mutation := newOrphanCandidateMutation(c.config, OpCreate)
+	return &OrphanCandidateCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of OrphanCandidate entities.
+func (c *OrphanCandidateClient) CreateBulk(builders ...*OrphanCandidateCreate) *OrphanCandidateCreateBulk {
+	return &OrphanCandidateCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *OrphanCandidateClient) MapCreateBulk(slice any, setFunc func(*OrphanCandidateCreate, int)) *OrphanCandidateCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &OrphanCandidateCreateBulk{err: fmt.Errorf("calling to OrphanCandidateClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*OrphanCandidateCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &OrphanCandidateCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for OrphanCandidate.
+func (c *OrphanCandidateClient) Update() *OrphanCandidateUpdate {
+	mutation := newOrphanCandidateMutation(c.config, OpUpdate)
+	return &OrphanCandidateUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *OrphanCandidateClient) UpdateOne(_m *OrphanCandidate) *OrphanCandidateUpdateOne {
+	mutation := newOrphanCandidateMutation(c.config, OpUpdateOne, withOrphanCandidate(_m))
+	return &OrphanCandidateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneId returns an update builder for the given id.
+func (c *OrphanCandidateClient) UpdateOneId(id uuid.UUID) *OrphanCandidateUpdateOne {
+	mutation := newOrphanCandidateMutation(c.config, OpUpdateOne, withOrphanCandidateId(id))
+	return &OrphanCandidateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for OrphanCandidate.
+func (c *OrphanCandidateClient) Delete() *OrphanCandidateDelete {
+	mutation := newOrphanCandidateMutation(c.config, OpDelete)
+	return &OrphanCandidateDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *OrphanCandidateClient) DeleteOne(_m *OrphanCandidate) *OrphanCandidateDeleteOne {
+	return c.DeleteOneId(_m.Id)
+}
+
+// DeleteOneId returns a builder for deleting the given entity by its id.
+func (c *OrphanCandidateClient) DeleteOneId(id uuid.UUID) *OrphanCandidateDeleteOne {
+	builder := c.Delete().Where(orphancandidate.Id(id))
+	builder.mutation.id = &id
+	builder.mutation.SetOp(OpDeleteOne)
+	return &OrphanCandidateDeleteOne{builder}
+}
+
+// Query returns a query builder for OrphanCandidate.
+func (c *OrphanCandidateClient) Query() *OrphanCandidateQuery {
+	return &OrphanCandidateQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeOrphanCandidate},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a OrphanCandidate entity by its id.
+func (c *OrphanCandidateClient) Get(ctx context.Context, id uuid.UUID) (*OrphanCandidate, error) {
+	return c.Query().Where(orphancandidate.Id(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *OrphanCandidateClient) GetX(ctx context.Context, id uuid.UUID) *OrphanCandidate {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *OrphanCandidateClient) Hooks() []Hook {
+	return c.hooks.OrphanCandidate
+}
+
+// Interceptors returns the client interceptors.
+func (c *OrphanCandidateClient) Interceptors() []Interceptor {
+	return c.inters.OrphanCandidate
+}
+
+func (c *OrphanCandidateClient) mutate(ctx context.Context, m *OrphanCandidateMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&OrphanCandidateCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&OrphanCandidateUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&OrphanCandidateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&OrphanCandidateDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown OrphanCandidate mutation op: %q", m.Op())
+	}
+}
+
+// OrphanScanClient is a client for the OrphanScan schema.
+type OrphanScanClient struct {
+	config
+}
+
+// NewOrphanScanClient returns a client for the OrphanScan from the given config.
+func NewOrphanScanClient(c config) *OrphanScanClient {
+	return &OrphanScanClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `orphanscan.Hooks(f(g(h())))`.
+func (c *OrphanScanClient) Use(hooks ...Hook) {
+	c.hooks.OrphanScan = append(c.hooks.OrphanScan, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `orphanscan.Intercept(f(g(h())))`.
+func (c *OrphanScanClient) Intercept(interceptors ...Interceptor) {
+	c.inters.OrphanScan = append(c.inters.OrphanScan, interceptors...)
+}
+
+// Create returns a builder for creating a OrphanScan entity.
+func (c *OrphanScanClient) Create() *OrphanScanCreate {
+	mutation := newOrphanScanMutation(c.config, OpCreate)
+	return &OrphanScanCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of OrphanScan entities.
+func (c *OrphanScanClient) CreateBulk(builders ...*OrphanScanCreate) *OrphanScanCreateBulk {
+	return &OrphanScanCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *OrphanScanClient) MapCreateBulk(slice any, setFunc func(*OrphanScanCreate, int)) *OrphanScanCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &OrphanScanCreateBulk{err: fmt.Errorf("calling to OrphanScanClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*OrphanScanCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &OrphanScanCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for OrphanScan.
+func (c *OrphanScanClient) Update() *OrphanScanUpdate {
+	mutation := newOrphanScanMutation(c.config, OpUpdate)
+	return &OrphanScanUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *OrphanScanClient) UpdateOne(_m *OrphanScan) *OrphanScanUpdateOne {
+	mutation := newOrphanScanMutation(c.config, OpUpdateOne, withOrphanScan(_m))
+	return &OrphanScanUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneId returns an update builder for the given id.
+func (c *OrphanScanClient) UpdateOneId(id uuid.UUID) *OrphanScanUpdateOne {
+	mutation := newOrphanScanMutation(c.config, OpUpdateOne, withOrphanScanId(id))
+	return &OrphanScanUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for OrphanScan.
+func (c *OrphanScanClient) Delete() *OrphanScanDelete {
+	mutation := newOrphanScanMutation(c.config, OpDelete)
+	return &OrphanScanDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *OrphanScanClient) DeleteOne(_m *OrphanScan) *OrphanScanDeleteOne {
+	return c.DeleteOneId(_m.Id)
+}
+
+// DeleteOneId returns a builder for deleting the given entity by its id.
+func (c *OrphanScanClient) DeleteOneId(id uuid.UUID) *OrphanScanDeleteOne {
+	builder := c.Delete().Where(orphanscan.Id(id))
+	builder.mutation.id = &id
+	builder.mutation.SetOp(OpDeleteOne)
+	return &OrphanScanDeleteOne{builder}
+}
+
+// Query returns a query builder for OrphanScan.
+func (c *OrphanScanClient) Query() *OrphanScanQuery {
+	return &OrphanScanQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeOrphanScan},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a OrphanScan entity by its id.
+func (c *OrphanScanClient) Get(ctx context.Context, id uuid.UUID) (*OrphanScan, error) {
+	return c.Query().Where(orphanscan.Id(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *OrphanScanClient) GetX(ctx context.Context, id uuid.UUID) *OrphanScan {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *OrphanScanClient) Hooks() []Hook {
+	return c.hooks.OrphanScan
+}
+
+// Interceptors returns the client interceptors.
+func (c *OrphanScanClient) Interceptors() []Interceptor {
+	return c.inters.OrphanScan
+}
+
+func (c *OrphanScanClient) mutate(ctx context.Context, m *OrphanScanMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&OrphanScanCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&OrphanScanUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&OrphanScanUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&OrphanScanDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown OrphanScan mutation op: %q", m.Op())
+	}
+}
+
 // OutboxClient is a client for the Outbox schema.
 type OutboxClient struct {
 	config
@@ -1968,11 +2252,13 @@ func (c *TenantClient) mutate(ctx context.Context, m *TenantMutation) (Value, er
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Archived, Audit, GcRun, Holder, Manifest, ManifestBlob, Outbox,
-		ReferrersSnapshot, Repository, Tag, TagRule, Tenant []ent.Hook
+		Archived, Audit, GcRun, Holder, Manifest, ManifestBlob, OrphanCandidate,
+		OrphanScan, Outbox, ReferrersSnapshot, Repository, Tag, TagRule,
+		Tenant []ent.Hook
 	}
 	inters struct {
-		Archived, Audit, GcRun, Holder, Manifest, ManifestBlob, Outbox,
-		ReferrersSnapshot, Repository, Tag, TagRule, Tenant []ent.Interceptor
+		Archived, Audit, GcRun, Holder, Manifest, ManifestBlob, OrphanCandidate,
+		OrphanScan, Outbox, ReferrersSnapshot, Repository, Tag, TagRule,
+		Tenant []ent.Interceptor
 	}
 )

@@ -15,6 +15,8 @@ import (
 	"github.com/lesomnus/cr/internal/ent/holder"
 	"github.com/lesomnus/cr/internal/ent/manifest"
 	"github.com/lesomnus/cr/internal/ent/manifestblob"
+	"github.com/lesomnus/cr/internal/ent/orphancandidate"
+	"github.com/lesomnus/cr/internal/ent/orphanscan"
 	"github.com/lesomnus/cr/internal/ent/outbox"
 	"github.com/lesomnus/cr/internal/ent/referrerssnapshot"
 	"github.com/lesomnus/cr/internal/ent/repository"
@@ -90,6 +92,8 @@ func checkColumn(t, c string) error {
 			holder.Table:            holder.ValidColumn,
 			manifest.Table:          manifest.ValidColumn,
 			manifestblob.Table:      manifestblob.ValidColumn,
+			orphancandidate.Table:   orphancandidate.ValidColumn,
+			orphanscan.Table:        orphanscan.ValidColumn,
 			outbox.Table:            outbox.ValidColumn,
 			referrerssnapshot.Table: referrerssnapshot.ValidColumn,
 			repository.Table:        repository.ValidColumn,
