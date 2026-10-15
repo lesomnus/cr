@@ -9,6 +9,18 @@ import (
 	"github.com/lesomnus/cr/internal/ent"
 )
 
+// The ArchivedFunc type is an adapter to allow the use of ordinary
+// function as Archived mutator.
+type ArchivedFunc func(context.Context, *ent.ArchivedMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ArchivedFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ArchivedMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ArchivedMutation", m)
+}
+
 // The AuditFunc type is an adapter to allow the use of ordinary
 // function as Audit mutator.
 type AuditFunc func(context.Context, *ent.AuditMutation) (ent.Value, error)

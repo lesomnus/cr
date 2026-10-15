@@ -59,6 +59,14 @@ message Manifest {
         ]
       },
       {
+        name: "by_artifact_type"
+        refs: [
+          {name: "artifact_type", number: 11},
+          {name: "date_created", number: 15},
+          {name: "id", number: 1}
+        ]
+      },
+      {
         name: "by_digest"
         refs: [
           {name: "repo", number: 8},
@@ -82,7 +90,7 @@ message Manifest {
 
     list: {
       order: [{field: {name: "date_created"}}, {field: {name: "id"}}]
-      by: [{name: "ref"}, {name: "repo"}, {name: "digest"}, {name: "subject"}]
+      by: [{name: "ref"}, {name: "repo"}, {name: "digest"}, {name: "subject"}, {name: "artifact_type"}]
       size: 20
       max: 100
     }

@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"uuid"
 
+	"github.com/lesomnus/cr/internal/ent/archived"
 	"github.com/lesomnus/cr/internal/ent/audit"
 	"github.com/lesomnus/cr/internal/ent/gcrun"
 	"github.com/lesomnus/cr/internal/ent/holder"
@@ -30,6 +31,8 @@ import (
 // Client is the client that holds all ent builders.
 type Client struct {
 	config
+	// Archived is the client for interacting with the Archived builders.
+	Archived *ArchivedClient
 	// Audit is the client for interacting with the Audit builders.
 	Audit *AuditClient
 	// GcRun is the client for interacting with the GcRun builders.
@@ -62,6 +65,7 @@ func NewClient(opts ...Option) *Client {
 }
 
 func (c *Client) init() {
+	c.Archived = NewArchivedClient(c.config)
 	c.Audit = NewAuditClient(c.config)
 	c.GcRun = NewGcRunClient(c.config)
 	c.Holder = NewHolderClient(c.config)
@@ -165,6 +169,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	return &Tx{
 		ctx:               ctx,
 		config:            cfg,
+		Archived:          NewArchivedClient(cfg),
 		Audit:             NewAuditClient(cfg),
 		GcRun:             NewGcRunClient(cfg),
 		Holder:            NewHolderClient(cfg),
@@ -195,6 +200,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	return &Tx{
 		ctx:               ctx,
 		config:            cfg,
+		Archived:          NewArchivedClient(cfg),
 		Audit:             NewAuditClient(cfg),
 		GcRun:             NewGcRunClient(cfg),
 		Holder:            NewHolderClient(cfg),
@@ -212,7 +218,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 // Debug returns a new debug-client. It's used to get verbose logging on specific operations.
 //
 //	client.Debug().
-//		Audit.
+//		Archived.
 //		Query().
 //		Count(ctx)
 func (c *Client) Debug() *Client {
@@ -281,7 +287,7 @@ func (c *Client) InTx() bool {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.Audit, c.GcRun, c.Holder, c.Manifest, c.ManifestBlob, c.Outbox,
+		c.Archived, c.Audit, c.GcRun, c.Holder, c.Manifest, c.ManifestBlob, c.Outbox,
 		c.ReferrersSnapshot, c.Repository, c.Tag, c.TagRule, c.Tenant,
 	} {
 		n.Use(hooks...)
@@ -292,7 +298,7 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.Audit, c.GcRun, c.Holder, c.Manifest, c.ManifestBlob, c.Outbox,
+		c.Archived, c.Audit, c.GcRun, c.Holder, c.Manifest, c.ManifestBlob, c.Outbox,
 		c.ReferrersSnapshot, c.Repository, c.Tag, c.TagRule, c.Tenant,
 	} {
 		n.Intercept(interceptors...)
@@ -302,6 +308,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 // Mutate implements the ent.Mutator interface.
 func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
+	case *ArchivedMutation:
+		return c.Archived.mutate(ctx, m)
 	case *AuditMutation:
 		return c.Audit.mutate(ctx, m)
 	case *GcRunMutation:
@@ -326,6 +334,139 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Tenant.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
+	}
+}
+
+// ArchivedClient is a client for the Archived schema.
+type ArchivedClient struct {
+	config
+}
+
+// NewArchivedClient returns a client for the Archived from the given config.
+func NewArchivedClient(c config) *ArchivedClient {
+	return &ArchivedClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `archived.Hooks(f(g(h())))`.
+func (c *ArchivedClient) Use(hooks ...Hook) {
+	c.hooks.Archived = append(c.hooks.Archived, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `archived.Intercept(f(g(h())))`.
+func (c *ArchivedClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Archived = append(c.inters.Archived, interceptors...)
+}
+
+// Create returns a builder for creating a Archived entity.
+func (c *ArchivedClient) Create() *ArchivedCreate {
+	mutation := newArchivedMutation(c.config, OpCreate)
+	return &ArchivedCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Archived entities.
+func (c *ArchivedClient) CreateBulk(builders ...*ArchivedCreate) *ArchivedCreateBulk {
+	return &ArchivedCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ArchivedClient) MapCreateBulk(slice any, setFunc func(*ArchivedCreate, int)) *ArchivedCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ArchivedCreateBulk{err: fmt.Errorf("calling to ArchivedClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ArchivedCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ArchivedCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Archived.
+func (c *ArchivedClient) Update() *ArchivedUpdate {
+	mutation := newArchivedMutation(c.config, OpUpdate)
+	return &ArchivedUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ArchivedClient) UpdateOne(_m *Archived) *ArchivedUpdateOne {
+	mutation := newArchivedMutation(c.config, OpUpdateOne, withArchived(_m))
+	return &ArchivedUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneId returns an update builder for the given id.
+func (c *ArchivedClient) UpdateOneId(id uuid.UUID) *ArchivedUpdateOne {
+	mutation := newArchivedMutation(c.config, OpUpdateOne, withArchivedId(id))
+	return &ArchivedUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Archived.
+func (c *ArchivedClient) Delete() *ArchivedDelete {
+	mutation := newArchivedMutation(c.config, OpDelete)
+	return &ArchivedDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ArchivedClient) DeleteOne(_m *Archived) *ArchivedDeleteOne {
+	return c.DeleteOneId(_m.Id)
+}
+
+// DeleteOneId returns a builder for deleting the given entity by its id.
+func (c *ArchivedClient) DeleteOneId(id uuid.UUID) *ArchivedDeleteOne {
+	builder := c.Delete().Where(archived.Id(id))
+	builder.mutation.id = &id
+	builder.mutation.SetOp(OpDeleteOne)
+	return &ArchivedDeleteOne{builder}
+}
+
+// Query returns a query builder for Archived.
+func (c *ArchivedClient) Query() *ArchivedQuery {
+	return &ArchivedQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeArchived},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Archived entity by its id.
+func (c *ArchivedClient) Get(ctx context.Context, id uuid.UUID) (*Archived, error) {
+	return c.Query().Where(archived.Id(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ArchivedClient) GetX(ctx context.Context, id uuid.UUID) *Archived {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ArchivedClient) Hooks() []Hook {
+	return c.hooks.Archived
+}
+
+// Interceptors returns the client interceptors.
+func (c *ArchivedClient) Interceptors() []Interceptor {
+	return c.inters.Archived
+}
+
+func (c *ArchivedClient) mutate(ctx context.Context, m *ArchivedMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ArchivedCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ArchivedUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ArchivedUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ArchivedDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Archived mutation op: %q", m.Op())
 	}
 }
 
@@ -1827,11 +1968,11 @@ func (c *TenantClient) mutate(ctx context.Context, m *TenantMutation) (Value, er
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Audit, GcRun, Holder, Manifest, ManifestBlob, Outbox, ReferrersSnapshot,
-		Repository, Tag, TagRule, Tenant []ent.Hook
+		Archived, Audit, GcRun, Holder, Manifest, ManifestBlob, Outbox,
+		ReferrersSnapshot, Repository, Tag, TagRule, Tenant []ent.Hook
 	}
 	inters struct {
-		Audit, GcRun, Holder, Manifest, ManifestBlob, Outbox, ReferrersSnapshot,
-		Repository, Tag, TagRule, Tenant []ent.Interceptor
+		Archived, Audit, GcRun, Holder, Manifest, ManifestBlob, Outbox,
+		ReferrersSnapshot, Repository, Tag, TagRule, Tenant []ent.Interceptor
 	}
 )

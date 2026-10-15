@@ -24,6 +24,7 @@ type Mutation struct {
 	object_id     *uuid.UUID
 	patch         *[]byte
 	date_created  *time.Time
+	event         *[]byte
 	clearedFields map[string]struct{}
 	predicates    []predicate.Outbox
 }
@@ -188,6 +189,38 @@ func (m *Mutation) ResetDateCreated() {
 	delete(m.clearedFields, FieldDateCreated)
 }
 
+// SetEvent sets the "event" field.
+func (m *Mutation) SetEvent(b []byte) {
+	m.event = &b
+}
+
+// Event returns the value of the "event" field in the mutation.
+func (m *Mutation) Event() (r []byte, exists bool) {
+	v := m.event
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearEvent clears the value of the "event" field.
+func (m *Mutation) ClearEvent() {
+	m.event = nil
+	m.clearedFields[FieldEvent] = struct{}{}
+}
+
+// EventCleared returns if the "event" field was cleared in this mutation.
+func (m *Mutation) EventCleared() bool {
+	_, ok := m.clearedFields[FieldEvent]
+	return ok
+}
+
+// ResetEvent resets all changes to the "event" field.
+func (m *Mutation) ResetEvent() {
+	m.event = nil
+	delete(m.clearedFields, FieldEvent)
+}
+
 // Where appends a list predicates to the Mutation builder.
 func (m *Mutation) Where(ps ...predicate.Outbox) {
 	m.predicates = append(m.predicates, ps...)
@@ -222,7 +255,7 @@ func (m *Mutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *Mutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.tenant_id != nil {
 		fields = append(fields, FieldTenantId)
 	}
@@ -243,6 +276,9 @@ func (m *Mutation) Fields() []string {
 	}
 	if m.date_created != nil {
 		fields = append(fields, FieldDateCreated)
+	}
+	if m.event != nil {
+		fields = append(fields, FieldEvent)
 	}
 	return fields
 }
@@ -266,6 +302,8 @@ func (m *Mutation) Field(name string) (ent.Value, bool) {
 		return m.Patch()
 	case FieldDateCreated:
 		return m.DateCreated()
+	case FieldEvent:
+		return m.Event()
 	}
 	return nil, false
 }
@@ -331,6 +369,13 @@ func (m *Mutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetDateCreated(v)
 		return nil
+	case FieldEvent:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEvent(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Outbox field %s", name)
 }
@@ -364,6 +409,9 @@ func (m *Mutation) ClearedFields() []string {
 	if m.FieldCleared(FieldDateCreated) {
 		fields = append(fields, FieldDateCreated)
 	}
+	if m.FieldCleared(FieldEvent) {
+		fields = append(fields, FieldEvent)
+	}
 	return fields
 }
 
@@ -380,6 +428,9 @@ func (m *Mutation) ClearField(name string) error {
 	switch name {
 	case FieldDateCreated:
 		m.ClearDateCreated()
+		return nil
+	case FieldEvent:
+		m.ClearEvent()
 		return nil
 	}
 	return fmt.Errorf("unknown Outbox nullable field %s", name)
@@ -409,6 +460,9 @@ func (m *Mutation) ResetField(name string) error {
 		return nil
 	case FieldDateCreated:
 		m.ResetDateCreated()
+		return nil
+	case FieldEvent:
+		m.ResetEvent()
 		return nil
 	}
 	return fmt.Errorf("unknown Outbox field %s", name)

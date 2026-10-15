@@ -627,6 +627,7 @@ type ManifestBlobListRequest struct {
 	xxx_hidden_Filters *[]*ManifestBlobFilter `protobuf:"bytes,1,rep,name=filters"`
 	xxx_hidden_Size    int32                  `protobuf:"varint,2,opt,name=size"`
 	xxx_hidden_After   string                 `protobuf:"bytes,3,opt,name=after"`
+	xxx_hidden_Reverse bool                   `protobuf:"varint,4,opt,name=reverse"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -679,6 +680,13 @@ func (x *ManifestBlobListRequest) GetAfter() string {
 	return ""
 }
 
+func (x *ManifestBlobListRequest) GetReverse() bool {
+	if x != nil {
+		return x.xxx_hidden_Reverse
+	}
+	return false
+}
+
 func (x *ManifestBlobListRequest) SetFilters(v []*ManifestBlobFilter) {
 	x.xxx_hidden_Filters = &v
 }
@@ -689,6 +697,10 @@ func (x *ManifestBlobListRequest) SetSize(v int32) {
 
 func (x *ManifestBlobListRequest) SetAfter(v string) {
 	x.xxx_hidden_After = v
+}
+
+func (x *ManifestBlobListRequest) SetReverse(v bool) {
+	x.xxx_hidden_Reverse = v
 }
 
 type ManifestBlobListRequest_builder struct {
@@ -706,6 +718,11 @@ type ManifestBlobListRequest_builder struct {
 	// ahead of the page does not shift it and a caller reading through never sees
 	// one twice or misses one.
 	After string
+	// Read the order the other way round, every column of it at once -- newest
+	// first where it is oldest first -- which the index the order walks walks
+	// from the other end. A cursor is of the way it was read, so the next page
+	// carries on that way, and one of the other way is refused.
+	Reverse bool
 }
 
 func (b0 ManifestBlobListRequest_builder) Build() *ManifestBlobListRequest {
@@ -715,6 +732,7 @@ func (b0 ManifestBlobListRequest_builder) Build() *ManifestBlobListRequest {
 	x.xxx_hidden_Filters = &b.Filters
 	x.xxx_hidden_Size = b.Size
 	x.xxx_hidden_After = b.After
+	x.xxx_hidden_Reverse = b.Reverse
 	return m0
 }
 
@@ -991,11 +1009,12 @@ const file_app_manifest_blob_svc_g_proto_rawDesc = "" +
 	"\bmanifest\x18\t \x01(\bR\bmanifest\x12\x12\n" +
 	"\x04blob\x18\n" +
 	" \x01(\bR\x04blob\x12!\n" +
-	"\fdate_created\x18\x0f \x01(\bR\vdateCreated\"\x84\x01\n" +
+	"\fdate_created\x18\x0f \x01(\bR\vdateCreated\"\xa5\x01\n" +
 	"\x17ManifestBlobListRequest\x121\n" +
 	"\afilters\x18\x01 \x03(\v2\x17.app.ManifestBlobFilterR\afilters\x12\x19\n" +
 	"\x04size\x18\x02 \x01(\x05B\x05\xaa\x01\x02\b\x02R\x04size\x12\x1b\n" +
-	"\x05after\x18\x03 \x01(\tB\x05\xaa\x01\x02\b\x02R\x05after\"^\n" +
+	"\x05after\x18\x03 \x01(\tB\x05\xaa\x01\x02\b\x02R\x05after\x12\x1f\n" +
+	"\areverse\x18\x04 \x01(\bB\x05\xaa\x01\x02\b\x02R\areverse\"^\n" +
 	"\x18ManifestBlobListResponse\x12'\n" +
 	"\x05items\x18\x01 \x03(\v2\x11.app.ManifestBlobR\x05items\x12\x19\n" +
 	"\x04next\x18\x02 \x01(\tB\x05\xaa\x01\x02\b\x02R\x04next\"\x80\x01\n" +

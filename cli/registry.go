@@ -39,7 +39,7 @@ func Registry(ctx context.Context, c *cmd.Config, s *cmd.Server) error {
 		return err
 	}
 
-	opts := []entindex.Option{entindex.WithMeter(meterOf(ctx))}
+	opts := []entindex.Option{entindex.WithMeter(meterOf(ctx)), entindex.WithManifestWatch(s.Watch, c.Watch.Outbox)}
 	if c.Registry.LockWait > 0 {
 		opts = append(opts, entindex.WithWait(c.Registry.LockWait))
 	}

@@ -10,14 +10,19 @@ import (
 	ent "github.com/lesomnus/cr/internal/ent"
 	predicate "github.com/lesomnus/cr/internal/ent/predicate"
 	tagrule "github.com/lesomnus/cr/internal/ent/tagrule"
+	tenant "github.com/lesomnus/cr/internal/ent/tenant"
 	patchpb "github.com/lesomnus/protobuf-patch/patchpb"
 	ent1 "github.com/protobuf-orm/ent"
+	dialect "github.com/protobuf-orm/ent/dialect"
+	sql "github.com/protobuf-orm/ent/dialect/sql"
 	sqlgraph "github.com/protobuf-orm/ent/dialect/sql/sqlgraph"
 	ormpatch "github.com/protobuf-orm/protobuf-orm/ormpatch"
 	entpatch "github.com/protobuf-orm/protoc-gen-orm-ent/runtime/entpatch"
 	entuuid "github.com/protobuf-orm/protoc-gen-orm-ent/runtime/entuuid"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	proto "google.golang.org/protobuf/proto"
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	uuid "uuid"
 )
 
@@ -80,6 +85,38 @@ func (s TagRuleServiceServer) narrow(ctx context.Context, p predicate.TagRule) (
 	return TagRuleNarrow(ctx, s.Scope, p)
 }
 
+func (s TagRuleServiceServer) snapshot(ctx context.Context, p predicate.TagRule, lock bool) (*ent.TagRule, error) {
+	q := s.Db.TagRule.Query().Where(p)
+	q.WithTenant(func(q *ent.TenantQuery) { q.Select(tenant.FieldId) })
+	q.Modify(func(q *sql.Selector) {
+		if lock && s.Db.Dialect() != dialect.SQLite {
+			q.ForUpdate()
+		}
+	})
+	return q.Only(ctx)
+}
+func (s TagRuleServiceServer) image(v *api.TagRule) *api.TagRule {
+	if v == nil {
+		return nil
+	}
+	out := proto.Clone(v).(*api.TagRule)
+	m := out.ProtoReflect()
+	{
+		f := m.Descriptor().Fields().ByNumber(2)
+		if m.Has(f) {
+			trim := func(r protoreflect.Message) {
+				r.Range(func(f protoreflect.FieldDescriptor, _ protoreflect.Value) bool {
+					if f.Number() != 1 {
+						r.Clear(f)
+					}
+					return true
+				})
+			}
+			trim(m.Get(f).Message())
+		}
+	}
+	return out
+}
 func (s TagRuleServiceServer) Add(ctx context.Context, req *api.TagRuleAddRequest) (*api.TagRule, error) {
 	tx, err := ent1.JoinTx[*ent.Client, *ent.Tx](ctx, s.Db, s.Rec != nil)
 	if err != nil {
@@ -143,9 +180,22 @@ func (s TagRuleServiceServer) Add(ctx context.Context, req *api.TagRuleAddReques
 		return nil, err
 	}
 
+	v := u.Proto()
+	for _, d := range ds {
+		d(v)
+	}
+	var value *api.TagRule
+	if snapshotOptions(s.Rec, api.TagRuleService_Add_FullMethodName).Value {
+		stored, err := st.snapshot(ctx, tagrule.IdEQ(u.Id), false)
+		if err != nil {
+			return nil, err
+		}
+		value = s.image(stored.Proto())
+	}
 	if err := record(ctx, s.Rec, st.Db, Change{
-		By:  api.TagRuleService_Add_FullMethodName,
-		Key: u.Id,
+		By:    api.TagRuleService_Add_FullMethodName,
+		Key:   u.Id,
+		Value: value,
 	}); err != nil {
 		return nil, err
 	}
@@ -153,10 +203,6 @@ func (s TagRuleServiceServer) Add(ctx context.Context, req *api.TagRuleAddReques
 		return nil, err
 	}
 
-	v := u.Proto()
-	for _, d := range ds {
-		d(v)
-	}
 	return v, nil
 }
 
@@ -350,6 +396,18 @@ func (s TagRuleServiceServer) apply(ctx context.Context, ref *api.TagRuleRef, do
 		return nil, err
 	}
 
+	var previous *api.TagRule
+	images := snapshotOptions(s.Rec, by)
+	if images.Previous && mod != nil {
+		u, err := st.snapshot(ctx, p, true)
+		if err != nil {
+			if ent.IsNotFound(err) {
+				return nil, status.Error(codes.NotFound, "resource not found")
+			}
+			return nil, err
+		}
+		previous = s.image(u.Proto())
+	}
 	if mod == nil {
 		q := st.Db.TagRule.Query().Where(p)
 		if pred != nil {
@@ -398,20 +456,25 @@ func (s TagRuleServiceServer) apply(ctx context.Context, ref *api.TagRuleRef, do
 		}
 	}
 
+	out, err := st.Get(ctx, at.Pick())
+	if err != nil {
+		return nil, err
+	}
 	if mod != nil {
+		var value *api.TagRule
+		if images.Value {
+			value = s.image(out)
+		}
 		if err := record(ctx, s.Rec, st.Db, Change{
-			By:    by,
-			Key:   k,
-			Patch: doc,
+			By:       by,
+			Key:      k,
+			Patch:    doc,
+			Previous: previous, Value: value,
 		}); err != nil {
 			return nil, err
 		}
 	}
 
-	out, err := st.Get(ctx, at.Pick())
-	if err != nil {
-		return nil, err
-	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
@@ -438,8 +501,16 @@ func (s TagRuleServiceServer) Erase(ctx context.Context, req *api.TagRuleRef) (*
 	st.Db = tx.Db
 
 	var k any
+	var previous *api.TagRule
 	if s.Rec != nil {
-		v, err := st.Db.TagRule.Query().Where(p).OnlyId(ctx)
+		images := snapshotOptions(s.Rec, api.TagRuleService_Erase_FullMethodName)
+		var v *ent.TagRule
+		var err error
+		if images.Previous {
+			v, err = st.snapshot(ctx, p, true)
+		} else {
+			v, err = st.Db.TagRule.Query().Where(p).Select(tagrule.FieldId).Only(ctx)
+		}
 		if err != nil {
 			if ent.IsNotFound(err) {
 				return &api.TagRuleEraseResponse{}, nil
@@ -447,8 +518,11 @@ func (s TagRuleServiceServer) Erase(ctx context.Context, req *api.TagRuleRef) (*
 			return nil, err
 		}
 
-		k = v
-		p = tagrule.And(p, tagrule.IdEQ(v))
+		k = v.Id
+		if images.Previous {
+			previous = s.image(v.Proto())
+		}
+		p = tagrule.And(p, tagrule.IdEQ(v.Id))
 	}
 
 	u := st.Db.TagRule.Update().Where(p)
@@ -460,8 +534,9 @@ func (s TagRuleServiceServer) Erase(ctx context.Context, req *api.TagRuleRef) (*
 	}
 	if n > 0 {
 		if err := record(ctx, s.Rec, st.Db, Change{
-			By:  api.TagRuleService_Erase_FullMethodName,
-			Key: k,
+			By:       api.TagRuleService_Erase_FullMethodName,
+			Key:      k,
+			Previous: previous,
 		}); err != nil {
 			return nil, err
 		}
