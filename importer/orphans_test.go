@@ -125,3 +125,41 @@ func TestImportOrphanedExistingChild(t *testing.T) {
 		require.NoError(t, err)
 	}
 }
+
+// Delete an existing child after planning, just before the import commits.
+type beforeImportIndex struct {
+	index.Index
+	change func()
+}
+
+func (i beforeImportIndex) Tx(ctx context.Context, repo string, fn func(index.Index) error) error {
+	i.change()
+	return i.Index.Tx(ctx, repo, fn)
+}
+
+func TestImportOrphanedChildDeletedDuringTransfer(t *testing.T) {
+	const repo = "acme/app"
+	ctx := context.Background()
+	s := newSource(t)
+	absent := v1.Descriptor{Digest: digest.FromString("absent"), MediaType: v1.MediaTypeImageManifest, Size: 1}
+	child := s.referrer(repo, "orphan", absent)
+	parent := s.manifest(repo, "index", v1.Index{Versioned: specs.Versioned{SchemaVersion: 2}, MediaType: v1.MediaTypeImageIndex, Manifests: []v1.Descriptor{child}}, v1.MediaTypeImageIndex)
+	src := zotRoot(t, s, repo)
+	x := newTarget(t)
+	_, err := x.run(t, src, importer.Options{})
+	require.NoError(t, err)
+	require.NoError(t, x.ix.Tag().Erase(ctx, repo, "index"))
+	_, err = x.ix.Manifest().Erase(ctx, repo, parent.Digest)
+	require.NoError(t, err)
+	wrapped := beforeImportIndex{Index: x.ix, change: func() {
+		require.NoError(t, x.ix.Tag().Erase(ctx, repo, "orphan"))
+		_, err := x.ix.Manifest().Erase(ctx, repo, child.Digest)
+		require.NoError(t, err)
+	}}
+	_, err = importer.Import(ctx, src, x.stores, wrapped, importer.Options{SkipOrphaned: true})
+	require.ErrorContains(t, err, "skipped child")
+	_, err = x.ix.Manifest().Get(ctx, repo, parent.Digest)
+	require.ErrorIs(t, err, index.ErrNotFound)
+	_, err = x.ix.Tag().Get(ctx, repo, "index")
+	require.ErrorIs(t, err, index.ErrNotFound)
+}

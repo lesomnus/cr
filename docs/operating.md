@@ -398,7 +398,7 @@ On first enabling orphan collection for a repository, old manifests are checked
 in batches of 500. The database stores the cursor and completion, so a restart
 resumes the scan and later runs do not repeat it. Newly discovered candidates
 get a fresh grace period, regardless of the imported manifests' original ages.
-The upgrade adds the internal `orphan_candidate` and `orphan_scan` tables; apply
+The upgrade adds the internal `orphancandidate` and `orphanscan` tables; apply
 the generated schema migration before running the new binary, as for other
 schema changes. Complete the writer upgrade before this initial scan so all
 subsequent changes maintain the candidates.

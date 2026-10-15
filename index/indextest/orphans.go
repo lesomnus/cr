@@ -3,8 +3,11 @@ package indextest
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/lesomnus/cr/index"
 	"github.com/stretchr/testify/require"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -113,4 +116,51 @@ func testOrphans(t *testing.T, ix index.Index) {
 	require.True(t, done)
 	_, err = ix.Orphan().Get(ctx, repo, subject.Digest)
 	require.NoError(t, err)
+}
+
+func testOrphanPages(t *testing.T, ix index.Index) {
+	ctx := context.Background()
+	const repo = "pages"
+	// Put the only referrer beyond the first seed batch in digest order.
+	rows := make([]index.Manifest, 501)
+	for i := range rows {
+		rows[i] = manifest(fmt.Sprintf("page-%d", i))
+	}
+	slices.SortFunc(rows, func(a, b index.Manifest) int { return strings.Compare(a.Digest.String(), b.Digest.String()) })
+	subject := d("missing")
+	rows[len(rows)-1].Subject = subject
+	require.NoError(t, ix.Tx(ctx, repo, func(tx index.Index) error {
+		for _, m := range rows {
+			if err := tx.Manifest().Put(ctx, repo, m, nil); err != nil {
+				return err
+			}
+		}
+		return tx.Orphan().Erase(ctx, repo, subject) // simulate pre-upgrade rows
+	}))
+	done, err := ix.Orphan().Seed(ctx, repo)
+	require.NoError(t, err)
+	require.False(t, done)
+	_, err = ix.Orphan().Get(ctx, repo, subject)
+	require.ErrorIs(t, err, index.ErrNotFound)
+	done, err = ix.Orphan().Seed(ctx, repo)
+	require.NoError(t, err)
+	require.True(t, done)
+	_, err = ix.Orphan().Get(ctx, repo, subject)
+	require.NoError(t, err)
+	// Candidate paging is independent of seeding, including deduplication.
+	for i := range 3 {
+		m := manifest(fmt.Sprintf("extra-%d", i))
+		m.Subject = d(fmt.Sprintf("subject-%d", i))
+		require.NoError(t, ix.Manifest().Put(ctx, repo, m, nil))
+	}
+	first, err := ix.Orphan().List(ctx, repo, index.Page{N: 2})
+	require.NoError(t, err)
+	require.Len(t, first, 2)
+	next, err := ix.Orphan().List(ctx, repo, index.Page{N: 2, Last: first[1].Subject.String()})
+	require.NoError(t, err)
+	require.Len(t, next, 2)
+	require.Less(t, first[1].Subject.String(), next[0].Subject.String())
+	all, err := ix.Orphan().List(ctx, repo, index.Page{})
+	require.NoError(t, err)
+	require.Equal(t, all, append(first, next...))
 }

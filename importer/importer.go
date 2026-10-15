@@ -391,6 +391,19 @@ func importRepo(ctx context.Context, l layout, s flob.Store, ix index.Index, o O
 	}
 
 	err = ix.Tx(ctx, l.repo, func(tx index.Index) error {
+		// A kept index may rely on an omitted child already in the target.
+		// Recheck under the repository lock: a deletion during blob transfer
+		// must not leave an index whose child was neither kept nor imported.
+		for _, d := range order {
+			for _, child := range manifests[d].m.Manifests {
+				if skipped[child.Digest.String()] == "" {
+					continue
+				}
+				if _, err := tx.Manifest().Get(ctx, l.repo, child.Digest); err != nil {
+					return fmt.Errorf("%s: skipped child %s is no longer available; retry the import: %w", d, child.Digest, err)
+				}
+			}
+		}
 		if _, err := tx.Repo().Ensure(ctx, l.repo); err != nil {
 			return err
 		}

@@ -28,6 +28,7 @@ func Run(t *testing.T, open Open) {
 	t.Run("manifests", func(t *testing.T) { testManifests(t, open(t, 0)) })
 	t.Run("erase releases", func(t *testing.T) { testErase(t, open(t, 0)) })
 	t.Run("referrers", func(t *testing.T) { testReferrers(t, open(t, 0)) })
+	t.Run("orphan pages", func(t *testing.T) { testOrphanPages(t, open(t, 0)) })
 	t.Run("orphans", func(t *testing.T) { testOrphans(t, open(t, 0)) })
 	t.Run("snapshots", func(t *testing.T) { testSnapshots(t, open(t, 0)) })
 	t.Run("tags", func(t *testing.T) { testTags(t, open(t, 0)) })
