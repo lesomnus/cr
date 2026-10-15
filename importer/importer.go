@@ -68,6 +68,10 @@ type Options struct {
 	// the import.
 	Copy bool
 
+	// SkipOrphaned omits referrers with no subject in either the import or
+	// the destination repository, and indexes that would lose a child.
+	SkipOrphaned bool
+
 	// MaxManifestSize is the largest manifest read; zero is 4 MiB.
 	MaxManifestSize int64
 }
@@ -86,6 +90,14 @@ type RepoReport struct {
 
 	Manifests int `json:"manifests"`
 	Tags      int `json:"tags"`
+
+	// Orphaned counts referrers whose subject is absent from the planned
+	// import and destination snapshot. They are kept unless SkipOrphaned.
+	Orphaned int `json:"orphaned"`
+
+	// Skipped is the manifests omitted by SkipOrphaned, with why. Tags on
+	// these manifests are omitted too; existing destination rows are kept.
+	Skipped map[string]string `json:"skipped,omitempty"`
 
 	// Linked is the blobs taken in by link, Copied by copy, and Present
 	// the ones the repository already held.
@@ -325,6 +337,30 @@ func importRepo(ctx context.Context, l layout, s flob.Store, ix index.Index, o O
 		tags = append(tags, tag{t, d.Digest})
 	}
 
+	// Decide against the whole reachable import, independent of visitation
+	// order, and a snapshot of subjects already in the destination. Nothing
+	// here deletes or changes existing destination manifests.
+	orphaned, skipped, err := planOrphans(ctx, l.repo, manifests, ix, o.SkipOrphaned)
+	if err != nil {
+		return rr, err
+	}
+	rr.Orphaned, rr.Skipped = orphaned, skipped
+	if len(skipped) > 0 {
+		order = slices.DeleteFunc(order, func(d digest.Digest) bool { return skipped[d.String()] != "" })
+		tags = slices.DeleteFunc(tags, func(t tag) bool { return skipped[t.d.String()] != "" })
+		// Do not adopt content that only skipped manifests would have needed.
+		blobs = map[digest.Digest]int64{}
+		for _, d := range order {
+			mf := manifests[d]
+			blobs[d] = mf.desc.Size
+			for _, b := range mf.m.Blobs() {
+				if oci.Distributable(b) {
+					blobs[b.Digest] = b.Size
+				}
+			}
+		}
+	}
+
 	// The blobs first, so that nothing in the index is ever without its
 	// content. Sorted, so a run that stopped and a run again do the same
 	// work in the same order.
@@ -354,7 +390,7 @@ func importRepo(ctx context.Context, l layout, s flob.Store, ix index.Index, o O
 		}
 	}
 
-	err := ix.Tx(ctx, l.repo, func(tx index.Index) error {
+	err = ix.Tx(ctx, l.repo, func(tx index.Index) error {
 		if _, err := tx.Repo().Ensure(ctx, l.repo); err != nil {
 			return err
 		}

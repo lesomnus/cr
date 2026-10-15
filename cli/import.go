@@ -28,6 +28,7 @@ func NewCmdImport(c *cmd.Config) *xli.Command {
 			&flg.String{Name: "only", Brief: "the repositories to take, separated by commas; every one when empty"},
 			&flg.String{Name: "exclude", Brief: "prefixes of repositories to leave, separated by commas"},
 			&flg.Switch{Name: "verify", Brief: "hash every blob, and refuse one that is not its digest"},
+			&flg.Switch{Name: "skip-orphaned", Brief: "omit referrers whose subjects are absent, and indexes that need them"},
 			&flg.Switch{Name: "copy", Brief: "copy a blob that cannot be linked, rather than stop"},
 			&flg.Switch{Name: "offline", Brief: "on SQLite, say that no server is running on this database"},
 		},
@@ -39,6 +40,7 @@ func NewCmdImport(c *cmd.Config) *xli.Command {
 			exclude, _ := flg.Find[string](self, "exclude")
 			verify, _ := flg.Find[bool](self, "verify")
 			copy_, _ := flg.Find[bool](self, "copy")
+			skipOrphaned, _ := flg.Find[bool](self, "skip-orphaned")
 			offline, _ := flg.Find[bool](self, "offline")
 
 			ctx, done, err := Telemetry(ctx, c)
@@ -81,6 +83,7 @@ func NewCmdImport(c *cmd.Config) *xli.Command {
 				Refuse:          refuse,
 				Verify:          verify,
 				Copy:            copy_,
+				SkipOrphaned:    skipOrphaned,
 				MaxManifestSize: c.Registry.MaxManifestSize,
 			})
 			printJSON(self, r)

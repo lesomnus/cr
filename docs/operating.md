@@ -352,7 +352,8 @@ cutting what is in flight, unless it runs longer than `timeout`. On SQLite,
 registry:
   gc:
     every: 1h          # the online collection; negative never runs it
-    untagged: 168h     # zero keeps untagged manifests
+    untagged: 168h     # zero disables untagged collection
+    orphaned: 0s      # opt in, e.g. 168h; independent of untagged
     delay: 1h          # a blob younger than this is left by a sweep
     full_every: 168h   # the full collection; zero never
 ```
@@ -369,6 +370,42 @@ registry:
   them. Pull
   times are written in batches, so a pull in the last few seconds before a run
   may not count yet.
+
+**Orphaned referrers** can be collected independently with `gc.orphaned`.
+For example, `untagged: 0s` and `orphaned: 168h` keep untagged images while
+collecting unused signatures whose subject is absent from the same repository.
+Zero (the default) disables orphan collection. A pull-through cache with a
+positive `retention` continues to use its cache retention instead.
+
+Deleting a tag leaves its manifest and referrers. Deleting a manifest by digest
+leaves its referrers too, but records its subject digest for orphan collection.
+A referrer pushed before its subject also records a candidate. The GC checks
+these candidates using the subject index; it does not scan all manifests on
+every run. Candidate records commit with the manifest write, even while orphan
+collection is disabled. A deletion with no referrers records no candidate.
+
+The grace starts when a subject becomes a candidate, and a new referrer of that
+absent subject restarts it. This is an approximate collection clock, not a
+promise about continuous absence: a subject that returns and disappears between
+checks need not be observed. On each check, a subject that exists clears its
+candidate. Before deletion, the collector rechecks the subject, candidate,
+tags, index references, manifest age and recent pulls under the repository
+lock. Protected referrers retain their candidate for a later run. Collected
+signatures do not return if the subject is pushed again afterward; a missing
+subject does not otherwise prevent querying its referrers by digest.
+
+On first enabling orphan collection for a repository, old manifests are checked
+in batches of 500. The database stores the cursor and completion, so a restart
+resumes the scan and later runs do not repeat it. Newly discovered candidates
+get a fresh grace period, regardless of the imported manifests' original ages.
+The upgrade adds the internal `orphan_candidate` and `orphan_scan` tables; apply
+the generated schema migration before running the new binary, as for other
+schema changes. Complete the writer upgrade before this initial scan so all
+subsequent changes maintain the candidates.
+
+`cr gc` and `cr gc --full` use the same `orphaned` setting as online collection.
+With both `untagged` and `orphaned` disabled, unused referrers in ordinary
+repositories remain until explicitly deleted.
 
 Every step removes a reference the index no longer has, so a push racing it can
 leave a blob behind and cannot lose one.
@@ -852,7 +889,20 @@ they were.
 
 Running it again does again only what is missing, and points tags where the
 layout points them now. The report counts, per repository, the manifests and
-tags written and the blobs `linked`, `copied` and already `present`.
+tags written and the blobs `linked`, `copied` and already `present`. It also
+reports `orphaned`: referrers whose subject is absent from both the reachable
+manifests being imported and the same repository in the destination. A subject
+in a different repository does not count. This is a planning snapshot taken
+before blob transfer, and includes manifests already present in the destination.
+Subject changes during transfer are handled by ordinary GC candidate tracking.
+
+By default, orphaned referrers are imported. `--skip-orphaned` omits them, their
+tags, and content only they need. It also omits an index that would lose a child,
+and a referrer whose subject was omitted, unless that child or subject already
+exists in the destination. The per-repository `skipped` map explains each omitted
+manifest. This option can omit tagged manifests; it is an explicit import
+selection, unlike GC's protection of existing tags. Existing destination rows
+and tags are never erased by this option. The source layout is not changed.
 
 A manifest nobody tagged keeps the time the source stored it. One older than
 `gc.untagged` is one the next untagged collection takes, as it would have been
