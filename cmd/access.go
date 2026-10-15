@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/goccy/go-yaml"
+	"github.com/lesomnus/payday/rbac"
 )
 
 // AuthConfig is how the registry is guarded. What it grants, and to whom, is
@@ -178,6 +179,12 @@ type TagRuleConfig struct {
 // ManagementConfig is who may use the management API, which is payday's:
 // every entity service, over gRPC and over HTTP beside the registry.
 type ManagementConfig struct {
+	// File holds tokens and policy, reloaded together without writing rows.
+	// Inline Tokens and Policy are startup configuration and cannot accompany
+	// File. Relative paths are beside cr's configuration file.
+	File    string        `yaml:"file"`
+	Refresh time.Duration `yaml:"refresh"`
+	Policy  *rbac.Rules   `yaml:"policy"`
 	// Roster is roster answering for the management API's callers: a
 	// bearer token is introspected there, and the holder and tenant it names
 	// are mirrored into this deployment's rows on first sight.
@@ -209,4 +216,7 @@ type ManagementTokenConfig struct {
 	Holder      string `yaml:"holder"`
 	Token       string `yaml:"token"`
 	TokenSha256 string `yaml:"token_sha256"`
+	// Allow further narrows the holder's policy. Nil keeps the policy's full
+	// methods (or the legacy whole grant with no policy); [] grants nothing.
+	Allow []string `yaml:"allow"`
 }
