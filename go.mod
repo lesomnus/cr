@@ -32,7 +32,7 @@ require (
 	github.com/lesomnus/grpc-dgram v0.0.0-20260912133542-a7366077bf6f
 	github.com/lesomnus/mkot/otlp v0.0.0-20261013182918-46d8b05a79b3
 	github.com/lesomnus/otx v0.0.0-20261013182912-d2af55df512e
-	github.com/lesomnus/payday v0.0.0-20261015093934-9afe52101185
+	github.com/lesomnus/payday v0.0.0-20261015173530-724bb41fdb4b
 	github.com/lesomnus/protobuf-patch v0.0.0-20260803175157-e1b7a0c2804f
 	github.com/lesomnus/xli v0.0.0-20261006060415-9f2e9ce97331
 	github.com/lesomnus/xli/cfg v0.1.3
@@ -94,6 +94,8 @@ require (
 	github.com/lesomnus/mkot/mkotx v0.0.0-20261013182918-46d8b05a79b3 // indirect
 	github.com/lesomnus/mkot/pretty v0.0.0-20261013182918-46d8b05a79b3 // indirect
 	github.com/lesomnus/otx/otxgrpc v0.0.0-20261013182912-d2af55df512e // indirect
+	github.com/lesomnus/pwr v0.0.0-20261015171245-2ec220d490d1 // indirect
+	github.com/lesomnus/pwr/cel v0.0.0-20261015172325-de464a5ef1fa // indirect
 	github.com/lesomnus/sqlite3-wasm v0.0.0-20260726134538-bebcaebf933e // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.23 // indirect
