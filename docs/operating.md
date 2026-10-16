@@ -70,6 +70,20 @@ a git tag `vX.Y.Z` -- under a fifth:
 | `:YYMMDD` | the last build of that day; moves |
 | `:YYMMDD-r<run>` | one build, and never moves: the one a deployment pins |
 
+**What is in it, and under what license.** The image carries, in
+`/usr/share/doc/cr/`, cr's `LICENSE`, `THIRD_PARTY_NOTICES` -- the license and
+notice files of every module linked into the binary, verbatim -- and
+`sbom.cdx.json`, a CycloneDX bill of materials of those modules with each one's
+license. The base image's own packages are in `/usr/share/doc/<package>/` beside
+it, as on any Debian system. The SBOM is also attached to each pushed image as
+an OCI referrer (`application/vnd.cyclonedx+json`), so a scanner finds it
+without pulling the image:
+
+```sh
+oras discover ghcr.io/lesomnus/cr:edge
+trivy image --sbom-sources oci ghcr.io/lesomnus/cr:edge
+```
+
 **The database** is `db.driver: sqlite3` for one process, or `pgx` for
 PostgreSQL and any number of them. With `db.migrate: true`, `serve` creates and
 upgrades its tables as it starts. Without it, `serve` refuses a database whose
