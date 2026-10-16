@@ -197,8 +197,12 @@ jobs:
       - uses: oras-project/setup-oras@v1
         if: env.PUBLISH == 'true'
 
+      # From inside the directory: oras records the path it is given as the
+      # file's title, and a reader pulling the SBOM should get `sbom.cdx.json`,
+      # not where it sat on the runner.
       - name: Attach the SBOM
         if: env.PUBLISH == 'true'
+        working-directory: out/notices
         env:
           METADATA: ${{ steps.build.outputs.metadata }}
         run: |
@@ -207,7 +211,7 @@ jobs:
           digest="$(printf '%s' "$METADATA" | jq -r '.app["containerimage.digest"]')"
           oras attach --artifact-type application/vnd.cyclonedx+json \
             "${ref}@${digest}" \
-            out/notices/sbom.cdx.json:application/vnd.cyclonedx+json
+            sbom.cdx.json:application/vnd.cyclonedx+json
 
       # What was pushed, said once, rather than left for somebody to ask the
       # registry what a moving tag points at now. `:edge` moves; the digest is
