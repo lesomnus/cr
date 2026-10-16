@@ -10,6 +10,10 @@
 # stages that use it: it reads a binary, it does not run one.
 FROM --platform=$BUILDPLATFORM anchore/syft:v1.54.1 AS syft
 
+# What the image runs on, named once: `app` is built on it, and `notices` reads
+# its package list.
+FROM gcr.io/distroless/static-debian12:nonroot AS runtime
+
 FROM --platform=$BUILDPLATFORM golang:1.27 AS base
 
 WORKDIR /src
@@ -66,17 +70,22 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 #                          Strict: a module that ships no license file fails
 #                          the build, rather than an image going out that
 #                          cannot say under what terms it carries it.
+#                          It ends with the base image's Debian packages -- some
+#                          are GPL-2.0 -- each with where its copyright is in
+#                          the image and where the source of that version is.
 #   LICENSE                cr's own
 FROM base AS notices
 ARG APP_VERSION="0.0.0-dev"
 COPY --from=syft /syft /usr/local/bin/syft
 COPY --from=build /out/cr /scan/cr
+# The base's package list, for the platform being built.
+COPY --from=runtime /var/lib/dpkg/status.d /scan-dpkg
 RUN mkdir -p /out \
 	&& SYFT_GOLANG_SEARCH_LOCAL_MOD_CACHE_LICENSES=true \
 	syft scan dir:/scan --quiet \
 	--source-name cr --source-version "${APP_VERSION}" \
 	-o cyclonedx-json=/out/sbom.cdx.json \
-	&& go run ./scripts/notices -strict /out/sbom.cdx.json >/out/THIRD_PARTY_NOTICES \
+	&& go run ./scripts/notices -strict -dpkg /scan-dpkg /out/sbom.cdx.json >/out/THIRD_PARTY_NOTICES \
 	&& cp LICENSE /out/LICENSE
 
 # The three files alone, for CI to attach the SBOM to the pushed image
@@ -84,7 +93,7 @@ RUN mkdir -p /out \
 FROM scratch AS notices-out
 COPY --from=notices /out/ /
 
-FROM gcr.io/distroless/static-debian12:nonroot AS app
+FROM runtime AS app
 
 COPY --from=build /out/cr /usr/local/bin/cr
 

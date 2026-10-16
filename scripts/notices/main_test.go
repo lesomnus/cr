@@ -94,3 +94,52 @@ func TestAPrivateModuleHasNoPublicSource(t *testing.T) {
 		}
 	}
 }
+
+func TestTheBaseImagesDebianPackagesAreListedWithTheirSource(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// As distroless keeps them: a file per package, and its md5sums beside it.
+	write("netbase", "Package: netbase\nVersion: 6.4\nArchitecture: all\n")
+	write("netbase.md5sums", "d41d8cd98f00b204e9800998ecf8427e  etc/services\n")
+	write("libfoo1", "Package: libfoo1\nSource: foo (1.2-3)\nVersion: 1.2-3+b1\nDescription: a library\n with a continuation\n")
+
+	pkgs, err := readDpkg(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	writeDebian(&out, pkgs)
+	got := out.String()
+
+	for _, want := range []string{
+		"netbase 6.4\n  Copyright: /usr/share/doc/netbase/copyright\n  Source: https://snapshot.debian.org/package/netbase/6.4/",
+		// The source package and its version, not the binary's.
+		"libfoo1 1.2-3+b1\n  Copyright: /usr/share/doc/libfoo1/copyright\n  Source: https://snapshot.debian.org/package/foo/1.2-3/",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the notices lack:\n%s\n--- in ---\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "md5sums") {
+		t.Error("an md5sums file was read as a package")
+	}
+}
+
+func TestAStatusFileListsOnlyWhatIsInstalled(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "status")
+	if err := os.WriteFile(f, []byte("Package: a\nStatus: install ok installed\nVersion: 1\n\nPackage: b\nStatus: deinstall ok config-files\nVersion: 2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pkgs, err := readDpkg(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pkgs) != 1 || pkgs[0].Name != "a" {
+		t.Errorf("pkgs = %+v, want only the installed one", pkgs)
+	}
+}
