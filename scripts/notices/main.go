@@ -16,6 +16,13 @@
 // source of its files can be had, and the line costs nothing for the rest. A
 // module GOPRIVATE names is not on the public proxy, and gets no line.
 //
+// The binary is not all the image ships: the base is Debian's, and some of its
+// packages are GPL-2.0. Given the base's dpkg database (-dpkg, a status.d
+// directory as distroless keeps one, or a status file), the notices end with
+// those packages, each with where its copyright is in the image and where the
+// source of exactly that version is kept: snapshot.debian.org, which keeps
+// every version Debian ever published.
+//
 // A module that ships no license file is not an error here: it is listed at the
 // end, by name, so that it is seen rather than silently missing, and the exit
 // status stays 0. Pass -strict to make it one.
@@ -38,8 +45,9 @@ import (
 
 func main() {
 	strict := flag.Bool("strict", false, "fail when a module ships no license file")
+	dpkg := flag.String("dpkg", "", "the base image's dpkg status file or status.d directory, to list its packages")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: notices [-strict] <sbom.cdx.json>")
+		fmt.Fprintln(os.Stderr, "usage: notices [-strict] [-dpkg <status>] <sbom.cdx.json>")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -52,6 +60,14 @@ func main() {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "notices:", err)
 		os.Exit(1)
+	}
+	if *dpkg != "" {
+		pkgs, err := readDpkg(*dpkg)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "notices:", err)
+			os.Exit(1)
+		}
+		writeDebian(os.Stdout, pkgs)
 	}
 	if len(missing) > 0 {
 		fmt.Fprintf(os.Stderr, "notices: no license file in %d module(s): %s\n", len(missing), strings.Join(missing, ", "))
@@ -275,6 +291,99 @@ func matchesPrefixPattern(globs, path string) bool {
 		}
 	}
 	return false
+}
+
+// debPackage is one installed Debian package, and the source it was built from.
+type debPackage struct {
+	Name          string
+	Version       string
+	Source        string
+	SourceVersion string
+}
+
+// readDpkg reads a dpkg status file, or a status.d directory of one file per
+// package beside its .md5sums.
+func readDpkg(path string) ([]debPackage, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	if info.IsDir() {
+		entries, err := os.ReadDir(path)
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range entries {
+			if !e.IsDir() && !strings.HasSuffix(e.Name(), ".md5sums") {
+				files = append(files, filepath.Join(path, e.Name()))
+			}
+		}
+	} else {
+		files = []string{path}
+	}
+
+	var out []debPackage
+	for _, f := range files {
+		raw, err := os.ReadFile(f)
+		if err != nil {
+			return nil, err
+		}
+		for _, para := range strings.Split(string(raw), "\n\n") {
+			if p, ok := parseStanza(para); ok {
+				out = append(out, p)
+			}
+		}
+	}
+	slices.SortFunc(out, func(a, b debPackage) int { return strings.Compare(a.Name, b.Name) })
+	return out, nil
+}
+
+// parseStanza reads the fields of one package. `Source:` is absent when the
+// source package has the binary's name, and carries a version in parentheses
+// when it differs from the binary's (a binNMU, or a package built from another).
+func parseStanza(para string) (debPackage, bool) {
+	fields := map[string]string{}
+	for _, line := range strings.Split(para, "\n") {
+		if line == "" || line[0] == ' ' || line[0] == '\t' {
+			continue
+		}
+		k, v, ok := strings.Cut(line, ":")
+		if ok {
+			fields[k] = strings.TrimSpace(v)
+		}
+	}
+	p := debPackage{Name: fields["Package"], Version: fields["Version"]}
+	if p.Name == "" || p.Version == "" {
+		return debPackage{}, false
+	}
+	if st := fields["Status"]; st != "" && !strings.HasSuffix(st, " installed") {
+		return debPackage{}, false
+	}
+	p.Source, p.SourceVersion = p.Name, p.Version
+	if src := fields["Source"]; src != "" {
+		name, ver, _ := strings.Cut(src, " ")
+		p.Source = name
+		if ver = strings.Trim(ver, "()"); ver != "" {
+			p.SourceVersion = ver
+		}
+	}
+	return p, true
+}
+
+func writeDebian(w io.Writer, pkgs []debPackage) {
+	if len(pkgs) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "\n%s\nDebian packages of the base image\n\n", strings.Repeat("=", 78))
+	fmt.Fprintf(w, "The image is built on Debian. Each package's copyright and license terms\n")
+	fmt.Fprintf(w, "are in /usr/share/doc/<package>/copyright in this image, and its source, at\n")
+	fmt.Fprintf(w, "the version here, is at the address beside it.\n\n")
+	for _, p := range pkgs {
+		fmt.Fprintf(w, "%s %s\n", p.Name, p.Version)
+		fmt.Fprintf(w, "  Copyright: /usr/share/doc/%s/copyright\n", p.Name)
+		fmt.Fprintf(w, "  Source: https://snapshot.debian.org/package/%s/%s/\n", url.PathEscape(p.Source), url.PathEscape(p.SourceVersion))
+	}
 }
 
 // escape is the module cache's case encoding: an upper-case letter is `!` and
