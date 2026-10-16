@@ -74,7 +74,8 @@ a git tag `vX.Y.Z` -- under a fifth:
 `/usr/share/doc/cr/`, cr's `LICENSE`, `THIRD_PARTY_NOTICES` -- the license and
 notice files of every module linked into the binary, verbatim -- and
 `sbom.cdx.json`, a CycloneDX bill of materials of those modules with each one's
-license. The base image's own packages are in `/usr/share/doc/<package>/` beside
+license, and of the base image's Debian packages (`pkg:deb/debian/...?distro=debian-12`),
+so that a scanner reading only the SBOM still sees everything in the image. The base image's own packages are in `/usr/share/doc/<package>/` beside
 it, as on any Debian system, and the notices end with them: each package's
 version, its copyright file and where the source of that version is kept
 (snapshot.debian.org) -- some of them are GPL-2.0. Every module carries the

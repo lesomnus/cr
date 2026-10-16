@@ -56,7 +56,10 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 # `base`). Scanning the BINARY rather than go.mod names what is linked, not
 # what the module graph mentions: no test-only or tool dependencies.
 #
-#   sbom.cdx.json          CycloneDX, with each module's license as detected.
+#   sbom.cdx.json          CycloneDX, with each module's license as detected,
+#                          and the base image's Debian packages beside them: a
+#                          vulnerability scanner reading this file rather than
+#                          the image sees the whole image, not just the binary.
 #                          CycloneDX and not SPDX because of where syft puts a
 #                          license it found: SPDX's `licenseConcluded`, which
 #                          Trivy does not read -- it reads `licenseDeclared` --
@@ -78,14 +81,20 @@ FROM base AS notices
 ARG APP_VERSION="0.0.0-dev"
 COPY --from=syft /syft /usr/local/bin/syft
 COPY --from=build /out/cr /scan/cr
-# The base's package list, for the platform being built.
-COPY --from=runtime /var/lib/dpkg/status.d /scan-dpkg
+# The base's package list, for the platform being built, where syft looks for
+# one: status.d/ is distroless's one-file-per-package form of it, the copyright
+# files are where syft reads each package's license, and os-release is what
+# puts `distro=debian-12` in each purl -- without it a scanner cannot tell
+# which Debian's advisories apply.
+COPY --from=runtime /var/lib/dpkg/status.d /scan/var/lib/dpkg/status.d
+COPY --from=runtime /usr/share/doc /scan/usr/share/doc
+COPY --from=runtime /etc/os-release /scan/etc/os-release
 RUN mkdir -p /out \
 	&& SYFT_GOLANG_SEARCH_LOCAL_MOD_CACHE_LICENSES=true \
 	syft scan dir:/scan --quiet \
 	--source-name cr --source-version "${APP_VERSION}" \
 	-o cyclonedx-json=/out/sbom.cdx.json \
-	&& go run ./scripts/notices -strict -dpkg /scan-dpkg /out/sbom.cdx.json >/out/THIRD_PARTY_NOTICES \
+	&& go run ./scripts/notices -strict -dpkg /scan/var/lib/dpkg/status.d /out/sbom.cdx.json >/out/THIRD_PARTY_NOTICES \
 	&& cp LICENSE /out/LICENSE
 
 # The three files alone, for CI to attach the SBOM to the pushed image
