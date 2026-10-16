@@ -46,13 +46,17 @@ func TestNoticesComeFromTheModuleCacheForWhatTheSBOMNames(t *testing.T) {
 	]}`)
 
 	var out bytes.Buffer
-	missing, err := run(&out, sbom, cache, goroot, "github.com/lesomnus/cr")
+	missing, err := run(&out, sbom, cache, goroot, "github.com/lesomnus/cr", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := out.String()
 
-	for _, want := range []string{"github.com/Azure/thing v1.0.0", "License: MIT", "Copyright Azure", "a notice", "stdlib 1.27.1", "Go's BSD text"} {
+	for _, want := range []string{
+		"github.com/Azure/thing v1.0.0", "License: MIT", "Copyright Azure", "a notice", "stdlib 1.27.1", "Go's BSD text",
+		"Source: https://proxy.golang.org/github.com/!azure/thing/@v/v1.0.0.zip",
+		"Source: https://go.dev/dl/go1.27.1.src.tar.gz",
+	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the notices lack %q", want)
 		}
@@ -68,5 +72,25 @@ func TestNoticesComeFromTheModuleCacheForWhatTheSBOMNames(t *testing.T) {
 	}
 	if len(missing) != 1 || missing[0] != "example.com/bare@v0.1.0" {
 		t.Errorf("missing = %v, want the module with no license file", missing)
+	}
+}
+
+func TestAPrivateModuleHasNoPublicSource(t *testing.T) {
+	for _, tc := range []struct {
+		private, path string
+		public        bool
+	}{
+		{"", "github.com/a/b", true},
+		{"hday.io", "hday.io", false},
+		{"hday.io", "hday.io/tpm", false},
+		{"hday.io", "hday.iox/tpm", true},
+		{"*.corp.example,github.com/acme", "git.corp.example/x", false},
+		{"*.corp.example,github.com/acme", "github.com/acme/y", false},
+		{"*.corp.example,github.com/acme", "github.com/other/y", true},
+	} {
+		got := source(module{Path: tc.path, Version: "v1.0.0"}, tc.private) != ""
+		if got != tc.public {
+			t.Errorf("GOPRIVATE=%q %s: public source = %v, want %v", tc.private, tc.path, got, tc.public)
+		}
 	}
 }

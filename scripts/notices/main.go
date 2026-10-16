@@ -10,6 +10,12 @@
 // there for every module the SBOM names -- the one list, so the two documents
 // cannot disagree about what is in the image.
 //
+// Each module is followed by where its source is, at exactly that version: the
+// module proxy's zip of it, or the toolchain's source archive for the standard
+// library. MPL-2.0 asks that whoever receives the binary be told where the
+// source of its files can be had, and the line costs nothing for the rest. A
+// module GOPRIVATE names is not on the public proxy, and gets no line.
+//
 // A module that ships no license file is not an error here: it is listed at the
 // end, by name, so that it is seen rather than silently missing, and the exit
 // status stays 0. Pass -strict to make it one.
@@ -42,7 +48,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	missing, err := run(os.Stdout, flag.Arg(0), modCache(), goRoot(), mainModule())
+	missing, err := run(os.Stdout, flag.Arg(0), modCache(), goRoot(), mainModule(), os.Getenv("GOPRIVATE"))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "notices:", err)
 		os.Exit(1)
@@ -80,7 +86,7 @@ type module struct {
 	License string
 }
 
-func run(w io.Writer, sbomPath, cache, goroot, main string) ([]string, error) {
+func run(w io.Writer, sbomPath, cache, goroot, main, private string) ([]string, error) {
 	raw, err := os.ReadFile(sbomPath)
 	if err != nil {
 		return nil, err
@@ -93,8 +99,9 @@ func run(w io.Writer, sbomPath, cache, goroot, main string) ([]string, error) {
 	mods := modules(doc, main)
 	fmt.Fprintf(w, "Third-party software in this image\n\n")
 	fmt.Fprintf(w, "This image contains a Go binary built with the modules below. Each is\n")
-	fmt.Fprintf(w, "listed with its version, its license as detected (SPDX), and the license\n")
-	fmt.Fprintf(w, "and notice files it ships, reproduced as they are.\n")
+	fmt.Fprintf(w, "listed with its version, its license as detected (SPDX), where its source\n")
+	fmt.Fprintf(w, "at that version can be obtained, and the license and notice files it\n")
+	fmt.Fprintf(w, "ships, reproduced as they are.\n")
 
 	var missing []string
 	for _, m := range mods {
@@ -110,6 +117,9 @@ func run(w io.Writer, sbomPath, cache, goroot, main string) ([]string, error) {
 		fmt.Fprintf(w, "\n%s\n%s %s\n", strings.Repeat("=", 78), m.Path, m.Version)
 		if m.License != "" {
 			fmt.Fprintf(w, "License: %s\n", m.License)
+		}
+		if src := source(m, private); src != "" {
+			fmt.Fprintf(w, "Source: %s\n", src)
 		}
 		if len(files) == 0 {
 			fmt.Fprintf(w, "(no license file in the module)\n")
@@ -232,6 +242,39 @@ func noticeFiles(dir string) ([]string, error) {
 	}
 	slices.Sort(out)
 	return out, nil
+}
+
+// source is where the source of m at its version can be downloaded, or "" for a
+// module the public proxy does not serve.
+func source(m module, private string) string {
+	if m.Path == "stdlib" {
+		return "https://go.dev/dl/go" + strings.TrimPrefix(m.Version, "go") + ".src.tar.gz"
+	}
+	if matchesPrefixPattern(private, m.Path) {
+		return ""
+	}
+	return "https://proxy.golang.org/" + escape(m.Path) + "/@v/" + escape(m.Version) + ".zip"
+}
+
+// matchesPrefixPattern reports whether a comma-separated list of glob patterns,
+// as GOPRIVATE is written, matches path or a prefix of it, element by element
+// (golang.org/x/mod/module.MatchPrefixPatterns).
+func matchesPrefixPattern(globs, path string) bool {
+	for _, glob := range strings.Split(globs, ",") {
+		glob = strings.TrimSpace(glob)
+		if glob == "" {
+			continue
+		}
+		n := strings.Count(glob, "/") + 1
+		elems := strings.Split(path, "/")
+		if len(elems) < n {
+			continue
+		}
+		if ok, _ := filepath.Match(glob, strings.Join(elems[:n], "/")); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // escape is the module cache's case encoding: an upper-case letter is `!` and
