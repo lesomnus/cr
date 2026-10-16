@@ -63,6 +63,9 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 #                          ask to travel with the binary, which an SBOM does
 #                          not carry. Written from the SBOM's own module list,
 #                          so the two cannot disagree (scripts/notices).
+#                          Strict: a module that ships no license file fails
+#                          the build, rather than an image going out that
+#                          cannot say under what terms it carries it.
 #   LICENSE                cr's own
 FROM base AS notices
 ARG APP_VERSION="0.0.0-dev"
@@ -73,7 +76,7 @@ RUN mkdir -p /out \
 	syft scan dir:/scan --quiet \
 	--source-name cr --source-version "${APP_VERSION}" \
 	-o cyclonedx-json=/out/sbom.cdx.json \
-	&& go run ./scripts/notices /out/sbom.cdx.json >/out/THIRD_PARTY_NOTICES \
+	&& go run ./scripts/notices -strict /out/sbom.cdx.json >/out/THIRD_PARTY_NOTICES \
 	&& cp LICENSE /out/LICENSE
 
 # The three files alone, for CI to attach the SBOM to the pushed image
