@@ -1,0 +1,44 @@
+# Known vulnerabilities in what cr builds into its binary, reported only when
+# cr's code can reach them.
+#
+# govulncheck reads the Go vulnerability database (vuln.go.dev) and walks the
+# call graph, so a module with an advisory against a function cr never calls
+# is mentioned and does not fail this. What fails it is a vulnerability cr's
+# code can actually get to: the answer is an update of that module, and of cr.
+#
+# On a schedule as well as on a push, because the database changes while the
+# code does not: an advisory published tonight is about the cr built last week.
+# A failed scheduled run is the notice -- GitHub mails whoever last changed the
+# workflow's schedule, and the run says which module and which fix.
+name: vuln
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # The newest 1.27.x, not go.mod's `go` line. The image is built by
+      # `golang:1.27`, which is the newest patch release, and the standard
+      # library is in the binary like any module: scanning with 1.27.0 would
+      # report every fix since as cr's, which the image does not have.
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.27"
+          check-latest: true
+          cache: true
+
+      # Pinned, like an action: what is checked changes with the database, and
+      # the scanner moving underneath that would be a second variable.
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...

@@ -11,6 +11,8 @@
 #
 # `image` needs every other job, so what reaches the registry is what the gates
 # passed.
+#
+# Known vulnerabilities are `vuln.yml`, which also runs on a schedule.
 name: ci
 
 # `workflow_dispatch` because the image job is here: a rebuild of what `main`
