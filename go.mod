@@ -33,16 +33,16 @@ require (
 	github.com/lesomnus/mkot/otlp v0.0.0-20261013182918-46d8b05a79b3
 	github.com/lesomnus/otx v0.0.0-20261013182912-d2af55df512e
 	github.com/lesomnus/payday v0.0.0-20261015173530-724bb41fdb4b
-	github.com/lesomnus/protobuf-patch v0.0.0-20260803175157-e1b7a0c2804f
+	github.com/lesomnus/protobuf-patch v0.0.0-20260907061053-07bbf2b842da
 	github.com/lesomnus/xli v0.0.0-20261006060415-9f2e9ce97331
 	github.com/lesomnus/xli/cfg v0.1.3
-	github.com/lesomnus/z v0.0.0-20260531102454-3f1853bb4278
+	github.com/lesomnus/z v0.0.0-20260907061127-c3858eb05878
 	github.com/notaryproject/notation-core-go v1.3.0
 	github.com/notaryproject/notation-go v1.3.2
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/protobuf-orm/ent v0.0.0-20261010083551-979efcebf01a
-	github.com/protobuf-orm/protobuf-orm v0.0.0-20260906212449-04c0cd58f10a
+	github.com/protobuf-orm/protobuf-orm v0.0.0-20260907034118-4ca15852a692
 	github.com/protobuf-orm/protoc-gen-orm-ent/runtime v0.0.0-20260907034345-a9bdc5357d7d
 	github.com/stretchr/testify v1.12.1
 	go.opentelemetry.io/contrib/instrumentation/runtime v0.71.0
