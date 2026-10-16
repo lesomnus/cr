@@ -6,6 +6,10 @@
 # than a second run under emulation. SQLite is the wazero engine, so nothing
 # here needs cgo.
 
+# syft, for the bill of materials below. On the builder's platform, like the
+# stages that use it: it reads a binary, it does not run one.
+FROM --platform=$BUILDPLATFORM anchore/syft:v1.54.1 AS syft
+
 FROM --platform=$BUILDPLATFORM golang:1.27 AS base
 
 WORKDIR /src
@@ -39,9 +43,52 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 	-ldflags="-s -w -X github.com/lesomnus/payday/version.version=${APP_VERSION}" \
 	-o /out/cr ./cmd/cr
 
+# What is in the binary, and what its licenses ask to be passed on with it.
+#
+# Here and not off the finished image, because the finished image has the
+# binary and nothing else: a scan of it finds every module -- Go writes the list
+# into the binary -- and not one license, since the license files are in the
+# module cache, which only this side of the build has (`go mod download` in
+# `base`). Scanning the BINARY rather than go.mod names what is linked, not
+# what the module graph mentions: no test-only or tool dependencies.
+#
+#   sbom.cdx.json          CycloneDX, with each module's license as detected.
+#                          CycloneDX and not SPDX because of where syft puts a
+#                          license it found: SPDX's `licenseConcluded`, which
+#                          Trivy does not read -- it reads `licenseDeclared` --
+#                          so the same scan read 102 of 106 licenses as
+#                          CycloneDX and 1 as SPDX.
+#   THIRD_PARTY_NOTICES    each module's license and notice files, verbatim --
+#                          the text and copyright lines MIT, BSD and Apache-2.0
+#                          ask to travel with the binary, which an SBOM does
+#                          not carry. Written from the SBOM's own module list,
+#                          so the two cannot disagree (scripts/notices).
+#   LICENSE                cr's own
+FROM base AS notices
+ARG APP_VERSION="0.0.0-dev"
+COPY --from=syft /syft /usr/local/bin/syft
+COPY --from=build /out/cr /scan/cr
+RUN mkdir -p /out \
+	&& SYFT_GOLANG_SEARCH_LOCAL_MOD_CACHE_LICENSES=true \
+	syft scan dir:/scan --quiet \
+	--source-name cr --source-version "${APP_VERSION}" \
+	-o cyclonedx-json=/out/sbom.cdx.json \
+	&& go run ./scripts/notices /out/sbom.cdx.json >/out/THIRD_PARTY_NOTICES \
+	&& cp LICENSE /out/LICENSE
+
+# The three files alone, for CI to attach the SBOM to the pushed image
+# (`docker buildx bake notices`).
+FROM scratch AS notices-out
+COPY --from=notices /out/ /
+
 FROM gcr.io/distroless/static-debian12:nonroot AS app
 
 COPY --from=build /out/cr /usr/local/bin/cr
+
+# Where a Debian system -- this base included -- keeps what it owes the
+# software it ships: the base's own packages are in /usr/share/doc/<package>/
+# already, and cr's sit beside them.
+COPY --from=notices /out/ /usr/share/doc/cr/
 
 USER nonroot:nonroot
 WORKDIR /home/nonroot

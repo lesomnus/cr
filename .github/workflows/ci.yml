@@ -178,6 +178,37 @@ jobs:
             app.cache-from=type=gha,scope=app
             app.cache-to=type=gha,scope=app,mode=max
 
+      # The SBOM, attached to what was just pushed as a referrer, which is where
+      # a scanner looks without pulling the image: `trivy image --sbom-sources
+      # oci` reads it, licenses and all. The same file is in the image, at
+      # /usr/share/doc/cr/ beside the notices; see `Dockerfile` for why it is
+      # made from the build and not from the image. One platform: both link the
+      # same modules.
+      - name: Build the SBOM
+        if: env.PUBLISH == 'true'
+        uses: docker/bake-action@v7
+        with:
+          files: docker-bake.hcl
+          targets: notices
+          set: |
+            notices.platform=linux/amd64
+            notices.cache-from=type=gha,scope=app
+
+      - uses: oras-project/setup-oras@v1
+        if: env.PUBLISH == 'true'
+
+      - name: Attach the SBOM
+        if: env.PUBLISH == 'true'
+        env:
+          METADATA: ${{ steps.build.outputs.metadata }}
+        run: |
+          set -eu
+          ref="$(printf '%s' "$METADATA" | jq -r '.app["image.name"] | split(",")[0] | sub(":[^:/]+$"; "")')"
+          digest="$(printf '%s' "$METADATA" | jq -r '.app["containerimage.digest"]')"
+          oras attach --artifact-type application/vnd.cyclonedx+json \
+            "${ref}@${digest}" \
+            out/notices/sbom.cdx.json:application/vnd.cyclonedx+json
+
       # What was pushed, said once, rather than left for somebody to ask the
       # registry what a moving tag points at now. `:edge` moves; the digest is
       # what a deployment that means to stay put is told.

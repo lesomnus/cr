@@ -95,6 +95,18 @@ target "app" {
   }
 }
 
+# The SBOM and the notices, as files rather than inside an image: what CI
+# attaches to the image it pushed, as a referrer a scanner can find. One
+# platform, since both platforms link the same modules.
+target "notices" {
+  target     = "notices-out"
+  dockerfile = "Dockerfile"
+  args = {
+    APP_VERSION = APP_VERSION
+  }
+  output = [{ type = "local", dest = "out/notices" }]
+}
+
 target "test" {
   target     = "test"
   dockerfile = "Dockerfile"
