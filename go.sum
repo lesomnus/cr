@@ -137,8 +137,8 @@ github.com/lesomnus/otx/otxgrpc v0.0.0-20261013182912-d2af55df512e h1:Gn/gSqCdHI
 github.com/lesomnus/otx/otxgrpc v0.0.0-20261013182912-d2af55df512e/go.mod h1:4f44cLB2NM6g+O4Fr5PHDdHNuL91EfbUosAipbDXSwo=
 github.com/lesomnus/payday v0.0.0-20261015173530-724bb41fdb4b h1:WfPSEAGc+iX+EXrH52ZTQkflvqgFq7QjDSGQMz/hmL0=
 github.com/lesomnus/payday v0.0.0-20261015173530-724bb41fdb4b/go.mod h1:/m/ojJpkdeKqPnRjqKHUSOe1fEDV1F7/f+9FkAlHhFs=
-github.com/lesomnus/protobuf-patch v0.0.0-20260803175157-e1b7a0c2804f h1:hIDTEG7vZCJ5M+j+OhI97pk6Q1mp1t3gXi1k96IB9f0=
-github.com/lesomnus/protobuf-patch v0.0.0-20260803175157-e1b7a0c2804f/go.mod h1:0sqL1bt/0v8atiVioyoJ25XQnZcn8zA9GYM1DvC4i5o=
+github.com/lesomnus/protobuf-patch v0.0.0-20260907061053-07bbf2b842da h1:qPsmOLxmKDgZHCggUNE4pv5Ay1TtO1Chn/OzN5JNKqQ=
+github.com/lesomnus/protobuf-patch v0.0.0-20260907061053-07bbf2b842da/go.mod h1:0sqL1bt/0v8atiVioyoJ25XQnZcn8zA9GYM1DvC4i5o=
 github.com/lesomnus/pwr v0.0.0-20261015171245-2ec220d490d1 h1:s3Bg92kjlJWK1bGlbJlObXZnRVRMXYDMZCRd3sqer6U=
 github.com/lesomnus/pwr v0.0.0-20261015171245-2ec220d490d1/go.mod h1:UeP+JJkZBKItWlUyv8rEqBXeNzAiPmXA8xpW0glYdYk=
 github.com/lesomnus/pwr/cel v0.0.0-20261015172325-de464a5ef1fa h1:vlGiiYVD6OwCsWIV6e4sxUpUBkzwp3/ZL/u0qwoGg7g=
@@ -149,8 +149,8 @@ github.com/lesomnus/xli v0.0.0-20261006060415-9f2e9ce97331 h1:EwR8JDux06udaU5wNo
 github.com/lesomnus/xli v0.0.0-20261006060415-9f2e9ce97331/go.mod h1:9dZNkM86FqzAsiBYaeT026Nt8PPxAyuq6RtWE4vNxSA=
 github.com/lesomnus/xli/cfg v0.1.3 h1:46fZoJhWGCclvWoeMyIsSS42EeKulHAKmwjdunEHox8=
 github.com/lesomnus/xli/cfg v0.1.3/go.mod h1:ER3vEDLCDJTYPGx+HY+IeIOBSQFmJUxW9qm7tG0qdoA=
-github.com/lesomnus/z v0.0.0-20260531102454-3f1853bb4278 h1:dBLfXrOR8qLwZculDy8uJfNN+Q5xlyvM9CF4yylPB/0=
-github.com/lesomnus/z v0.0.0-20260531102454-3f1853bb4278/go.mod h1:v3+tOhGZhT6JQ/ZYncEQryo23ApoN03Ez4G2BHp2SWM=
+github.com/lesomnus/z v0.0.0-20260907061127-c3858eb05878 h1:A/2LM0h6a8pyXO9jVqUAQv0ZOLCv4hna6lFwtEN2dD4=
+github.com/lesomnus/z v0.0.0-20260907061127-c3858eb05878/go.mod h1:v3+tOhGZhT6JQ/ZYncEQryo23ApoN03Ez4G2BHp2SWM=
 github.com/mattn/go-colorable v0.1.15 h1:+u9SLTRGnXv73cEsnsmoZBom+dMU88B2M0aDcWy0/jY=
 github.com/mattn/go-colorable v0.1.15/go.mod h1:6LmQG8QLFO4G5z1gPvYEzlUgJ2wF+stgPZH1UqBm1s8=
 github.com/mattn/go-isatty v0.0.23 h1:cYwCQTQf3HB6xUC+BtyCLZNr7IzbOmoZbmssVNzSyiQ=
@@ -184,8 +184,8 @@ github.com/protobuf-orm/ent v0.0.0-20261010083551-979efcebf01a h1:mqFHWDstu4JsnJ
 github.com/protobuf-orm/ent v0.0.0-20261010083551-979efcebf01a/go.mod h1:JKSVsmxOY0wMq7X+n6Kikb9T20FZHhXYwbY31ijmoM0=
 github.com/protobuf-orm/protobuf-merge v0.0.0-20261009205601-8502fad9e678 h1:ctZg+lCcJNh6atIjPyyGxdtwpAl9tg/96ydlGtmzQL8=
 github.com/protobuf-orm/protobuf-merge v0.0.0-20261009205601-8502fad9e678/go.mod h1:gxSIttLrIbNDMqEDXqWMvtKWiW1izopNkZhmIj0PZ6A=
-github.com/protobuf-orm/protobuf-orm v0.0.0-20260906212449-04c0cd58f10a h1:EXbJ28yY25wzt2HbzVkw7Tk46pF1GAHV+XMcC+kir40=
-github.com/protobuf-orm/protobuf-orm v0.0.0-20260906212449-04c0cd58f10a/go.mod h1:OYlbo4/9t+Hgj/XZwdgN8Z9MyViTLPHxBWLUR4+j52o=
+github.com/protobuf-orm/protobuf-orm v0.0.0-20260907034118-4ca15852a692 h1:QNLlsFSt8udoS1ik1QKPOPQMO7e49rI9Tbyep2sYpPQ=
+github.com/protobuf-orm/protobuf-orm v0.0.0-20260907034118-4ca15852a692/go.mod h1:OYlbo4/9t+Hgj/XZwdgN8Z9MyViTLPHxBWLUR4+j52o=
 github.com/protobuf-orm/protoc-gen-orm-ent v0.0.0-20261014175108-4698cb92c79b h1:VXKuYlFpI1xzJIcOgZQAQ0TLCV/cPueZZAPmMZnEwiE=
 github.com/protobuf-orm/protoc-gen-orm-ent v0.0.0-20261014175108-4698cb92c79b/go.mod h1:IrX7VrYccY70QPWf1jmI6jj0UeurD8AtE490C/Mzg58=
 github.com/protobuf-orm/protoc-gen-orm-ent/runtime v0.0.0-20260907034345-a9bdc5357d7d h1:gzmW0yfBtNmFc/HtHwXbb8/rJ/bW+UuNt6FTLrs9prk=
