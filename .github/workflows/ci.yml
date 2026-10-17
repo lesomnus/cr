@@ -136,6 +136,7 @@ jobs:
     permissions:
       contents: read
       packages: write # to push to ghcr.io/lesomnus/cr
+      id-token: write # to sign the SBOM (sbom-attach, keyless)
 
     env:
       TAG: edge
@@ -183,7 +184,7 @@ jobs:
       # The SBOM, attached to what was just pushed as a referrer, which is where
       # a scanner looks without pulling the image: `trivy image --sbom-sources
       # oci` reads it, licenses and all. It is two scans made one
-      # (scripts/sbommerge): this one, of the binary beside the module cache,
+      # (lesomnus/sbom-attach): this one, of the binary beside the module cache,
       # which knows each module's license -- the same file is in the image, at
       # /usr/share/doc/cr/, and `Dockerfile` says why it is made from the build
       # -- and one of the image once pushed, below, which sees the base's
@@ -198,66 +199,16 @@ jobs:
             notices.platform=linux/amd64
             notices.cache-from=type=gha,scope=app
 
-      # What was pushed, by digest: the scan and the attachment below are both
-      # of exactly this, not of whatever `:edge` points at by then.
-      - name: Pushed
-        id: pushed
-        if: env.PUBLISH == 'true'
-        env:
-          METADATA: ${{ steps.build.outputs.metadata }}
-        run: |
-          set -eu
-          ref="$(printf '%s' "$METADATA" | jq -r '.app["image.name"] | split(",")[0] | sub(":[^:/]+$"; "")')"
-          digest="$(printf '%s' "$METADATA" | jq -r '.app["containerimage.digest"]')"
-          echo "image=${ref}@${digest}" >> "$GITHUB_OUTPUT"
-
-      # The image as pushed, for what the build's scan cannot see: the base's
-      # packages, read from wherever that base keeps them. The same syft as
-      # `Dockerfile`'s, and the same platform as the build's scan. No file
-      # list -- the packages are what a scanner reads, and the zoneinfo files
-      # alone are hundreds of components. The default catalogers do not read
-      # the SBOM inside the image (sbom-cataloger is off), so the build's
-      # modules are not counted twice from there.
-      - name: Scan the pushed image
-        if: env.PUBLISH == 'true'
-        env:
-          IMAGE: ${{ steps.pushed.outputs.image }}
-        run: |
-          set -eu
-          docker run --rm -e SYFT_FILE_METADATA_SELECTION=none -e SYFT_CHECK_FOR_APP_UPDATE=false \
-            anchore/syft:v1.54.1 scan "registry:${IMAGE}" --platform linux/amd64 --quiet \
-            -o cyclonedx-json > out/image.cdx.json
-
-      - uses: actions/setup-go@v6
-        if: env.PUBLISH == 'true'
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Merge the SBOMs
-        if: env.PUBLISH == 'true'
-        run: |
-          set -eu
-          mkdir -p out/sbom
-          go run ./scripts/sbommerge out/notices/sbom.cdx.json out/image.cdx.json > out/sbom/sbom.cdx.json
-          jq -r '"merged: \(.components | length) components, \([.components[] | select((.licenses // []) | length > 0)] | length) with a license"' out/sbom/sbom.cdx.json
-
-      - uses: oras-project/setup-oras@v1
-        if: env.PUBLISH == 'true'
-
-      # From inside the directory: oras records the path it is given as the
-      # file's title, and a reader pulling the SBOM should get `sbom.cdx.json`,
-      # not where it sat on the runner.
+      # Scans what was pushed (by digest), merges the build's SBOM above into
+      # that scan, and attaches the result -- as a CycloneDX referrer and as a
+      # keyless attestation, recorded in Sigstore's public log. See its README for
+      # what it scans and how the two are merged.
       - name: Attach the SBOM
         if: env.PUBLISH == 'true'
-        working-directory: out/sbom
-        env:
-          IMAGE: ${{ steps.pushed.outputs.image }}
-        run: |
-          set -eu
-          oras attach --artifact-type application/vnd.cyclonedx+json \
-            "${IMAGE}" \
-            sbom.cdx.json:application/vnd.cyclonedx+json
+        uses: lesomnus/sbom-attach@v1
+        with:
+          metadata: ${{ steps.build.outputs.metadata }}
+          build-sbom: out/notices/sbom.cdx.json
 
       # What was pushed, said once, rather than left for somebody to ask the
       # registry what a moving tag points at now. `:edge` moves; the digest is
