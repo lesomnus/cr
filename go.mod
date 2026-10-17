@@ -64,7 +64,7 @@ require (
 	connectrpc.com/vanguard v0.4.0 // indirect
 	filippo.io/age v1.3.2 // indirect
 	filippo.io/hpke v0.4.0 // indirect
-	github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358 // indirect
+	github.com/Azure/go-ntlmssp v0.1.1 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
