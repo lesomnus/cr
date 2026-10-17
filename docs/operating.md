@@ -78,9 +78,15 @@ license. The base image's own packages are in `/usr/share/doc/<package>/` beside
 it, as on any Debian system, and the notices end with them: each package's
 version, its copyright file and where the source of that version is kept
 (snapshot.debian.org) -- some of them are GPL-2.0. Every module carries the
-same: where its source is, at the version linked. The SBOM is also attached to each pushed image as
-an OCI referrer (`application/vnd.cyclonedx+json`), so a scanner finds it
-without pulling the image:
+same: where its source is, at the version linked.
+
+Each pushed image also has an SBOM attached as an OCI referrer (`application/vnd.cyclonedx+json`), so a
+scanner finds it without pulling the image. That one is **the whole image**,
+not just the binary: CI merges the build's SBOM with a scan of the image once
+pushed (`scripts/sbommerge`). The modules keep the build's licenses, and the
+base's Debian packages are added (`pkg:deb/debian/...?distro=debian-12`). The
+copy inside the image cannot include the scan of the image it is in, so it
+lists the binary's modules only. Read the referrer when you want everything:
 
 ```sh
 oras discover ghcr.io/lesomnus/cr:edge
