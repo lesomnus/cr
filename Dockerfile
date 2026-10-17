@@ -59,7 +59,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 #   sbom.cdx.json          CycloneDX, with each module's license as detected.
 #                          The binary only: CI merges it with a scan of the
 #                          pushed image, which sees the base's packages, and
-#                          attaches that (scripts/sbommerge, `ci.yml`).
+#                          attaches that (lesomnus/sbom-attach, `ci.yml`).
 #                          CycloneDX and not SPDX because of where syft puts a
 #                          license it found: SPDX's `licenseConcluded`, which
 #                          Trivy does not read -- it reads `licenseDeclared` --

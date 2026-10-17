@@ -83,7 +83,7 @@ same: where its source is, at the version linked.
 Each pushed image also has an SBOM attached as an OCI referrer (`application/vnd.cyclonedx+json`), so a
 scanner finds it without pulling the image. That one is **the whole image**,
 not just the binary: CI merges the build's SBOM with a scan of the image once
-pushed (`scripts/sbommerge`). The modules keep the build's licenses, and the
+pushed ([lesomnus/sbom-attach](https://github.com/lesomnus/sbom-attach)), and signs it. The modules keep the build's licenses, and the
 base's Debian packages are added (`pkg:deb/debian/...?distro=debian-12`). The
 copy inside the image cannot include the scan of the image it is in, so it
 lists the binary's modules only. Read the referrer when you want everything:
@@ -91,6 +91,16 @@ lists the binary's modules only. Read the referrer when you want everything:
 ```sh
 oras discover ghcr.io/lesomnus/cr:edge
 trivy image --sbom-sources oci ghcr.io/lesomnus/cr:edge
+```
+
+The SBOM is also attached as a signed attestation. The signature is keyless, made by this repository's CI on
+`main`, and recorded in Sigstore's public transparency log. To check that an SBOM came from there:
+
+```sh
+cosign verify-attestation --type cyclonedx \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github.com/lesomnus/cr/\.github/workflows/ci\.yml@refs/(heads/main|tags/v.+)$' \
+  ghcr.io/lesomnus/cr@sha256:…
 ```
 
 **The database** is `db.driver: sqlite3` for one process, or `pgx` for
