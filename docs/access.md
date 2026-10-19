@@ -505,6 +505,71 @@ cases:
 - **`allow`** must all be granted, and **`deny`** must all be refused. An
   action in neither is not looked at.
 
+Repeated callers can be defined once in `subjects`. A case's `as` accepts a
+subject name, `anyone`, or the inline provider/claims mapping above. Both `as`
+and `repo` also accept non-empty lists; every caller is checked against every
+repository. Two declarations below run the same 16 cases as four callers
+written out separately for each of four repositories:
+
+```yaml
+subjects:
+  release:
+    provider: github
+    claims:
+      repository_id: "123456789"
+      workflow_ref: lesomnus/cr/.github/workflows/release.yml@refs/heads/main
+  other-branch:
+    extends: release
+    claims:
+      workflow_ref: lesomnus/cr/.github/workflows/release.yml@refs/heads/feature
+  other-workflow:
+    extends: release
+    claims:
+      workflow_ref: lesomnus/cr/.github/workflows/other.yml@refs/heads/main
+
+cases:
+  - name: the release workflow can publish
+    as: release
+    repo: &repos [lesomnus/cr, lesomnus/cr/cache, lesomnus/cr/stage, lesomnus/cr/prod]
+    allow: [pull, push, tag]
+    deny: [delete, admin]
+
+  - name: other callers cannot publish
+    as: [other-branch, other-workflow, anyone]
+    repo: *repos
+    deny: [push, tag, delete, admin]
+```
+
+`extends` names one parent in `subjects`, which may be declared later and may
+itself extend another subject. The provider is inherited unless overridden.
+Claims are inherited by key: a child replaces only the values it supplies.
+Lists and nested objects are replaced as whole values, with no recursive merge;
+an explicit `null` is a null claim value, not a request to remove the claim.
+Parent and sibling definitions are unchanged. `anyone` is reserved for the
+anonymous caller and cannot be defined or inherited as a subject name.
+
+Lists may mix subject names, `anyone` and inline caller mappings. A list of
+callers also works with `registry: true`, which cannot be combined with `repo`.
+Repository entries are concrete names, not patterns to expand. Empty lists,
+unknown subjects/providers, inheritance cycles and unknown fields are errors,
+including errors in unused subject definitions. The entire file is validated
+before any cases run. Expectations remain explicit in `allow` and `deny`;
+they are never derived from the policy being tested.
+
+Cases expand in file order, then caller-list order, then repository-list order.
+Named subjects and list combinations include the subject and target in their
+output, for example:
+
+```text
+ok    the release workflow can publish [subject=release, repo=lesomnus/cr]
+FAIL  other callers cannot publish [subject=other-branch, repo=lesomnus/cr/prod]
+```
+
+Inline callers in lists are identified by their zero-based position and
+provider (`subject=as[0]:github`). Existing scalar `anyone` and inline cases
+keep their original names. The final passed/failed count includes every
+expanded combination.
+
 `cr auth test` prints a line for each case and exits non-zero when one fails,
 with what it got wrong and why:
 

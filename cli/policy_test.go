@@ -242,7 +242,7 @@ cases:
 		want string
 	}{
 		"no such provider":       {"cases:\n  - as: {provider: gitlab}\n    repo: a\n    allow: [pull]\n", `no provider "gitlab"`},
-		"as neither":             {"cases:\n  - as: somebody\n    repo: a\n    allow: [pull]\n", "want anyone"},
+		"as neither":             {"cases:\n  - as: somebody\n    repo: a\n    allow: [pull]\n", `unknown subject "somebody"`},
 		"no place":               {"cases:\n  - as: anyone\n    allow: [pull]\n", "one of `repo` and `registry: true`"},
 		"both places":            {"cases:\n  - as: anyone\n    repo: a\n    registry: true\n    allow: [catalog]\n", "one of `repo` and `registry: true`"},
 		"no such action":         {"cases:\n  - as: anyone\n    repo: a\n    allow: [pul]\n", `no action "pul"`},
