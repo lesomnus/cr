@@ -208,3 +208,85 @@ func TestAuthCaseMatrixCommand(t *testing.T) {
 		})
 	}
 }
+
+func TestAuthCaseFilesCommand(t *testing.T) {
+	dir := t.TempDir()
+	policyPath := write(t, filepath.Join(dir, "policy.yaml"), policy)
+	first := write(t, filepath.Join(dir, "first.yaml"), matrixCases)
+	// Reuse a subject name with different claims. A definition from the first
+	// file must not influence this one, regardless of argument order.
+	second := write(t, filepath.Join(dir, "second.yaml"), `
+subjects:
+  release:
+    provider: github
+    claims:
+      repository_id: "other"
+      workflow_ref: lesomnus/cr/.github/workflows/release.yml@refs/heads/main
+cases:
+  - name: publish
+    as: release
+    repo: lesomnus/cr
+    deny: [push]
+`)
+	failed := write(t, filepath.Join(dir, "failed.yaml"), `
+cases:
+  - name: anonymous push
+    as: anyone
+    repo: lesomnus/cr
+    allow: [push]
+`)
+	unknown := write(t, filepath.Join(dir, "unknown.yaml"), `
+cases:
+  - as: release
+    repo: lesomnus/cr
+    allow: [push]
+`)
+	extends := write(t, filepath.Join(dir, "extends.yaml"), `
+subjects:
+  child: {extends: release}
+cases:
+  - as: child
+    repo: lesomnus/cr
+    allow: [push]
+`)
+	empty := write(t, filepath.Join(dir, "empty.yaml"), "cases: []\n")
+	for _, tc := range []struct {
+		name    string
+		paths   []string
+		want    []string
+		failure string
+	}{
+		{"pass", []string{first, second}, []string{"ok    " + first + ": publish [subject=release", "ok    " + second + ": publish [subject=release", "17 cases passed"}, ""},
+		{"reverse order", []string{second, first}, []string{"ok    " + second + ": publish [subject=release", "ok    " + first + ": publish [subject=release", "17 cases passed"}, ""},
+		{"continue after failure", []string{failed, first, second}, []string{"FAIL  " + failed + ": anonymous push", "ok    " + first + ": publish", "ok    " + second + ": publish"}, "1 of 18 cases failed"},
+		{"subject is local", []string{first, unknown}, nil, `unknown subject "release"`},
+		{"parent is local", []string{first, extends}, nil, `unknown subject "release"`},
+		{"empty file", []string{first, empty}, nil, "empty.yaml: no cases"},
+		{"missing file", []string{first, filepath.Join(dir, "missing.yaml")}, nil, "missing.yaml"},
+		{"unmatched glob", []string{first, filepath.Join(dir, "*.missing.yaml")}, nil, "*.missing.yaml"},
+		{"no files", nil, nil, "TESTS"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var output bytes.Buffer
+			command := NewCmdAuth()
+			command.Writer = &output
+			args := append([]string{"test", policyPath}, tc.paths...)
+			err := command.Run(t.Context(), args)
+			if tc.failure == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tc.failure)
+			}
+			if len(tc.want) == 0 {
+				require.Empty(t, output.String(), "all files validate before assertions run")
+			} else {
+				previous := -1
+				for _, want := range tc.want {
+					index := strings.Index(output.String(), want)
+					require.Greater(t, index, previous, "results must follow argument order: %s", output.String())
+					previous = index
+				}
+			}
+		})
+	}
+}

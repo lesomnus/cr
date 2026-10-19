@@ -146,6 +146,31 @@ func (t authTests) subjects(p *auth.Policy) (map[string]caller, error) {
 	return resolved, errors.Join(errs...)
 }
 
+// readCaseFiles validates every file before returning any runnable assertions.
+// Subjects and YAML anchors stay local to each file. Qualify output names only
+// for multiple files, preserving the single-file command's output.
+func readCaseFiles(paths []string, p *auth.Policy) ([]authCase, error) {
+	var cases []authCase
+	var errs []error
+	for _, path := range paths {
+		fileCases, err := readCases(path, p)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if len(paths) > 1 {
+			for i := range fileCases {
+				fileCases[i].Name = path + ": " + fileCases[i].Name
+			}
+		}
+		cases = append(cases, fileCases...)
+	}
+	if err := errors.Join(errs...); err != nil {
+		return nil, err
+	}
+	return cases, nil
+}
+
 // readCases validates the complete file before any assertions run. Each list
 // is an independent axis: callers in input order, then repositories in input
 // order. Scalar legacy cases keep their original names and behavior.
