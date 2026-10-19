@@ -460,7 +460,8 @@ no provider is asked for anything.
 cr auth check cr.auth.yaml
 cr auth test cr.auth.yaml cr.auth.test.yaml
 cr auth test cr.auth.yaml auth-tests/registry.yaml auth-tests/releases.yaml
-cr auth test cr.auth.yaml auth-tests/*.yaml
+cr auth test cr.auth.yaml auth-tests
+cr auth test --pattern '*.test.yaml' cr.auth.yaml auth-tests
 cr auth explain --as github --claim repository_id=123456789 --repo lesomnus/cr cr.auth.yaml
 ```
 
@@ -576,9 +577,22 @@ Split related tests into separate files and pass one or more paths after the
 policy path. Each file is independent: its `subjects`, `extends` references and
 YAML anchors refer only to definitions in that file. The same subject name may
 be used differently in another file. Any file can also be run on its own.
-The shell expands `auth-tests/*.yaml`; cr reads the paths in argument order.
-Every file must contain cases, so an empty file or an unmatched glob is an
-error. A validation/read error in any file prevents all cases from running.
+
+A directory selects its immediate `*.yaml` files in filename order; subdirectories
+are not searched. For example, `cr auth test cr.auth.yaml auth-tests` finds the
+files inside cr, so the command's argument size does not grow with the number
+of files. Use a dedicated test directory to avoid selecting the policy itself.
+`--pattern '*.test.yaml'` replaces the default filename pattern for every
+directory argument. Patterns use Go `filepath.Match` syntax (`*`, `?`, and
+character classes); quote them so the shell does not expand them. For `.yml`
+files, use `--pattern '*.yml'`.
+
+Files and directories may be mixed, in argument order. Explicit file paths
+are read regardless of the pattern. Repeated or overlapping inputs run the
+same files again. Shell-expanded paths such as `auth-tests/*.yaml` still work.
+Every file must contain cases. An empty file, a missing path, an invalid
+pattern or a directory with no matching files is an error. A validation/read
+error in any input prevents all cases from running.
 
 With multiple files, each result includes its path, for example
 `ok    auth-tests/releases.yaml: publish [subject=release, repo=lesomnus/cr]`.
