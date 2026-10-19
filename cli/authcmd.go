@@ -48,19 +48,27 @@ func NewCmdAuth() *xli.Command {
 			},
 			{
 				Name:  "test",
-				Brief: "run the cases of one or more test files against a policy file",
+				Brief: "run test files or directories against a policy file",
 
 				Args: arg.Args{&arg.String{Name: "POLICY"}, &arg.String{Name: "TESTS"}, &arg.RestStrings{Name: "MORE_TESTS"}},
+				Flags: flg.Flags{
+					&flg.String{Name: "pattern", Default: new("*.yaml"), Brief: "filename pattern for files directly inside test directories (Go filepath.Match syntax)"},
+				},
 
 				Handler: xli.OnRun(func(ctx context.Context, self *xli.Command, next xli.Next) error {
 					path, _ := arg.Get[string](self, "POLICY")
 					tests, _ := arg.Get[string](self, "TESTS")
 					more, _ := arg.Get[[]string](self, "MORE_TESTS")
+					pattern := flg.MustGet[string](self, "pattern")
+					paths, err := expandCasePaths(append([]string{tests}, more...), pattern)
+					if err != nil {
+						return err
+					}
 					p, _, err := readPolicy(path)
 					if err != nil {
 						return err
 					}
-					cases, err := readCaseFiles(append([]string{tests}, more...), p)
+					cases, err := readCaseFiles(paths, p)
 					if err != nil {
 						return err
 					}

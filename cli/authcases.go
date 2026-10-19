@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -144,6 +145,58 @@ func (t authTests) subjects(p *auth.Policy) (map[string]caller, error) {
 		}
 	}
 	return resolved, errors.Join(errs...)
+}
+
+// expandCasePaths replaces each directory with its matching immediate files in
+// lexical order. Explicit files bypass the pattern; input order is preserved.
+func expandCasePaths(paths []string, pattern string) ([]string, error) {
+	if pattern == "" {
+		return nil, errors.New("--pattern: filename pattern must not be empty")
+	}
+	if _, err := filepath.Match(pattern, ""); err != nil {
+		return nil, fmt.Errorf("--pattern %q: %w", pattern, err)
+	}
+	var files []string
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil {
+			return nil, err
+		}
+		if !info.IsDir() {
+			if !info.Mode().IsRegular() {
+				return nil, fmt.Errorf("%s: not a regular file", path)
+			}
+			files = append(files, path)
+			continue
+		}
+		entries, err := os.ReadDir(path)
+		if err != nil {
+			return nil, err
+		}
+		start := len(files)
+		for _, entry := range entries {
+			matched, _ := filepath.Match(pattern, entry.Name())
+			if entry.IsDir() || !matched {
+				continue
+			}
+			file := filepath.Join(path, entry.Name())
+			info, err := os.Stat(file)
+			if err != nil {
+				return nil, err
+			}
+			if info.IsDir() {
+				continue
+			}
+			if !info.Mode().IsRegular() {
+				return nil, fmt.Errorf("%s: not a regular file", file)
+			}
+			files = append(files, file)
+		}
+		if len(files) == start {
+			return nil, fmt.Errorf("%s: no test files matching %q", path, pattern)
+		}
+	}
+	return files, nil
 }
 
 // readCaseFiles validates every file before returning any runnable assertions.

@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -287,6 +288,60 @@ cases:
 					previous = index
 				}
 			}
+		})
+	}
+}
+
+func TestAuthCaseDirectoriesCommand(t *testing.T) {
+	dir := t.TempDir()
+	policyPath := write(t, filepath.Join(dir, "policy.yaml"), policy)
+	suite := filepath.Join(dir, "suite")
+	extra := filepath.Join(dir, "extra")
+	empty := filepath.Join(dir, "empty")
+	invalid := filepath.Join(dir, "invalid")
+	for _, path := range []string{suite, extra, empty, invalid, filepath.Join(suite, "nested.yaml")} {
+		require.NoError(t, os.MkdirAll(path, 0o700))
+	}
+	fixture := func(name string) string {
+		return "cases:\n  - name: " + name + "\n    as: anyone\n    repo: lesomnus/cr\n    deny: [push]\n"
+	}
+	// Creation order differs from the required filename order.
+	b := write(t, filepath.Join(suite, "b.yaml"), fixture("b"))
+	a := write(t, filepath.Join(suite, "a.yaml"), fixture("a"))
+	c := write(t, filepath.Join(extra, "c.yaml"), fixture("c"))
+	yml := write(t, filepath.Join(suite, "selected.test.yml"), fixture("yml"))
+	write(t, filepath.Join(suite, "README.md"), "not a test file")
+	write(t, filepath.Join(suite, "nested.yaml", "bad.yaml"), "cases: []")
+	bad := write(t, filepath.Join(invalid, "bad.yaml"), "cases: []")
+	write(t, filepath.Join(invalid, "good.yaml"), fixture("good"))
+	for _, tc := range []struct {
+		name    string
+		args    []string
+		want    string
+		failure string
+	}{
+		{"default pattern and filename order", []string{policyPath, suite}, "ok    " + a + ": a\nok    " + b + ": b\n2 cases passed\n", ""},
+		{"multiple directories", []string{policyPath, extra, suite}, "ok    " + c + ": c\nok    " + a + ": a\nok    " + b + ": b\n3 cases passed\n", ""},
+		{"mixed inputs keep duplicates", []string{policyPath, b, extra, suite}, "ok    " + b + ": b\nok    " + c + ": c\nok    " + a + ": a\nok    " + b + ": b\n4 cases passed\n", ""},
+		{"custom pattern", []string{"--pattern", "*.test.yml", policyPath, suite}, "ok    yml\n1 cases passed\n", ""},
+		{"pattern only applies to directories", []string{"--pattern", "[ab].yaml", policyPath, yml, suite}, "ok    " + yml + ": yml\nok    " + a + ": a\nok    " + b + ": b\n3 cases passed\n", ""},
+		{"no matches", []string{"--pattern", "*.test.yaml", policyPath, suite}, "", suite + `: no test files matching "*.test.yaml"`},
+		{"empty directory", []string{policyPath, suite, empty}, "", empty + `: no test files matching "*.yaml"`},
+		{"invalid discovered file", []string{policyPath, suite, invalid}, "", bad + ": no cases"},
+		{"malformed pattern", []string{"--pattern", "[", policyPath, suite}, "", "--pattern"},
+		{"empty pattern", []string{"--pattern=", policyPath, suite}, "", "--pattern: filename pattern must not be empty"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var output bytes.Buffer
+			command := NewCmdAuth()
+			command.Writer = &output
+			err := command.Run(t.Context(), append([]string{"test"}, tc.args...))
+			if tc.failure == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tc.failure)
+			}
+			require.Equal(t, tc.want, output.String())
 		})
 	}
 }
