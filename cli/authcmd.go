@@ -48,18 +48,19 @@ func NewCmdAuth() *xli.Command {
 			},
 			{
 				Name:  "test",
-				Brief: "run the cases of a test file against a policy file",
+				Brief: "run the cases of one or more test files against a policy file",
 
-				Args: arg.Args{&arg.String{Name: "POLICY"}, &arg.String{Name: "TESTS"}},
+				Args: arg.Args{&arg.String{Name: "POLICY"}, &arg.String{Name: "TESTS"}, &arg.RestStrings{Name: "MORE_TESTS"}},
 
 				Handler: xli.OnRun(func(ctx context.Context, self *xli.Command, next xli.Next) error {
 					path, _ := arg.Get[string](self, "POLICY")
 					tests, _ := arg.Get[string](self, "TESTS")
+					more, _ := arg.Get[[]string](self, "MORE_TESTS")
 					p, _, err := readPolicy(path)
 					if err != nil {
 						return err
 					}
-					cases, err := readCases(tests, p)
+					cases, err := readCaseFiles(append([]string{tests}, more...), p)
 					if err != nil {
 						return err
 					}

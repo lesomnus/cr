@@ -459,6 +459,8 @@ no provider is asked for anything.
 ```sh
 cr auth check cr.auth.yaml
 cr auth test cr.auth.yaml cr.auth.test.yaml
+cr auth test cr.auth.yaml auth-tests/registry.yaml auth-tests/releases.yaml
+cr auth test cr.auth.yaml auth-tests/*.yaml
 cr auth explain --as github --claim repository_id=123456789 --repo lesomnus/cr cr.auth.yaml
 ```
 
@@ -552,7 +554,7 @@ Lists may mix subject names, `anyone` and inline caller mappings. A list of
 callers also works with `registry: true`, which cannot be combined with `repo`.
 Repository entries are concrete names, not patterns to expand. Empty lists,
 unknown subjects/providers, inheritance cycles and unknown fields are errors,
-including errors in unused subject definitions. The entire file is validated
+including errors in unused subject definitions. All supplied files are validated
 before any cases run. Expectations remain explicit in `allow` and `deny`;
 they are never derived from the policy being tested.
 
@@ -569,6 +571,20 @@ Inline callers in lists are identified by their zero-based position and
 provider (`subject=as[0]:github`). Existing scalar `anyone` and inline cases
 keep their original names. The final passed/failed count includes every
 expanded combination.
+
+Split related tests into separate files and pass one or more paths after the
+policy path. Each file is independent: its `subjects`, `extends` references and
+YAML anchors refer only to definitions in that file. The same subject name may
+be used differently in another file. Any file can also be run on its own.
+The shell expands `auth-tests/*.yaml`; cr reads the paths in argument order.
+Every file must contain cases, so an empty file or an unmatched glob is an
+error. A validation/read error in any file prevents all cases from running.
+
+With multiple files, each result includes its path, for example
+`ok    auth-tests/releases.yaml: publish [subject=release, repo=lesomnus/cr]`.
+Assertion failures do not stop the remaining files: the final passed/failed
+count covers all expanded cases, and any failure makes the command exit
+non-zero. Supplying a single file keeps the output shown above.
 
 `cr auth test` prints a line for each case and exits non-zero when one fails,
 with what it got wrong and why:
