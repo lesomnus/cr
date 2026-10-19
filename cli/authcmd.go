@@ -4,11 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"slices"
 	"strings"
 
-	"github.com/goccy/go-yaml"
 	"github.com/lesomnus/xli"
 	"github.com/lesomnus/xli/arg"
 	"github.com/lesomnus/xli/flg"
@@ -160,12 +158,6 @@ func printExplanation(self *xli.Command, e auth.Explanation, indent string) {
 	self.Printf("%sgranted: %s\n", indent, granted)
 }
 
-// authTests is a test file: cases, each a caller, a place, and what it must
-// and must not be allowed there.
-type authTests struct {
-	Cases []authCase `yaml:"cases"`
-}
-
 type authCase struct {
 	Name string `yaml:"name"`
 	As   caller `yaml:"as"`
@@ -217,56 +209,6 @@ func (c caller) subject() auth.Subject {
 }
 
 var registryActions = []auth.Action{auth.ActionCatalog, auth.ActionSearch, auth.ActionAdmin}
-
-// readCases reads the test file at path, and checks every case against p:
-// a provider p has, a place, and actions that can be asked there.
-func readCases(path string, p *auth.Policy) ([]authCase, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var t authTests
-	if err := yaml.UnmarshalWithOptions(b, &t, yaml.Strict()); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
-	}
-	var errs []error
-	for i, tc := range t.Cases {
-		name := tc.Name
-		if name == "" {
-			name = fmt.Sprintf("cases[%d]", i)
-			t.Cases[i].Name = name
-		}
-		fail := func(format string, a ...any) {
-			errs = append(errs, fmt.Errorf("%s: %s: %s", path, name, fmt.Sprintf(format, a...)))
-		}
-		switch {
-		case tc.As.Provider == "":
-			fail("no `as`")
-		case tc.As.Provider != auth.Anyone && !p.HasProvider(tc.As.Provider):
-			fail("as: the policy has no provider %q", tc.As.Provider)
-		}
-		if (tc.Repo == "") == !tc.Registry {
-			fail("one of `repo` and `registry: true`")
-		}
-		if len(tc.Allow)+len(tc.Deny) == 0 {
-			fail("nothing to allow or deny")
-		}
-		for _, a := range append(slices.Clone(tc.Allow), tc.Deny...) {
-			switch {
-			case !slices.Contains(auth.Actions, auth.Action(a)):
-				fail("no action %q", a)
-			case tc.Registry && !slices.Contains(registryActions, auth.Action(a)):
-				fail("%s is asked of a repository, not of the registry", a)
-			case !tc.Registry && (a == string(auth.ActionCatalog) || a == string(auth.ActionSearch)):
-				fail("%s is asked of the registry: write `registry: true`", a)
-			}
-		}
-	}
-	if len(t.Cases) == 0 {
-		errs = append(errs, fmt.Errorf("%s: no cases", path))
-	}
-	return t.Cases, errors.Join(errs...)
-}
 
 // run is what the case got wrong: an action that should have been allowed and
 // was not, or the other way round.
