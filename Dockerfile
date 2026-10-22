@@ -12,7 +12,7 @@ FROM --platform=$BUILDPLATFORM anchore/syft:v1.54.1 AS syft
 
 # What the image runs on, named once: `app` is built on it, and `notices` reads
 # its package list.
-FROM gcr.io/distroless/static-debian12:nonroot AS runtime
+FROM gcr.io/distroless/static-debian13:nonroot AS runtime
 
 FROM --platform=$BUILDPLATFORM golang:1.27 AS base
 
