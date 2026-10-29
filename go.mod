@@ -25,7 +25,7 @@ tool (
 )
 
 require (
-	github.com/go-jose/go-jose/v4 v4.1.5
+	github.com/go-jose/go-jose/v4 v4.1.6
 	github.com/goccy/go-yaml v1.19.2
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/lesomnus/flob v0.0.0-20261010120939-21f89e60609e
