@@ -99,6 +99,9 @@ func (_u *OrphanCandidateUpdate) sqlSave(ctx context.Context) (_node int, err er
 	if value, ok := _u.mutation.DateObserved(); ok {
 		_spec.SetField(orphancandidate.FieldDateObserved, field.TypeTime, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(orphancandidate.FieldDateObserved); ok {
+		_spec.SetField(orphancandidate.FieldDateObserved, field.TypeTime, e)
+	}
 	if _u.mutation.DateObservedCleared() {
 		_spec.ClearField(orphancandidate.FieldDateObserved, field.TypeTime)
 	}
@@ -223,6 +226,9 @@ func (_u *OrphanCandidateUpdateOne) sqlSave(ctx context.Context) (_node *OrphanC
 	}
 	if value, ok := _u.mutation.DateObserved(); ok {
 		_spec.SetField(orphancandidate.FieldDateObserved, field.TypeTime, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(orphancandidate.FieldDateObserved); ok {
+		_spec.SetField(orphancandidate.FieldDateObserved, field.TypeTime, e)
 	}
 	if _u.mutation.DateObservedCleared() {
 		_spec.ClearField(orphancandidate.FieldDateObserved, field.TypeTime)

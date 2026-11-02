@@ -9,6 +9,18 @@ import (
 	"github.com/lesomnus/cr/internal/ent"
 )
 
+// The AccessFunc type is an adapter to allow the use of ordinary
+// function as Access mutator.
+type AccessFunc func(context.Context, *ent.AccessMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AccessFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AccessMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AccessMutation", m)
+}
+
 // The ArchivedFunc type is an adapter to allow the use of ordinary
 // function as Archived mutator.
 type ArchivedFunc func(context.Context, *ent.ArchivedMutation) (ent.Value, error)
@@ -117,6 +129,18 @@ func (f OutboxFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, erro
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OutboxMutation", m)
 }
 
+// The OwedFunc type is an adapter to allow the use of ordinary
+// function as Owed mutator.
+type OwedFunc func(context.Context, *ent.OwedMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f OwedFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.OwedMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OwedMutation", m)
+}
+
 // The ReferrersSnapshotFunc type is an adapter to allow the use of ordinary
 // function as ReferrersSnapshot mutator.
 type ReferrersSnapshotFunc func(context.Context, *ent.ReferrersSnapshotMutation) (ent.Value, error)
@@ -139,6 +163,18 @@ func (f RepositoryFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, 
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RepositoryMutation", m)
+}
+
+// The RowSealFunc type is an adapter to allow the use of ordinary
+// function as RowSeal mutator.
+type RowSealFunc func(context.Context, *ent.RowSealMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RowSealFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RowSealMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RowSealMutation", m)
 }
 
 // The TagFunc type is an adapter to allow the use of ordinary

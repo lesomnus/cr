@@ -44,7 +44,8 @@ func (GcRun) Fields() []ent.Field {
 
 func (GcRun) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("date_created", "id"),
+		index.Fields("date_created", "id").
+			StorageKey("gcrun_page"),
 	}
 }
 

@@ -42,12 +42,17 @@ func (Tag) Fields() []ent.Field {
 
 func (Tag) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("date_created", "id"),
+		index.Fields("date_created", "id").
+			StorageKey("tag_page"),
 		index.Fields("repo", "name").
+			StorageKey("tag_by_name").
 			Unique(),
-		index.Fields("repo", "digest", "name"),
-		index.Fields("repo", "date_created", "id"),
-		index.Fields("repo", "date_moved"),
+		index.Fields("repo", "digest", "name").
+			StorageKey("tag_by_digest"),
+		index.Fields("repo", "date_created", "id").
+			StorageKey("tag_page_in_repo"),
+		index.Fields("repo", "date_moved").
+			StorageKey("tag_by_moved"),
 	}
 }
 

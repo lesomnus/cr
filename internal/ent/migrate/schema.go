@@ -9,6 +9,50 @@ import (
 )
 
 var (
+	// AccessColumns holds the columns for the "access" table.
+	AccessColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUuid, Unique: true},
+		{Name: "tenant_id", Type: field.TypeUuid},
+		{Name: "actor_id", Type: field.TypeUuid},
+		{Name: "trace_id", Type: field.TypeBytes},
+		{Name: "action", Type: field.TypeString},
+		{Name: "kind", Type: field.TypeString},
+		{Name: "result", Type: field.TypeString},
+		{Name: "date_created", Type: field.TypeTime, Nullable: true},
+		{Name: "actor_tenant_id", Type: field.TypeUuid},
+		{Name: "value", Type: field.TypeBytes},
+		{Name: "domain", Type: field.TypeUint32, Nullable: true, Default: 0},
+		{Name: "subjects", Type: field.TypeJson, Nullable: true},
+		{Name: "subject_count", Type: field.TypeUint32},
+	}
+	// AccessTable holds the schema information for the "access" table.
+	AccessTable = &schema.Table{
+		Name:       "access",
+		Columns:    AccessColumns,
+		PrimaryKey: []*schema.Column{AccessColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "access_access",
+				Unique:  false,
+				Columns: []*schema.Column{AccessColumns[1], AccessColumns[7]},
+			},
+			{
+				Name:    "access_by_actor_tenant",
+				Unique:  false,
+				Columns: []*schema.Column{AccessColumns[8], AccessColumns[7]},
+			},
+			{
+				Name:    "access_by_actor",
+				Unique:  false,
+				Columns: []*schema.Column{AccessColumns[2], AccessColumns[7]},
+			},
+			{
+				Name:    "access_by_time",
+				Unique:  false,
+				Columns: []*schema.Column{AccessColumns[7], AccessColumns[0]},
+			},
+		},
+	}
 	// ArchivedColumns holds the columns for the "archived" table.
 	ArchivedColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUuid, Unique: true},
@@ -31,7 +75,7 @@ var (
 		PrimaryKey: []*schema.Column{ArchivedColumns[0]},
 		Indexes: []*schema.Index{
 			{
-				Name:    "archived_namespace_digest",
+				Name:    "archived_blob",
 				Unique:  false,
 				Columns: []*schema.Column{ArchivedColumns[2], ArchivedColumns[3]},
 			},
@@ -55,7 +99,10 @@ var (
 		{Name: "actor_tenant_id", Type: field.TypeUuid},
 		{Name: "value", Type: field.TypeBytes},
 		{Name: "counterpart_tenant_id", Type: field.TypeUuid, Nullable: true},
-		{Name: "domain", Type: field.TypeUint32, Nullable: true},
+		{Name: "domain", Type: field.TypeUint32, Nullable: true, Default: 0},
+		{Name: "fields", Type: field.TypeJson, Nullable: true},
+		{Name: "digest", Type: field.TypeBytes, Nullable: true},
+		{Name: "digest_fields", Type: field.TypeJson, Nullable: true},
 	}
 	// AuditTable holds the schema information for the "audit" table.
 	AuditTable = &schema.Table{
@@ -64,39 +111,44 @@ var (
 		PrimaryKey: []*schema.Column{AuditColumns[0]},
 		Indexes: []*schema.Index{
 			{
-				Name:    "audit_object_id",
+				Name:    "audit_object",
 				Unique:  false,
 				Columns: []*schema.Column{AuditColumns[5]},
 			},
 			{
-				Name:    "audit_tenant_id_date_created",
+				Name:    "audit_trail",
 				Unique:  false,
 				Columns: []*schema.Column{AuditColumns[1], AuditColumns[7]},
 			},
 			{
-				Name:    "audit_actor_tenant_id_date_created",
+				Name:    "audit_by_actor_tenant",
 				Unique:  false,
 				Columns: []*schema.Column{AuditColumns[8], AuditColumns[7]},
 			},
 			{
-				Name:    "audit_counterpart_tenant_id_date_created",
+				Name:    "audit_by_counterpart",
 				Unique:  false,
 				Columns: []*schema.Column{AuditColumns[10], AuditColumns[7]},
 			},
 			{
-				Name:    "audit_domain_date_created",
+				Name:    "audit_by_domain",
 				Unique:  false,
 				Columns: []*schema.Column{AuditColumns[11], AuditColumns[7]},
 			},
 			{
-				Name:    "audit_tenant_id_domain_date_created",
+				Name:    "audit_by_tenant_domain",
 				Unique:  false,
 				Columns: []*schema.Column{AuditColumns[1], AuditColumns[11], AuditColumns[7]},
 			},
 			{
-				Name:    "audit_actor_id_date_created",
+				Name:    "audit_by_actor",
 				Unique:  false,
 				Columns: []*schema.Column{AuditColumns[2], AuditColumns[7]},
+			},
+			{
+				Name:    "audit_by_time",
+				Unique:  false,
+				Columns: []*schema.Column{AuditColumns[7], AuditColumns[0]},
 			},
 		},
 	}
@@ -125,7 +177,7 @@ var (
 		PrimaryKey: []*schema.Column{GcrunColumns[0]},
 		Indexes: []*schema.Index{
 			{
-				Name:    "gcrun_date_created_id",
+				Name:    "gcrun_page",
 				Unique:  false,
 				Columns: []*schema.Column{GcrunColumns[14], GcrunColumns[0]},
 			},
@@ -159,12 +211,17 @@ var (
 		},
 		Indexes: []*schema.Index{
 			{
-				Name:    "holder_alias_tenant_id",
+				Name:    "holder_slug",
 				Unique:  true,
 				Columns: []*schema.Column{HolderColumns[1], HolderColumns[9]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "date_erased IS NULL",
 				},
+			},
+			{
+				Name:    "holder_page",
+				Unique:  false,
+				Columns: []*schema.Column{HolderColumns[9], HolderColumns[7], HolderColumns[0]},
 			},
 			{
 				Name:    "holder_idp_subject",
@@ -197,22 +254,22 @@ var (
 		PrimaryKey: []*schema.Column{ManifestColumns[0]},
 		Indexes: []*schema.Index{
 			{
-				Name:    "manifest_date_created_id",
+				Name:    "manifest_page",
 				Unique:  false,
 				Columns: []*schema.Column{ManifestColumns[10], ManifestColumns[0]},
 			},
 			{
-				Name:    "manifest_artifact_type_date_created_id",
+				Name:    "manifest_by_artifact_type",
 				Unique:  false,
 				Columns: []*schema.Column{ManifestColumns[4], ManifestColumns[10], ManifestColumns[0]},
 			},
 			{
-				Name:    "manifest_repo_digest",
+				Name:    "manifest_by_digest",
 				Unique:  true,
 				Columns: []*schema.Column{ManifestColumns[1], ManifestColumns[2]},
 			},
 			{
-				Name:    "manifest_repo_subject",
+				Name:    "manifest_by_subject",
 				Unique:  false,
 				Columns: []*schema.Column{ManifestColumns[1], ManifestColumns[5]},
 			},
@@ -233,17 +290,17 @@ var (
 		PrimaryKey: []*schema.Column{ManifestblobColumns[0]},
 		Indexes: []*schema.Index{
 			{
-				Name:    "manifestblob_date_created_id",
+				Name:    "manifestblob_page",
 				Unique:  false,
 				Columns: []*schema.Column{ManifestblobColumns[4], ManifestblobColumns[0]},
 			},
 			{
-				Name:    "manifestblob_repo_manifest_blob",
+				Name:    "manifestblob_by_manifest",
 				Unique:  true,
 				Columns: []*schema.Column{ManifestblobColumns[1], ManifestblobColumns[2], ManifestblobColumns[3]},
 			},
 			{
-				Name:    "manifestblob_repo_blob",
+				Name:    "manifestblob_by_blob",
 				Unique:  false,
 				Columns: []*schema.Column{ManifestblobColumns[1], ManifestblobColumns[3]},
 			},
@@ -263,7 +320,7 @@ var (
 		PrimaryKey: []*schema.Column{OrphancandidateColumns[0]},
 		Indexes: []*schema.Index{
 			{
-				Name:    "orphancandidate_repo_subject",
+				Name:    "orphancandidate_by_subject",
 				Unique:  true,
 				Columns: []*schema.Column{OrphancandidateColumns[1], OrphancandidateColumns[2]},
 			},
@@ -283,7 +340,7 @@ var (
 		PrimaryKey: []*schema.Column{OrphanscanColumns[0]},
 		Indexes: []*schema.Index{
 			{
-				Name:    "orphanscan_repo",
+				Name:    "orphanscan_by_repo",
 				Unique:  true,
 				Columns: []*schema.Column{OrphanscanColumns[1]},
 			},
@@ -308,9 +365,29 @@ var (
 		PrimaryKey: []*schema.Column{OutboxColumns[0]},
 		Indexes: []*schema.Index{
 			{
-				Name:    "outbox_id",
+				Name:    "outbox_queue",
 				Unique:  false,
 				Columns: []*schema.Column{OutboxColumns[0]},
+			},
+		},
+	}
+	// OwedColumns holds the columns for the "owed" table.
+	OwedColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUuid, Unique: true},
+		{Name: "object", Type: field.TypeUuid},
+		{Name: "held_by", Type: field.TypeJson, Nullable: true},
+		{Name: "date_created", Type: field.TypeTime, Nullable: true},
+	}
+	// OwedTable holds the schema information for the "owed" table.
+	OwedTable = &schema.Table{
+		Name:       "owed",
+		Columns:    OwedColumns,
+		PrimaryKey: []*schema.Column{OwedColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "owed_owed",
+				Unique:  false,
+				Columns: []*schema.Column{OwedColumns[3], OwedColumns[0]},
 			},
 		},
 	}
@@ -332,12 +409,12 @@ var (
 		PrimaryKey: []*schema.Column{ReferrerssnapshotColumns[0]},
 		Indexes: []*schema.Index{
 			{
-				Name:    "referrerssnapshot_date_created_id",
+				Name:    "referrerssnapshot_page",
 				Unique:  false,
 				Columns: []*schema.Column{ReferrerssnapshotColumns[7], ReferrerssnapshotColumns[0]},
 			},
 			{
-				Name:    "referrerssnapshot_repo_subject",
+				Name:    "referrerssnapshot_by_subject",
 				Unique:  true,
 				Columns: []*schema.Column{ReferrerssnapshotColumns[1], ReferrerssnapshotColumns[2]},
 			},
@@ -358,16 +435,29 @@ var (
 		PrimaryKey: []*schema.Column{RepositoryColumns[0]},
 		Indexes: []*schema.Index{
 			{
-				Name:    "repository_date_created_id",
+				Name:    "repository_page",
 				Unique:  false,
 				Columns: []*schema.Column{RepositoryColumns[4], RepositoryColumns[0]},
 			},
 			{
-				Name:    "repository_name",
+				Name:    "repository_by_name",
 				Unique:  true,
 				Columns: []*schema.Column{RepositoryColumns[1]},
 			},
 		},
+	}
+	// RowsealColumns holds the columns for the "rowseal" table.
+	RowsealColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUuid, Unique: true},
+		{Name: "tenant_id", Type: field.TypeUuid},
+		{Name: "sum", Type: field.TypeBytes},
+		{Name: "fields", Type: field.TypeJson, Nullable: true},
+	}
+	// RowsealTable holds the schema information for the "rowseal" table.
+	RowsealTable = &schema.Table{
+		Name:       "rowseal",
+		Columns:    RowsealColumns,
+		PrimaryKey: []*schema.Column{RowsealColumns[0]},
 	}
 	// TagColumns holds the columns for the "tag" table.
 	TagColumns = []*schema.Column{
@@ -388,27 +478,27 @@ var (
 		PrimaryKey: []*schema.Column{TagColumns[0]},
 		Indexes: []*schema.Index{
 			{
-				Name:    "tag_date_created_id",
+				Name:    "tag_page",
 				Unique:  false,
 				Columns: []*schema.Column{TagColumns[8], TagColumns[0]},
 			},
 			{
-				Name:    "tag_repo_name",
+				Name:    "tag_by_name",
 				Unique:  true,
 				Columns: []*schema.Column{TagColumns[2], TagColumns[1]},
 			},
 			{
-				Name:    "tag_repo_digest_name",
+				Name:    "tag_by_digest",
 				Unique:  false,
 				Columns: []*schema.Column{TagColumns[2], TagColumns[3], TagColumns[1]},
 			},
 			{
-				Name:    "tag_repo_date_created_id",
+				Name:    "tag_page_in_repo",
 				Unique:  false,
 				Columns: []*schema.Column{TagColumns[2], TagColumns[8], TagColumns[0]},
 			},
 			{
-				Name:    "tag_repo_date_moved",
+				Name:    "tag_by_moved",
 				Unique:  false,
 				Columns: []*schema.Column{TagColumns[2], TagColumns[4]},
 			},
@@ -445,12 +535,12 @@ var (
 		},
 		Indexes: []*schema.Index{
 			{
-				Name:    "tagrule_date_created_id",
+				Name:    "tagrule_page",
 				Unique:  false,
 				Columns: []*schema.Column{TagruleColumns[11], TagruleColumns[0]},
 			},
 			{
-				Name:    "tagrule_alias_tenant_id",
+				Name:    "tagrule_slug",
 				Unique:  true,
 				Columns: []*schema.Column{TagruleColumns[1], TagruleColumns[12]},
 				Annotation: &entsql.IndexAnnotation{
@@ -474,9 +564,17 @@ var (
 		Name:       "tenant",
 		Columns:    TenantColumns,
 		PrimaryKey: []*schema.Column{TenantColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "tenant_page",
+				Unique:  false,
+				Columns: []*schema.Column{TenantColumns[6], TenantColumns[0]},
+			},
+		},
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		AccessTable,
 		ArchivedTable,
 		AuditTable,
 		GcrunTable,
@@ -486,8 +584,10 @@ var (
 		OrphancandidateTable,
 		OrphanscanTable,
 		OutboxTable,
+		OwedTable,
 		ReferrerssnapshotTable,
 		RepositoryTable,
+		RowsealTable,
 		TagTable,
 		TagruleTable,
 		TenantTable,
@@ -495,6 +595,9 @@ var (
 )
 
 func init() {
+	AccessTable.Annotation = &entsql.Annotation{
+		Table: "access",
+	}
 	ArchivedTable.Annotation = &entsql.Annotation{
 		Table: "archived",
 	}
@@ -523,11 +626,17 @@ func init() {
 	OutboxTable.Annotation = &entsql.Annotation{
 		Table: "outbox",
 	}
+	OwedTable.Annotation = &entsql.Annotation{
+		Table: "owed",
+	}
 	ReferrerssnapshotTable.Annotation = &entsql.Annotation{
 		Table: "referrerssnapshot",
 	}
 	RepositoryTable.Annotation = &entsql.Annotation{
 		Table: "repository",
+	}
+	RowsealTable.Annotation = &entsql.Annotation{
+		Table: "rowseal",
 	}
 	TagTable.Annotation = &entsql.Annotation{
 		Table: "tag",

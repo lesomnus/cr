@@ -131,7 +131,6 @@ func ManifestBlobSelect(q *ent.ManifestBlobQuery, m *api.ManifestBlobSelect) {
 func ManifestBlobSelectInit(q *ent.ManifestBlobQuery, m *api.ManifestBlobSelect) {
 	if m != nil {
 		ManifestBlobSelect(q, m)
-	} else {
 	}
 }
 

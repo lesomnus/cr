@@ -198,14 +198,26 @@ func (_u *HolderUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Alias(); ok {
 		_spec.SetField(holder.FieldAlias, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(holder.FieldAlias); ok {
+		_spec.SetField(holder.FieldAlias, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(holder.FieldName, field.TypeString, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(holder.FieldName); ok {
+		_spec.SetField(holder.FieldName, field.TypeString, e)
 	}
 	if value, ok := _u.mutation.Desc(); ok {
 		_spec.SetField(holder.FieldDesc, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(holder.FieldDesc); ok {
+		_spec.SetField(holder.FieldDesc, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.Labels(); ok {
 		_spec.SetField(holder.FieldLabels, field.TypeJson, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(holder.FieldLabels); ok {
+		_spec.SetField(holder.FieldLabels, field.TypeJson, e)
 	}
 	if _u.mutation.LabelsCleared() {
 		_spec.ClearField(holder.FieldLabels, field.TypeJson)
@@ -213,8 +225,14 @@ func (_u *HolderUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.DateUpdated(); ok {
 		_spec.SetField(holder.FieldDateUpdated, field.TypeTime, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(holder.FieldDateUpdated); ok {
+		_spec.SetField(holder.FieldDateUpdated, field.TypeTime, e)
+	}
 	if value, ok := _u.mutation.DateErased(); ok {
 		_spec.SetField(holder.FieldDateErased, field.TypeTime, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(holder.FieldDateErased); ok {
+		_spec.SetField(holder.FieldDateErased, field.TypeTime, e)
 	}
 	if _u.mutation.DateErasedCleared() {
 		_spec.ClearField(holder.FieldDateErased, field.TypeTime)
@@ -224,6 +242,9 @@ func (_u *HolderUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.IdpSubject(); ok {
 		_spec.SetField(holder.FieldIdpSubject, field.TypeString, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(holder.FieldIdpSubject); ok {
+		_spec.SetField(holder.FieldIdpSubject, field.TypeString, e)
 	}
 	if _u.mutation.IdpSubjectCleared() {
 		_spec.ClearField(holder.FieldIdpSubject, field.TypeString)
@@ -449,14 +470,26 @@ func (_u *HolderUpdateOne) sqlSave(ctx context.Context) (_node *Holder, err erro
 	if value, ok := _u.mutation.Alias(); ok {
 		_spec.SetField(holder.FieldAlias, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(holder.FieldAlias); ok {
+		_spec.SetField(holder.FieldAlias, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(holder.FieldName, field.TypeString, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(holder.FieldName); ok {
+		_spec.SetField(holder.FieldName, field.TypeString, e)
 	}
 	if value, ok := _u.mutation.Desc(); ok {
 		_spec.SetField(holder.FieldDesc, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(holder.FieldDesc); ok {
+		_spec.SetField(holder.FieldDesc, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.Labels(); ok {
 		_spec.SetField(holder.FieldLabels, field.TypeJson, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(holder.FieldLabels); ok {
+		_spec.SetField(holder.FieldLabels, field.TypeJson, e)
 	}
 	if _u.mutation.LabelsCleared() {
 		_spec.ClearField(holder.FieldLabels, field.TypeJson)
@@ -464,8 +497,14 @@ func (_u *HolderUpdateOne) sqlSave(ctx context.Context) (_node *Holder, err erro
 	if value, ok := _u.mutation.DateUpdated(); ok {
 		_spec.SetField(holder.FieldDateUpdated, field.TypeTime, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(holder.FieldDateUpdated); ok {
+		_spec.SetField(holder.FieldDateUpdated, field.TypeTime, e)
+	}
 	if value, ok := _u.mutation.DateErased(); ok {
 		_spec.SetField(holder.FieldDateErased, field.TypeTime, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(holder.FieldDateErased); ok {
+		_spec.SetField(holder.FieldDateErased, field.TypeTime, e)
 	}
 	if _u.mutation.DateErasedCleared() {
 		_spec.ClearField(holder.FieldDateErased, field.TypeTime)
@@ -475,6 +514,9 @@ func (_u *HolderUpdateOne) sqlSave(ctx context.Context) (_node *Holder, err erro
 	}
 	if value, ok := _u.mutation.IdpSubject(); ok {
 		_spec.SetField(holder.FieldIdpSubject, field.TypeString, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(holder.FieldIdpSubject); ok {
+		_spec.SetField(holder.FieldIdpSubject, field.TypeString, e)
 	}
 	if _u.mutation.IdpSubjectCleared() {
 		_spec.ClearField(holder.FieldIdpSubject, field.TypeString)

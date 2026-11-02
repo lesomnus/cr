@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/lesomnus/cr/internal/ent/access"
 	"github.com/lesomnus/cr/internal/ent/archived"
 	"github.com/lesomnus/cr/internal/ent/audit"
 	"github.com/lesomnus/cr/internal/ent/gcrun"
@@ -18,8 +19,10 @@ import (
 	"github.com/lesomnus/cr/internal/ent/orphancandidate"
 	"github.com/lesomnus/cr/internal/ent/orphanscan"
 	"github.com/lesomnus/cr/internal/ent/outbox"
+	"github.com/lesomnus/cr/internal/ent/owed"
 	"github.com/lesomnus/cr/internal/ent/referrerssnapshot"
 	"github.com/lesomnus/cr/internal/ent/repository"
+	"github.com/lesomnus/cr/internal/ent/rowseal"
 	"github.com/lesomnus/cr/internal/ent/tag"
 	"github.com/lesomnus/cr/internal/ent/tagrule"
 	"github.com/lesomnus/cr/internal/ent/tenant"
@@ -86,6 +89,7 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
+			access.Table:            access.ValidColumn,
 			archived.Table:          archived.ValidColumn,
 			audit.Table:             audit.ValidColumn,
 			gcrun.Table:             gcrun.ValidColumn,
@@ -95,8 +99,10 @@ func checkColumn(t, c string) error {
 			orphancandidate.Table:   orphancandidate.ValidColumn,
 			orphanscan.Table:        orphanscan.ValidColumn,
 			outbox.Table:            outbox.ValidColumn,
+			owed.Table:              owed.ValidColumn,
 			referrerssnapshot.Table: referrerssnapshot.ValidColumn,
 			repository.Table:        repository.ValidColumn,
+			rowseal.Table:           rowseal.ValidColumn,
 			tag.Table:               tag.ValidColumn,
 			tagrule.Table:           tagrule.ValidColumn,
 			tenant.Table:            tenant.ValidColumn,

@@ -235,7 +235,7 @@ var File_app_referrers_snapshot_proto protoreflect.FileDescriptor
 
 const file_app_referrers_snapshot_proto_rawDesc = "" +
 	"\n" +
-	"\x1capp/referrers_snapshot.proto\x12\x03app\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\torm.proto\x1a\fpayday.proto\"\xb1\x04\n" +
+	"\x1capp/referrers_snapshot.proto\x12\x03app\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\torm.proto\x1a\fpayday.proto\"\x89\x05\n" +
 	"\x11ReferrersSnapshot\x12\x1b\n" +
 	"\x02id\x18\x01 \x01(\fB\v\xea\x82\x16\a\x10@(\x01\x82\x01\x00R\x02id\x12\x1a\n" +
 	"\x04repo\x18\b \x01(\tB\x06\xea\x82\x16\x02@\x01R\x04repo\x12 \n" +
@@ -245,12 +245,12 @@ const file_app_referrers_snapshot_proto_rawDesc = "" +
 	"\vdescriptors\x18\v \x01(\fR\vdescriptors\x12F\n" +
 	"\fdate_checked\x18\f \x01(\v2\x1a.google.protobuf.TimestampB\a\xea\x82\x16\x03\x82\x01\x00R\vdateChecked\x12F\n" +
 	"\fdate_updated\x18\r \x01(\v2\x1a.google.protobuf.TimestampB\a\xea\x82\x16\x03\x8a\x01\x00R\vdateUpdated\x12H\n" +
-	"\fdate_created\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampB\t\xea\x82\x16\x05@\x01\x82\x01\x00R\vdateCreated:\xa6\x01\xca\xfc\x15\\\x12\x11\x10\x01\x82\x01\x02\b\x01\x92\x01\x02\b\x01\x9a\x01\x02\b\x01\x1a \x12\x04page\x1a\x10\n" +
+	"\fdate_created\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampB\t\xea\x82\x16\x05@\x01\x82\x01\x00R\vdateCreated:\xfe\x01\xca\xfc\x15\\\x12\x11\x10\x01\x82\x01\x02\b\x01\x92\x01\x02\b\x01\x9a\x01\x02\b\x01\x1a \x12\x04page\x1a\x10\n" +
 	"\fdate_created\x10\x0f\x1a\x06\n" +
 	"\x02id\x10\x01\x1a%\x12\n" +
 	"by_subject\x1a\b\n" +
 	"\x04repo\x10\b\x1a\v\n" +
-	"\asubject\x10\t0\x01\x8a\xbb\x16B\b\x0f28\n" +
+	"\asubject\x10\t0\x01\x8a\xbb\x16\x99\x01\b\x0f28\n" +
 	"\x10\n" +
 	"\x0e\n" +
 	"\fdate_created\n" +
@@ -260,7 +260,8 @@ const file_app_referrers_snapshot_proto_rawDesc = "" +
 	"\x03ref\x1a\x06\n" +
 	"\x04repo\x1a\t\n" +
 	"\asubject \x14(dB\x02\n" +
-	"\x00*\x00B!Z\x1agithub.com/lesomnus/cr/api\x92\x03\x02\b\x02b\beditionsp\xe8\a"
+	"\x00RU\x12S\n" +
+	"QCached upstream observations refreshed by the proxy, not management RPC mutations*\x00B!Z\x1agithub.com/lesomnus/cr/api\x92\x03\x02\b\x02b\beditionsp\xe8\a"
 
 var file_app_referrers_snapshot_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_app_referrers_snapshot_proto_goTypes = []any{

@@ -149,7 +149,6 @@ func ManifestSelect(q *ent.ManifestQuery, m *api.ManifestSelect) {
 func ManifestSelectInit(q *ent.ManifestQuery, m *api.ManifestSelect) {
 	if m != nil {
 		ManifestSelect(q, m)
-	} else {
 	}
 }
 

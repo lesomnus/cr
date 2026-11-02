@@ -106,8 +106,14 @@ func (_u *OrphanScanUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 	if value, ok := _u.mutation.Cursor(); ok {
 		_spec.SetField(orphanscan.FieldCursor, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(orphanscan.FieldCursor); ok {
+		_spec.SetField(orphanscan.FieldCursor, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.Complete(); ok {
 		_spec.SetField(orphanscan.FieldComplete, field.TypeBool, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(orphanscan.FieldComplete); ok {
+		_spec.SetField(orphanscan.FieldComplete, field.TypeBool, e)
 	}
 	_spec.AddModifiers(_u.modifiers...)
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
@@ -239,8 +245,14 @@ func (_u *OrphanScanUpdateOne) sqlSave(ctx context.Context) (_node *OrphanScan, 
 	if value, ok := _u.mutation.Cursor(); ok {
 		_spec.SetField(orphanscan.FieldCursor, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(orphanscan.FieldCursor); ok {
+		_spec.SetField(orphanscan.FieldCursor, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.Complete(); ok {
 		_spec.SetField(orphanscan.FieldComplete, field.TypeBool, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(orphanscan.FieldComplete); ok {
+		_spec.SetField(orphanscan.FieldComplete, field.TypeBool, e)
 	}
 	_spec.AddModifiers(_u.modifiers...)
 	_node = &OrphanScan{config: _u.config}

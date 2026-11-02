@@ -54,9 +54,10 @@ func (TagRule) Edges() []ent.Edge {
 
 func (TagRule) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("date_created", "id"),
-		index.Fields("alias").
-			Edges("tenant").
+		index.Fields("date_created", "id").
+			StorageKey("tagrule_page"),
+		index.Fields("alias", "tenant_id").
+			StorageKey("tagrule_slug").
 			Unique().
 			Annotations(entsql.IndexWhere("date_erased IS NULL")),
 	}

@@ -325,7 +325,7 @@ var File_app_gc_run_proto protoreflect.FileDescriptor
 
 const file_app_gc_run_proto_rawDesc = "" +
 	"\n" +
-	"\x10app/gc_run.proto\x12\x03app\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\torm.proto\x1a\fpayday.proto\"\x8a\x05\n" +
+	"\x10app/gc_run.proto\x12\x03app\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\torm.proto\x1a\fpayday.proto\"\xf0\x05\n" +
 	"\x05GcRun\x12\x1b\n" +
 	"\x02id\x18\x01 \x01(\fB\v\xea\x82\x16\a\x10@(\x01\x82\x01\x00R\x02id\x12\x12\n" +
 	"\x04kind\x18\b \x01(\tR\x04kind\x12\x18\n" +
@@ -342,9 +342,9 @@ const file_app_gc_run_proto_rawDesc = "" +
 	"\amissing\x18\x15 \x03(\tR\amissing\x12G\n" +
 	"\rdate_finished\x18\x16 \x01(\v2\x1a.google.protobuf.TimestampB\x06\xea\x82\x16\x028\x01R\fdateFinished\x12F\n" +
 	"\fdate_updated\x18\r \x01(\v2\x1a.google.protobuf.TimestampB\a\xea\x82\x16\x03\x8a\x01\x00R\vdateUpdated\x12H\n" +
-	"\fdate_created\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampB\t\xea\x82\x16\x05@\x01\x82\x01\x00R\vdateCreated:{\xca\xfc\x155\x12\x11\x10\x01\x82\x01\x02\b\x01\x92\x01\x02\b\x01\x9a\x01\x02\b\x01\x1a \x12\x04page\x1a\x10\n" +
+	"\fdate_created\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampB\t\xea\x82\x16\x05@\x01\x82\x01\x00R\vdateCreated:\xe0\x01\xca\xfc\x155\x12\x11\x10\x01\x82\x01\x02\b\x01\x92\x01\x02\b\x01\x9a\x01\x02\b\x01\x1a \x12\x04page\x1a\x10\n" +
 	"\fdate_created\x10\x0f\x1a\x06\n" +
-	"\x02id\x10\x01\x8a\xbb\x16>\b\x0e22\n" +
+	"\x02id\x10\x01\x8a\xbb\x16\xa2\x01\b\x0e22\n" +
 	"\x12\n" +
 	"\x0e\n" +
 	"\fdate_created\x10\x01\n" +
@@ -353,7 +353,8 @@ const file_app_gc_run_proto_rawDesc = "" +
 	"\x02id\x10\x01\x1a\x05\n" +
 	"\x03ref\x1a\a\n" +
 	"\x05state \x14(d:\x00B\x02\n" +
-	"\x00*\x00B!Z\x1agithub.com/lesomnus/cr/api\x92\x03\x02\b\x02b\beditionsp\xe8\a"
+	"\x00Rb\x12`\n" +
+	"^Operational collection history written directly by the collector, not management RPC mutations*\x00B!Z\x1agithub.com/lesomnus/cr/api\x92\x03\x02\b\x02b\beditionsp\xe8\a"
 
 var file_app_gc_run_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_app_gc_run_proto_goTypes = []any{

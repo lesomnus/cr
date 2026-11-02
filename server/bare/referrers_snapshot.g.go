@@ -140,7 +140,6 @@ func ReferrersSnapshotSelect(q *ent.ReferrersSnapshotQuery, m *api.ReferrersSnap
 func ReferrersSnapshotSelectInit(q *ent.ReferrersSnapshotQuery, m *api.ReferrersSnapshotSelect) {
 	if m != nil {
 		ReferrersSnapshotSelect(q, m)
-	} else {
 	}
 }
 

@@ -66,6 +66,7 @@ message ManifestBlob {
     domain: 10
     global: {}
     erase: {hard: {}}
+    trail: {off: {why: "OCI manifest reference bookkeeping maintained directly with the registry index, outside management RPC mutations"}}
 
     list: {
       order: [{field: {name: "date_created"}}, {field: {name: "id"}}]

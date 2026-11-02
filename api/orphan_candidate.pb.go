@@ -247,26 +247,28 @@ var File_app_orphan_candidate_proto protoreflect.FileDescriptor
 
 const file_app_orphan_candidate_proto_rawDesc = "" +
 	"\n" +
-	"\x1aapp/orphan_candidate.proto\x12\x03app\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\torm.proto\x1a\fpayday.proto\"\xef\x01\n" +
+	"\x1aapp/orphan_candidate.proto\x12\x03app\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\torm.proto\x1a\fpayday.proto\"\xb3\x02\n" +
 	"\x0fOrphanCandidate\x12\x1b\n" +
 	"\x02id\x18\x01 \x01(\fB\v\xea\x82\x16\a\x10@(\x01\x82\x01\x00R\x02id\x12\x1a\n" +
 	"\x04repo\x18\b \x01(\tB\x06\xea\x82\x16\x02@\x01R\x04repo\x12 \n" +
 	"\asubject\x18\t \x01(\tB\x06\xea\x82\x16\x02@\x01R\asubject\x12H\n" +
 	"\rdate_observed\x18\n" +
-	" \x01(\v2\x1a.google.protobuf.TimestampB\a\xea\x82\x16\x03\x82\x01\x00R\fdateObserved:7\xca\xfc\x15'\x1a%\x12\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampB\a\xea\x82\x16\x03\x82\x01\x00R\fdateObserved:{\xca\xfc\x15'\x1a%\x12\n" +
 	"by_subject\x1a\b\n" +
 	"\x04repo\x10\b\x1a\v\n" +
-	"\asubject\x10\t0\x01\x8a\xbb\x16\b\b\x10B\x02\n" +
-	"\x00*\x00\"\xa2\x01\n" +
+	"\asubject\x10\t0\x01\x8a\xbb\x16L\b\x10B\x02\n" +
+	"\x00RB\x12@\n" +
+	">Internal GC candidate queue maintained with the registry index*\x00\"\xf2\x01\n" +
 	"\n" +
 	"OrphanScan\x12\x1b\n" +
 	"\x02id\x18\x01 \x01(\fB\v\xea\x82\x16\a\x10@(\x01\x82\x01\x00R\x02id\x12\x1a\n" +
 	"\x04repo\x18\b \x01(\tB\x06\xea\x82\x16\x02@\x01R\x04repo\x12\x16\n" +
 	"\x06cursor\x18\t \x01(\tR\x06cursor\x12\x1a\n" +
 	"\bcomplete\x18\n" +
-	" \x01(\bR\bcomplete:'\xca\xfc\x15\x17\x1a\x15\x12\aby_repo\x1a\b\n" +
-	"\x04repo\x10\b0\x01\x8a\xbb\x16\b\b\x11B\x02\n" +
-	"\x00*\x00B!Z\x1agithub.com/lesomnus/cr/api\x92\x03\x02\b\x02b\beditionsp\xe8\a"
+	" \x01(\bR\bcomplete:w\xca\xfc\x15\x17\x1a\x15\x12\aby_repo\x1a\b\n" +
+	"\x04repo\x10\b0\x01\x8a\xbb\x16X\b\x11B\x02\n" +
+	"\x00RN\x12L\n" +
+	"JInternal cursor for the one-time orphan scan, not management RPC mutations*\x00B!Z\x1agithub.com/lesomnus/cr/api\x92\x03\x02\b\x02b\beditionsp\xe8\a"
 
 var file_app_orphan_candidate_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_app_orphan_candidate_proto_goTypes = []any{

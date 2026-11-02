@@ -87,6 +87,7 @@ message Manifest {
     domain: 9
     global: {}
     erase: {hard: {}}
+    trail: {off: {why: "OCI registry index written directly by registry, import, rebuild and GC operations, outside the management RPC audit trail"}}
 
     list: {
       order: [{field: {name: "date_created"}}, {field: {name: "id"}}]

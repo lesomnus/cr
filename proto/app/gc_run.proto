@@ -68,6 +68,9 @@ message GcRun {
     domain: 14
     global: {}
     erase: {hard: {}}
+    // The collection history is already the operational record; its writes
+    // have never gone through the management RPC audit recorder.
+    trail: {off: {why: "Operational collection history written directly by the collector, not management RPC mutations"}}
 
     list: {
       order: [{field: {name: "date_created"}, desc: true}, {field: {name: "id"}, desc: true}]

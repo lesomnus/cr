@@ -28,6 +28,7 @@ type Config struct {
 	Db     config.DbConfig     `yaml:"db"`
 	Otel   config.OtelConfig   `yaml:"otel"`
 	Watch  config.WatchConfig  `yaml:"watch"`
+	Audit  config.AuditConfig  `yaml:"audit"`
 
 	// Shutdown is how `serve` stops when it is told to.
 	Shutdown ShutdownConfig `yaml:"shutdown"`

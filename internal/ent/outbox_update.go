@@ -167,26 +167,47 @@ func (_u *OutboxUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.TenantId(); ok {
 		_spec.SetField(outbox.FieldTenantId, field.TypeUuid, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(outbox.FieldTenantId); ok {
+		_spec.SetField(outbox.FieldTenantId, field.TypeUuid, e)
+	}
 	if value, ok := _u.mutation.ActorId(); ok {
 		_spec.SetField(outbox.FieldActorId, field.TypeUuid, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(outbox.FieldActorId); ok {
+		_spec.SetField(outbox.FieldActorId, field.TypeUuid, e)
 	}
 	if value, ok := _u.mutation.Method(); ok {
 		_spec.SetField(outbox.FieldMethod, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(outbox.FieldMethod); ok {
+		_spec.SetField(outbox.FieldMethod, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.By(); ok {
 		_spec.SetField(outbox.FieldBy, field.TypeString, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(outbox.FieldBy); ok {
+		_spec.SetField(outbox.FieldBy, field.TypeString, e)
 	}
 	if value, ok := _u.mutation.ObjectId(); ok {
 		_spec.SetField(outbox.FieldObjectId, field.TypeUuid, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(outbox.FieldObjectId); ok {
+		_spec.SetField(outbox.FieldObjectId, field.TypeUuid, e)
+	}
 	if value, ok := _u.mutation.Patch(); ok {
 		_spec.SetField(outbox.FieldPatch, field.TypeBytes, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(outbox.FieldPatch); ok {
+		_spec.SetField(outbox.FieldPatch, field.TypeBytes, e)
 	}
 	if _u.mutation.DateCreatedCleared() {
 		_spec.ClearField(outbox.FieldDateCreated, field.TypeTime)
 	}
 	if value, ok := _u.mutation.Event(); ok {
 		_spec.SetField(outbox.FieldEvent, field.TypeBytes, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(outbox.FieldEvent); ok {
+		_spec.SetField(outbox.FieldEvent, field.TypeBytes, e)
 	}
 	if _u.mutation.EventCleared() {
 		_spec.ClearField(outbox.FieldEvent, field.TypeBytes)
@@ -381,26 +402,47 @@ func (_u *OutboxUpdateOne) sqlSave(ctx context.Context) (_node *Outbox, err erro
 	if value, ok := _u.mutation.TenantId(); ok {
 		_spec.SetField(outbox.FieldTenantId, field.TypeUuid, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(outbox.FieldTenantId); ok {
+		_spec.SetField(outbox.FieldTenantId, field.TypeUuid, e)
+	}
 	if value, ok := _u.mutation.ActorId(); ok {
 		_spec.SetField(outbox.FieldActorId, field.TypeUuid, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(outbox.FieldActorId); ok {
+		_spec.SetField(outbox.FieldActorId, field.TypeUuid, e)
 	}
 	if value, ok := _u.mutation.Method(); ok {
 		_spec.SetField(outbox.FieldMethod, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(outbox.FieldMethod); ok {
+		_spec.SetField(outbox.FieldMethod, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.By(); ok {
 		_spec.SetField(outbox.FieldBy, field.TypeString, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(outbox.FieldBy); ok {
+		_spec.SetField(outbox.FieldBy, field.TypeString, e)
 	}
 	if value, ok := _u.mutation.ObjectId(); ok {
 		_spec.SetField(outbox.FieldObjectId, field.TypeUuid, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(outbox.FieldObjectId); ok {
+		_spec.SetField(outbox.FieldObjectId, field.TypeUuid, e)
+	}
 	if value, ok := _u.mutation.Patch(); ok {
 		_spec.SetField(outbox.FieldPatch, field.TypeBytes, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(outbox.FieldPatch); ok {
+		_spec.SetField(outbox.FieldPatch, field.TypeBytes, e)
 	}
 	if _u.mutation.DateCreatedCleared() {
 		_spec.ClearField(outbox.FieldDateCreated, field.TypeTime)
 	}
 	if value, ok := _u.mutation.Event(); ok {
 		_spec.SetField(outbox.FieldEvent, field.TypeBytes, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(outbox.FieldEvent); ok {
+		_spec.SetField(outbox.FieldEvent, field.TypeBytes, e)
 	}
 	if _u.mutation.EventCleared() {
 		_spec.ClearField(outbox.FieldEvent, field.TypeBytes)

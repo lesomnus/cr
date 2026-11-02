@@ -161,7 +161,6 @@ func GcRunSelect(q *ent.GcRunQuery, m *api.GcRunSelect) {
 func GcRunSelectInit(q *ent.GcRunQuery, m *api.GcRunSelect) {
 	if m != nil {
 		GcRunSelect(q, m)
-	} else {
 	}
 }
 

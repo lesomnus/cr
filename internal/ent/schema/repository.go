@@ -32,8 +32,10 @@ func (Repository) Fields() []ent.Field {
 
 func (Repository) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("date_created", "id"),
+		index.Fields("date_created", "id").
+			StorageKey("repository_page"),
 		index.Fields("name").
+			StorageKey("repository_by_name").
 			Unique(),
 	}
 }

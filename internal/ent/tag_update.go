@@ -167,8 +167,14 @@ func (_u *TagUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Digest(); ok {
 		_spec.SetField(tag.FieldDigest, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(tag.FieldDigest); ok {
+		_spec.SetField(tag.FieldDigest, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.DateMoved(); ok {
 		_spec.SetField(tag.FieldDateMoved, field.TypeTime, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(tag.FieldDateMoved); ok {
+		_spec.SetField(tag.FieldDateMoved, field.TypeTime, e)
 	}
 	if _u.mutation.DateMovedCleared() {
 		_spec.ClearField(tag.FieldDateMoved, field.TypeTime)
@@ -176,17 +182,26 @@ func (_u *TagUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.DatePulled(); ok {
 		_spec.SetField(tag.FieldDatePulled, field.TypeTime, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(tag.FieldDatePulled); ok {
+		_spec.SetField(tag.FieldDatePulled, field.TypeTime, e)
+	}
 	if _u.mutation.DatePulledCleared() {
 		_spec.ClearField(tag.FieldDatePulled, field.TypeTime)
 	}
 	if value, ok := _u.mutation.DateChecked(); ok {
 		_spec.SetField(tag.FieldDateChecked, field.TypeTime, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(tag.FieldDateChecked); ok {
+		_spec.SetField(tag.FieldDateChecked, field.TypeTime, e)
+	}
 	if _u.mutation.DateCheckedCleared() {
 		_spec.ClearField(tag.FieldDateChecked, field.TypeTime)
 	}
 	if value, ok := _u.mutation.DateUpdated(); ok {
 		_spec.SetField(tag.FieldDateUpdated, field.TypeTime, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(tag.FieldDateUpdated); ok {
+		_spec.SetField(tag.FieldDateUpdated, field.TypeTime, e)
 	}
 	if _u.mutation.DateCreatedCleared() {
 		_spec.ClearField(tag.FieldDateCreated, field.TypeTime)
@@ -381,8 +396,14 @@ func (_u *TagUpdateOne) sqlSave(ctx context.Context) (_node *Tag, err error) {
 	if value, ok := _u.mutation.Digest(); ok {
 		_spec.SetField(tag.FieldDigest, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(tag.FieldDigest); ok {
+		_spec.SetField(tag.FieldDigest, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.DateMoved(); ok {
 		_spec.SetField(tag.FieldDateMoved, field.TypeTime, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(tag.FieldDateMoved); ok {
+		_spec.SetField(tag.FieldDateMoved, field.TypeTime, e)
 	}
 	if _u.mutation.DateMovedCleared() {
 		_spec.ClearField(tag.FieldDateMoved, field.TypeTime)
@@ -390,17 +411,26 @@ func (_u *TagUpdateOne) sqlSave(ctx context.Context) (_node *Tag, err error) {
 	if value, ok := _u.mutation.DatePulled(); ok {
 		_spec.SetField(tag.FieldDatePulled, field.TypeTime, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(tag.FieldDatePulled); ok {
+		_spec.SetField(tag.FieldDatePulled, field.TypeTime, e)
+	}
 	if _u.mutation.DatePulledCleared() {
 		_spec.ClearField(tag.FieldDatePulled, field.TypeTime)
 	}
 	if value, ok := _u.mutation.DateChecked(); ok {
 		_spec.SetField(tag.FieldDateChecked, field.TypeTime, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(tag.FieldDateChecked); ok {
+		_spec.SetField(tag.FieldDateChecked, field.TypeTime, e)
+	}
 	if _u.mutation.DateCheckedCleared() {
 		_spec.ClearField(tag.FieldDateChecked, field.TypeTime)
 	}
 	if value, ok := _u.mutation.DateUpdated(); ok {
 		_spec.SetField(tag.FieldDateUpdated, field.TypeTime, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(tag.FieldDateUpdated); ok {
+		_spec.SetField(tag.FieldDateUpdated, field.TypeTime, e)
 	}
 	if _u.mutation.DateCreatedCleared() {
 		_spec.ClearField(tag.FieldDateCreated, field.TypeTime)

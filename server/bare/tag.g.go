@@ -143,7 +143,6 @@ func TagSelect(q *ent.TagQuery, m *api.TagSelect) {
 func TagSelectInit(q *ent.TagQuery, m *api.TagSelect) {
 	if m != nil {
 		TagSelect(q, m)
-	} else {
 	}
 }
 

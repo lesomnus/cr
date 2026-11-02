@@ -95,44 +95,40 @@ func (s AuditServiceServer) image(v *api.Audit) *api.Audit {
 	out := proto.Clone(v).(*api.Audit)
 	return out
 }
-func (s AuditServiceServer) Add(ctx context.Context, req *api.AuditAddRequest) (*api.Audit, error) {
-	tx, err := ent1.JoinTx[*ent.Client, *ent.Tx](ctx, s.Db, s.Rec != nil)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Close()
 
-	st := s
-	st.Db = tx.Db
-
+// create is the row an Add of `req` writes, as a builder not yet saved,
+// and what the answer says about its edges. Add and AddMany both write
+// with it, so that an item of an AddMany is the row an Add of it would be.
+func (st AuditServiceServer) create(ctx context.Context, req *api.AuditAddRequest) (*ent.AuditCreate, []func(v *api.Audit), error) {
+	var ds []func(v *api.Audit)
 	q := st.Db.Audit.Create()
 	var k uuid.UUID
 	if req.HasId() {
 		if v, err := entuuid.FromBytes(req.GetId()); err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "id: %s", err)
+			return nil, nil, status.Errorf(codes.InvalidArgument, "id: %s", err)
 		} else {
 			k = v
 		}
 	}
-	if v, err := mint(ctx, s.Mint, "app.Audit", k, req.HasId()); err != nil {
-		return nil, err
+	if v, err := mint(ctx, st.Mint, "app.Audit", k, req.HasId()); err != nil {
+		return nil, nil, err
 	} else {
 		q.SetId(v)
 	}
 	if v, err := entuuid.FromBytes(req.GetTenantId()); err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "tenant_id: %s", err)
+		return nil, nil, status.Errorf(codes.InvalidArgument, "tenant_id: %s", err)
 	} else {
 		q.SetTenantId(v)
 	}
 	if v, err := entuuid.FromBytes(req.GetActorId()); err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "actor_id: %s", err)
+		return nil, nil, status.Errorf(codes.InvalidArgument, "actor_id: %s", err)
 	} else {
 		q.SetActorId(v)
 	}
 	q.SetTraceId(req.GetTraceId())
 	q.SetAction(req.GetAction())
 	if v, err := entuuid.FromBytes(req.GetObjectId()); err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "object_id: %s", err)
+		return nil, nil, status.Errorf(codes.InvalidArgument, "object_id: %s", err)
 	} else {
 		q.SetObjectId(v)
 	}
@@ -143,14 +139,14 @@ func (s AuditServiceServer) Add(ctx context.Context, req *api.AuditAddRequest) (
 		q.SetDateCreated(st.now())
 	}
 	if v, err := entuuid.FromBytes(req.GetActorTenantId()); err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "actor_tenant_id: %s", err)
+		return nil, nil, status.Errorf(codes.InvalidArgument, "actor_tenant_id: %s", err)
 	} else {
 		q.SetActorTenantId(v)
 	}
 	q.SetValue(req.GetValue())
 	if req.HasCounterpartTenantId() {
 		if v, err := entuuid.FromBytes(req.GetCounterpartTenantId()); err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "counterpart_tenant_id: %s", err)
+			return nil, nil, status.Errorf(codes.InvalidArgument, "counterpart_tenant_id: %s", err)
 		} else {
 			q.SetCounterpartTenantId(v)
 		}
@@ -160,7 +156,41 @@ func (s AuditServiceServer) Add(ctx context.Context, req *api.AuditAddRequest) (
 	} else {
 		q.SetDomain(0)
 	}
+	if u := req.GetFields(); len(u) > 0 {
+		q.SetFields(u)
+	}
+	if req.HasDigest() {
+		q.SetDigest(req.GetDigest())
+	} else {
+		q.SetDigest([]byte{})
+	}
+	if u := req.GetDigestFields(); len(u) > 0 {
+		q.SetDigestFields(u)
+	}
+	return q, ds, nil
+}
 
+func (s AuditServiceServer) Add(ctx context.Context, req *api.AuditAddRequest) (*api.Audit, error) {
+	tx, err := ent1.JoinTx[*ent.Client, *ent.Tx](ctx, s.Db, s.Rec != nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Close()
+
+	st := s
+	st.Db = tx.Db
+
+	q, ds, err := st.create(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	var stored *ent.Audit
+	if snapshotOptions(s.Rec, api.AuditService_Add_FullMethodName).Value {
+		q.Stored(&stored)
+	}
+
+	tx.Writing()
 	u, err := q.Save(ctx)
 	if err != nil {
 		if err, ok := err.(*ent.ConstraintError); ok {
@@ -175,12 +205,11 @@ func (s AuditServiceServer) Add(ctx context.Context, req *api.AuditAddRequest) (
 	}
 
 	v := u.Proto()
+	for _, d := range ds {
+		d(v)
+	}
 	var value *api.Audit
-	if snapshotOptions(s.Rec, api.AuditService_Add_FullMethodName).Value {
-		stored, err := st.snapshot(ctx, audit.IdEQ(u.Id), false)
-		if err != nil {
-			return nil, err
-		}
+	if stored != nil {
 		value = s.image(stored.Proto())
 	}
 	if err := record(ctx, s.Rec, st.Db, Change{
@@ -195,6 +224,38 @@ func (s AuditServiceServer) Add(ctx context.Context, req *api.AuditAddRequest) (
 	}
 
 	return v, nil
+}
+
+// AuditAddRule is what a layer in front says about one row an Add of Audit
+// would write: the request to write it with -- the one it was handed, or a
+// copy it changed -- or a refusal. Nil is the request it was handed.
+type AuditAddRule func(ctx context.Context, req *api.AuditAddRequest) (*api.AuditAddRequest, error)
+
+// AuditWithAddRule answers with `next` behind `rule` for the RPCs that add.
+// An Add is asked about, and every item of an AddMany in order, and the
+// call is refused for the first one that is -- an AddMany naming the item.
+// What reaches `next` is one call either way: an AddMany stays one AddMany.
+//
+// A layer that overrides Add itself, for something an Add does that a rule
+// cannot say, still has its AddMany asked through this.
+func AuditWithAddRule(next api.AuditServiceServer, rule AuditAddRule) api.AuditServiceServer {
+	return auditAddRuled{next, rule}
+}
+
+type auditAddRuled struct {
+	api.AuditServiceServer
+	rule AuditAddRule
+}
+
+func (s auditAddRuled) Add(ctx context.Context, req *api.AuditAddRequest) (*api.Audit, error) {
+	r, err := s.rule(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if r == nil {
+		r = req
+	}
+	return s.AuditServiceServer.Add(ctx, r)
 }
 
 func (s AuditServiceServer) Get(ctx context.Context, req *api.AuditGetRequest) (*api.Audit, error) {
@@ -266,6 +327,15 @@ func AuditSelectedFields(m *api.AuditSelect) []string {
 	if m.GetDomain() {
 		vs = append(vs, audit.FieldDomain)
 	}
+	if m.GetFields() {
+		vs = append(vs, audit.FieldFields)
+	}
+	if m.GetDigest() {
+		vs = append(vs, audit.FieldDigest)
+	}
+	if m.GetDigestFields() {
+		vs = append(vs, audit.FieldDigestFields)
+	}
 
 	return vs
 }
@@ -280,7 +350,6 @@ func AuditSelect(q *ent.AuditQuery, m *api.AuditSelect) {
 func AuditSelectInit(q *ent.AuditQuery, m *api.AuditSelect) {
 	if m != nil {
 		AuditSelect(q, m)
-	} else {
 	}
 }
 
@@ -331,7 +400,7 @@ func AuditGetKey(ctx context.Context, db *ent.Client, ref *api.AuditRef) (uuid.U
 var auditOrmEntity = ormpatch.MustEntityOf(api.File_app_payday_audit_proto, "Audit")
 
 var auditPatchColumns = entpatch.Columns{
-	1: audit.FieldId, 2: audit.FieldTenantId, 8: audit.FieldActorId, 9: audit.FieldTraceId, 10: audit.FieldAction, 11: audit.FieldObjectId, 12: audit.FieldPatch, 15: audit.FieldDateCreated, 16: audit.FieldActorTenantId, 17: audit.FieldValue, 18: audit.FieldCounterpartTenantId, 19: audit.FieldDomain}
+	1: audit.FieldId, 2: audit.FieldTenantId, 8: audit.FieldActorId, 9: audit.FieldTraceId, 10: audit.FieldAction, 11: audit.FieldObjectId, 12: audit.FieldPatch, 15: audit.FieldDateCreated, 16: audit.FieldActorTenantId, 17: audit.FieldValue, 18: audit.FieldCounterpartTenantId, 19: audit.FieldDomain, 20: audit.FieldFields, 21: audit.FieldDigest, 22: audit.FieldDigestFields}
 
 func (s AuditServiceServer) Apply(ctx context.Context, req *api.AuditApplyRequest) (*api.Audit, error) {
 	if !req.HasPatch() {
@@ -416,6 +485,7 @@ func (s AuditServiceServer) apply(ctx context.Context, ref *api.AuditRef, doc *p
 			q.Where(predicate.Audit(pred))
 		}
 		q.Modify(mod)
+		tx.Writing()
 		if n, err := q.Save(ctx); err != nil {
 			if err, ok := err.(*ent.ConstraintError); ok {
 				if sqlgraph.IsUniqueConstraintError(err) {
@@ -507,6 +577,7 @@ func (s AuditServiceServer) Erase(ctx context.Context, req *api.AuditRef) (*api.
 		p = audit.And(p, audit.IdEQ(v.Id))
 	}
 
+	tx.Writing()
 	n, err := st.Db.Audit.Delete().Where(p).Exec(ctx)
 	if err != nil {
 		return nil, err

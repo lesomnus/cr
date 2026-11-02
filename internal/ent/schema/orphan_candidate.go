@@ -32,6 +32,7 @@ func (OrphanCandidate) Fields() []ent.Field {
 func (OrphanCandidate) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("repo", "subject").
+			StorageKey("orphancandidate_by_subject").
 			Unique(),
 	}
 }
@@ -61,6 +62,7 @@ func (OrphanScan) Fields() []ent.Field {
 func (OrphanScan) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("repo").
+			StorageKey("orphanscan_by_repo").
 			Unique(),
 	}
 }

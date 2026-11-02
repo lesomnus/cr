@@ -269,7 +269,7 @@ var File_app_manifest_proto protoreflect.FileDescriptor
 
 const file_app_manifest_proto_rawDesc = "" +
 	"\n" +
-	"\x12app/manifest.proto\x12\x03app\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\torm.proto\x1a\fpayday.proto\"\xf9\x06\n" +
+	"\x12app/manifest.proto\x12\x03app\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\torm.proto\x1a\fpayday.proto\"\xfa\a\n" +
 	"\bManifest\x12\x1b\n" +
 	"\x02id\x18\x01 \x01(\fB\v\xea\x82\x16\a\x10@(\x01\x82\x01\x00R\x02id\x12\x1a\n" +
 	"\x04repo\x18\b \x01(\tB\x06\xea\x82\x16\x02@\x01R\x04repo\x12\x1e\n" +
@@ -287,7 +287,7 @@ const file_app_manifest_proto_rawDesc = "" +
 	"\fdate_created\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampB\t\xea\x82\x16\x05@\x01\x82\x01\x00R\vdateCreated\x1a>\n" +
 	"\x10AnnotationsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01:\xa8\x02\xca\xfc\x15\xc0\x01\x12\x11\x10\x01\x82\x01\x02\b\x01\x92\x01\x02\b\x01\x9a\x01\x02\b\x01\x1a \x12\x04page\x1a\x10\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01:\xa9\x03\xca\xfc\x15\xc0\x01\x12\x11\x10\x01\x82\x01\x02\b\x01\x92\x01\x02\b\x01\x9a\x01\x02\b\x01\x1a \x12\x04page\x1a\x10\n" +
 	"\fdate_created\x10\x0f\x1a\x06\n" +
 	"\x02id\x10\x01\x1a?\x12\x10by_artifact_type\x1a\x11\n" +
 	"\rartifact_type\x10\v\x1a\x10\n" +
@@ -298,7 +298,7 @@ const file_app_manifest_proto_rawDesc = "" +
 	"\x06digest\x10\t0\x01\x1a#\x12\n" +
 	"by_subject\x1a\b\n" +
 	"\x04repo\x10\b\x1a\v\n" +
-	"\asubject\x10\f\x8a\xbb\x16_\b\t2S\n" +
+	"\asubject\x10\f\x8a\xbb\x16\xdf\x01\b\t2S\n" +
 	"\x10\n" +
 	"\x0e\n" +
 	"\fdate_created\n" +
@@ -310,7 +310,8 @@ const file_app_manifest_proto_rawDesc = "" +
 	"\x06digest\x1a\t\n" +
 	"\asubject\x1a\x0f\n" +
 	"\rartifact_type \x14(d:\x00B\x02\n" +
-	"\x00*\x00B!Z\x1agithub.com/lesomnus/cr/api\x92\x03\x02\b\x02b\beditionsp\xe8\a"
+	"\x00R~\x12|\n" +
+	"zOCI registry index written directly by registry, import, rebuild and GC operations, outside the management RPC audit trail*\x00B!Z\x1agithub.com/lesomnus/cr/api\x92\x03\x02\b\x02b\beditionsp\xe8\a"
 
 var file_app_manifest_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_app_manifest_proto_goTypes = []any{

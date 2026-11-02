@@ -134,7 +134,7 @@ func Build(ctx context.Context, c Config) (*Server, error) {
 	// the servers that do the writing, since every RPC that changes anything
 	// has to report itself from inside the transaction that changes it. The
 	// wall is a predicate and a predicate belongs in the WHERE.
-	b, err := c.Watch.Build(c.Db)
+	b, err := c.Watch.Build(ctx, c.Db)
 	if err != nil {
 		db.Close()
 		return nil, err
@@ -150,7 +150,12 @@ func Build(ctx context.Context, c Config) (*Server, error) {
 	// because `WithRecorder` refuses to be given twice: neither losing one nor
 	// quietly appending in call order is a thing a framework should decide, so
 	// the order is written here where it can be read.
-	rec := bare.Recorders{pd.Recorder(), pd.ResourceRecorder(w, c.Watch.Outbox, nil, resource.RecorderOptions{})}
+	content, err := c.Audit.Contents()
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("audit content: %w", err)
+	}
+	rec := bare.Recorders{pd.Recorder(content), pd.ResourceRecorder(w, c.Watch.Outbox, nil, resource.RecorderOptions{})}
 
 	opts := []bare.Option{bare.WithMinter(pd.Minter()), bare.WithRecorder(rec)}
 
@@ -231,7 +236,7 @@ func (s *Server) Grpc(ctx context.Context, c Config, opts ...grpc.ServerOption) 
 	chain := grpcx.Serving(ctx, grpcx.WithDeadline(c.Server.CallTimeout())).
 		WithUnary(auth.InterceptorUnary(h, resolver, auth.PublicDefault)).
 		WithStream(auth.InterceptorStream(h, resolver, auth.PublicDefault)).
-		WithUnary(grpcx.LimitUnary(c.Server.Limiter(), gate.ByTenant())).
+		WithUnary(grpcx.LimitUnary(c.Server.Limiter(), gate.ByTenant(), pd.Cost)).
 		With(gate.Interceptor(s.Policy)).
 		With(s.Watch.Interceptor()).
 		WithUnary(grpcx.ClosedUnary(c.Server.Closed()))
