@@ -32,15 +32,15 @@ jobs:
   footprint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           # The base of a pull request is built from its own worktree.
           fetch-depth: 0
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/cr-footprint
           key: footprint-${{ hashFiles('scripts/lib/registries.sh') }}

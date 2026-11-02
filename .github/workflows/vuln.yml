@@ -27,13 +27,13 @@ jobs:
   govulncheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # The newest 1.27.x, not go.mod's `go` line. The image is built by
       # `golang:1.27`, which is the newest patch release, and the standard
       # library is in the binary like any module: scanning with 1.27.0 would
       # report every fix since as cr's, which the image does not have.
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.27"
           check-latest: true
