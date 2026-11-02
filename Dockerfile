@@ -8,7 +8,7 @@
 
 # syft, for the bill of materials below. On the builder's platform, like the
 # stages that use it: it reads a binary, it does not run one.
-FROM --platform=$BUILDPLATFORM anchore/syft:v1.54.1 AS syft
+FROM --platform=$BUILDPLATFORM anchore/syft:v1.55.0 AS syft
 
 # What the image runs on, named once: `app` is built on it, and `notices` reads
 # its package list.
