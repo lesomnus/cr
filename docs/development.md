@@ -46,6 +46,16 @@ transaction; GC checkpoints its initial legacy scan and then uses only that work
 list. Keep this bookkeeping in `index`, so registry, import, rebuild and GC
 writes all participate.
 
+These direct-write kinds explicitly declare why they are off payday's mutation
+trail: registry index rows, upstream observations, collection history and GC
+bookkeeping do not go through management RPCs. This preserves the existing
+boundary; management writes such as repository descriptions and tag rules still
+use the transactional recorder. Its contents and digests come from
+`audit.content`, `audit.by` and `audit.digest` through `Config.Audit.Contents()`.
+With no content setting the current payday records patches; it does not rewrite
+the values already on the trail. This app does not run payday's trail-retention
+worker, so retention settings in that block do not schedule cleanup.
+
 ## Testing
 
 ```sh
@@ -56,6 +66,15 @@ CR_TEST_POSTGRES=postgres://... go test -run TestPostgres ./index/... ./e2e/... 
 ```
 
 CI runs all four, `pd gen --check`, the page's build and the image's build.
+
+`TestMigrateExistingDatabase` in `cli` restores a SQLite database initialized by
+the previous app, runs the real migration twice, and checks that its tenant,
+holder and existing audit payloads survive and that a new audited write works.
+The fixture records the source revision that produced it. Schema upgrades still
+need the normal migration before serving: the current payday adds audit columns
+and its Access, Owed and RowSeal tables. The migration preserves old indexes;
+regenerated indexes now honor the names declared in the proto schema, so an old
+database can retain equivalent indexes under their previous names.
 
 What the process costs to start and to keep around -- startup time, memory,
 idle CPU -- is `scripts/footprint.sh`: cr beside zot and distribution at pinned

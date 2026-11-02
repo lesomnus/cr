@@ -10,7 +10,6 @@ import (
 	ent "github.com/lesomnus/cr/internal/ent"
 	holder "github.com/lesomnus/cr/internal/ent/holder"
 	predicate "github.com/lesomnus/cr/internal/ent/predicate"
-	tenant "github.com/lesomnus/cr/internal/ent/tenant"
 	patchpb "github.com/lesomnus/protobuf-patch/patchpb"
 	ent1 "github.com/protobuf-orm/ent"
 	dialect "github.com/protobuf-orm/ent/dialect"
@@ -87,7 +86,6 @@ func (s HolderServiceServer) narrow(ctx context.Context, p predicate.Holder) (pr
 
 func (s HolderServiceServer) snapshot(ctx context.Context, p predicate.Holder, lock bool) (*ent.Holder, error) {
 	q := s.Db.Holder.Query().Where(p)
-	q.WithTenant(func(q *ent.TenantQuery) { q.Select(tenant.FieldId) })
 	q.Modify(func(q *sql.Selector) {
 		if lock && s.Db.Dialect() != dialect.SQLite {
 			q.ForUpdate()
@@ -117,33 +115,28 @@ func (s HolderServiceServer) image(v *api.Holder) *api.Holder {
 	}
 	return out
 }
-func (s HolderServiceServer) Add(ctx context.Context, req *api.HolderAddRequest) (*api.Holder, error) {
-	tx, err := ent1.JoinTx[*ent.Client, *ent.Tx](ctx, s.Db, s.Rec != nil)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Close()
 
-	st := s
-	st.Db = tx.Db
-
+// create is the row an Add of `req` writes, as a builder not yet saved,
+// and what the answer says about its edges. Add and AddMany both write
+// with it, so that an item of an AddMany is the row an Add of it would be.
+func (st HolderServiceServer) create(ctx context.Context, req *api.HolderAddRequest) (*ent.HolderCreate, []func(v *api.Holder), error) {
 	ds := make([]func(v *api.Holder), 0, 1)
 	q := st.Db.Holder.Create()
 	var k uuid.UUID
 	if req.HasId() {
 		if v, err := entuuid.FromBytes(req.GetId()); err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "id: %s", err)
+			return nil, nil, status.Errorf(codes.InvalidArgument, "id: %s", err)
 		} else {
 			k = v
 		}
 	}
-	if v, err := mint(ctx, s.Mint, "app.Holder", k, req.HasId()); err != nil {
-		return nil, err
+	if v, err := mint(ctx, st.Mint, "app.Holder", k, req.HasId()); err != nil {
+		return nil, nil, err
 	} else {
 		q.SetId(v)
 	}
 	if k, err := TenantGetKey(ctx, st.Db, req.GetTenant()); err != nil {
-		return nil, err
+		return nil, nil, err
 	} else {
 		q.SetTenantId(k)
 		ds = append(ds, func(v *api.Holder) {
@@ -165,7 +158,30 @@ func (s HolderServiceServer) Add(ctx context.Context, req *api.HolderAddRequest)
 	if req.HasIdpSubject() {
 		q.SetIdpSubject(req.GetIdpSubject())
 	}
+	return q, ds, nil
+}
 
+func (s HolderServiceServer) Add(ctx context.Context, req *api.HolderAddRequest) (*api.Holder, error) {
+	tx, err := ent1.JoinTx[*ent.Client, *ent.Tx](ctx, s.Db, s.Rec != nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Close()
+
+	st := s
+	st.Db = tx.Db
+
+	q, ds, err := st.create(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	var stored *ent.Holder
+	if snapshotOptions(s.Rec, api.HolderService_Add_FullMethodName).Value {
+		q.Stored(&stored)
+	}
+
+	tx.Writing()
 	u, err := q.Save(ctx)
 	if err != nil {
 		if err, ok := err.(*ent.ConstraintError); ok {
@@ -184,11 +200,7 @@ func (s HolderServiceServer) Add(ctx context.Context, req *api.HolderAddRequest)
 		d(v)
 	}
 	var value *api.Holder
-	if snapshotOptions(s.Rec, api.HolderService_Add_FullMethodName).Value {
-		stored, err := st.snapshot(ctx, holder.IdEQ(u.Id), false)
-		if err != nil {
-			return nil, err
-		}
+	if stored != nil {
 		value = s.image(stored.Proto())
 	}
 	if err := record(ctx, s.Rec, st.Db, Change{
@@ -203,6 +215,38 @@ func (s HolderServiceServer) Add(ctx context.Context, req *api.HolderAddRequest)
 	}
 
 	return v, nil
+}
+
+// HolderAddRule is what a layer in front says about one row an Add of Holder
+// would write: the request to write it with -- the one it was handed, or a
+// copy it changed -- or a refusal. Nil is the request it was handed.
+type HolderAddRule func(ctx context.Context, req *api.HolderAddRequest) (*api.HolderAddRequest, error)
+
+// HolderWithAddRule answers with `next` behind `rule` for the RPCs that add.
+// An Add is asked about, and every item of an AddMany in order, and the
+// call is refused for the first one that is -- an AddMany naming the item.
+// What reaches `next` is one call either way: an AddMany stays one AddMany.
+//
+// A layer that overrides Add itself, for something an Add does that a rule
+// cannot say, still has its AddMany asked through this.
+func HolderWithAddRule(next api.HolderServiceServer, rule HolderAddRule) api.HolderServiceServer {
+	return holderAddRuled{next, rule}
+}
+
+type holderAddRuled struct {
+	api.HolderServiceServer
+	rule HolderAddRule
+}
+
+func (s holderAddRuled) Add(ctx context.Context, req *api.HolderAddRequest) (*api.Holder, error) {
+	r, err := s.rule(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if r == nil {
+		r = req
+	}
+	return s.HolderServiceServer.Add(ctx, r)
 }
 
 func (s HolderServiceServer) Get(ctx context.Context, req *api.HolderGetRequest) (*api.Holder, error) {
@@ -284,8 +328,6 @@ func HolderSelect(q *ent.HolderQuery, m *api.HolderSelect) {
 func HolderSelectInit(q *ent.HolderQuery, m *api.HolderSelect) {
 	if m != nil {
 		HolderSelect(q, m)
-	} else {
-		q.WithTenant(selectTenantKey)
 	}
 }
 
@@ -424,6 +466,7 @@ func (s HolderServiceServer) apply(ctx context.Context, ref *api.HolderRef, doc 
 		if !plan.WritesTo(13) {
 			q.SetDateUpdated(st.now())
 		}
+		tx.Writing()
 		if n, err := q.Save(ctx); err != nil {
 			if err, ok := err.(*ent.ConstraintError); ok {
 				if sqlgraph.IsUniqueConstraintError(err) {
@@ -515,6 +558,7 @@ func (s HolderServiceServer) Erase(ctx context.Context, req *api.HolderRef) (*ap
 		p = holder.And(p, holder.IdEQ(v.Id))
 	}
 
+	tx.Writing()
 	u := st.Db.Holder.Update().Where(p)
 	u.SetDateErased(st.now())
 	u.SetDateUpdated(st.now())

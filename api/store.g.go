@@ -31,11 +31,14 @@ type Server interface {
 	ManifestBlob() ManifestBlobServiceServer
 	OrphanCandidate() OrphanCandidateServiceServer
 	OrphanScan() OrphanScanServiceServer
+	Access() AccessServiceServer
 	Archived() ArchivedServiceServer
 	Audit() AuditServiceServer
 	Tenant() TenantServiceServer
 	Holder() HolderServiceServer
 	Outbox() OutboxServiceServer
+	Owed() OwedServiceServer
+	RowSeal() RowSealServiceServer
 	ReferrersSnapshot() ReferrersSnapshotServiceServer
 	Repository() RepositoryServiceServer
 	Tag() TagServiceServer
@@ -52,11 +55,14 @@ func RegisterServer(g grpc.ServiceRegistrar, s Server) {
 	RegisterManifestBlobServiceServer(g, s.ManifestBlob())
 	RegisterOrphanCandidateServiceServer(g, s.OrphanCandidate())
 	RegisterOrphanScanServiceServer(g, s.OrphanScan())
+	RegisterAccessServiceServer(g, s.Access())
 	RegisterArchivedServiceServer(g, s.Archived())
 	RegisterAuditServiceServer(g, s.Audit())
 	RegisterTenantServiceServer(g, s.Tenant())
 	RegisterHolderServiceServer(g, s.Holder())
 	RegisterOutboxServiceServer(g, s.Outbox())
+	RegisterOwedServiceServer(g, s.Owed())
+	RegisterRowSealServiceServer(g, s.RowSeal())
 	RegisterReferrersSnapshotServiceServer(g, s.ReferrersSnapshot())
 	RegisterRepositoryServiceServer(g, s.Repository())
 	RegisterTagServiceServer(g, s.Tag())
@@ -69,11 +75,14 @@ type UnimplementedServer struct {
 	ManifestBlobServer      ManifestBlobServiceServer
 	OrphanCandidateServer   OrphanCandidateServiceServer
 	OrphanScanServer        OrphanScanServiceServer
+	AccessServer            AccessServiceServer
 	ArchivedServer          ArchivedServiceServer
 	AuditServer             AuditServiceServer
 	TenantServer            TenantServiceServer
 	HolderServer            HolderServiceServer
 	OutboxServer            OutboxServiceServer
+	OwedServer              OwedServiceServer
+	RowSealServer           RowSealServiceServer
 	ReferrersSnapshotServer ReferrersSnapshotServiceServer
 	RepositoryServer        RepositoryServiceServer
 	TagServer               TagServiceServer
@@ -93,13 +102,16 @@ func (UnimplementedServer) OrphanCandidate() OrphanCandidateServiceServer {
 func (UnimplementedServer) OrphanScan() OrphanScanServiceServer {
 	return UnimplementedOrphanScanServiceServer{}
 }
+func (UnimplementedServer) Access() AccessServiceServer { return UnimplementedAccessServiceServer{} }
 func (UnimplementedServer) Archived() ArchivedServiceServer {
 	return UnimplementedArchivedServiceServer{}
 }
-func (UnimplementedServer) Audit() AuditServiceServer   { return UnimplementedAuditServiceServer{} }
-func (UnimplementedServer) Tenant() TenantServiceServer { return UnimplementedTenantServiceServer{} }
-func (UnimplementedServer) Holder() HolderServiceServer { return UnimplementedHolderServiceServer{} }
-func (UnimplementedServer) Outbox() OutboxServiceServer { return UnimplementedOutboxServiceServer{} }
+func (UnimplementedServer) Audit() AuditServiceServer     { return UnimplementedAuditServiceServer{} }
+func (UnimplementedServer) Tenant() TenantServiceServer   { return UnimplementedTenantServiceServer{} }
+func (UnimplementedServer) Holder() HolderServiceServer   { return UnimplementedHolderServiceServer{} }
+func (UnimplementedServer) Outbox() OutboxServiceServer   { return UnimplementedOutboxServiceServer{} }
+func (UnimplementedServer) Owed() OwedServiceServer       { return UnimplementedOwedServiceServer{} }
+func (UnimplementedServer) RowSeal() RowSealServiceServer { return UnimplementedRowSealServiceServer{} }
 func (UnimplementedServer) ReferrersSnapshot() ReferrersSnapshotServiceServer {
 	return UnimplementedReferrersSnapshotServiceServer{}
 }
@@ -115,11 +127,14 @@ type StaticServer struct {
 	ManifestBlobServer      ManifestBlobServiceServer
 	OrphanCandidateServer   OrphanCandidateServiceServer
 	OrphanScanServer        OrphanScanServiceServer
+	AccessServer            AccessServiceServer
 	ArchivedServer          ArchivedServiceServer
 	AuditServer             AuditServiceServer
 	TenantServer            TenantServiceServer
 	HolderServer            HolderServiceServer
 	OutboxServer            OutboxServiceServer
+	OwedServer              OwedServiceServer
+	RowSealServer           RowSealServiceServer
 	ReferrersSnapshotServer ReferrersSnapshotServiceServer
 	RepositoryServer        RepositoryServiceServer
 	TagServer               TagServiceServer
@@ -131,11 +146,14 @@ func (s StaticServer) Manifest() ManifestServiceServer               { return s.
 func (s StaticServer) ManifestBlob() ManifestBlobServiceServer       { return s.ManifestBlobServer }
 func (s StaticServer) OrphanCandidate() OrphanCandidateServiceServer { return s.OrphanCandidateServer }
 func (s StaticServer) OrphanScan() OrphanScanServiceServer           { return s.OrphanScanServer }
+func (s StaticServer) Access() AccessServiceServer                   { return s.AccessServer }
 func (s StaticServer) Archived() ArchivedServiceServer               { return s.ArchivedServer }
 func (s StaticServer) Audit() AuditServiceServer                     { return s.AuditServer }
 func (s StaticServer) Tenant() TenantServiceServer                   { return s.TenantServer }
 func (s StaticServer) Holder() HolderServiceServer                   { return s.HolderServer }
 func (s StaticServer) Outbox() OutboxServiceServer                   { return s.OutboxServer }
+func (s StaticServer) Owed() OwedServiceServer                       { return s.OwedServer }
+func (s StaticServer) RowSeal() RowSealServiceServer                 { return s.RowSealServer }
 func (s StaticServer) ReferrersSnapshot() ReferrersSnapshotServiceServer {
 	return s.ReferrersSnapshotServer
 }
@@ -149,11 +167,14 @@ type Client interface {
 	ManifestBlob() ManifestBlobServiceClient
 	OrphanCandidate() OrphanCandidateServiceClient
 	OrphanScan() OrphanScanServiceClient
+	Access() AccessServiceClient
 	Archived() ArchivedServiceClient
 	Audit() AuditServiceClient
 	Tenant() TenantServiceClient
 	Holder() HolderServiceClient
 	Outbox() OutboxServiceClient
+	Owed() OwedServiceClient
+	RowSeal() RowSealServiceClient
 	ReferrersSnapshot() ReferrersSnapshotServiceClient
 	Repository() RepositoryServiceClient
 	Tag() TagServiceClient
@@ -167,11 +188,14 @@ func NewClient(c *grpc.ClientConn) Client {
 		_ManifestBlob:      NewManifestBlobServiceClient(c),
 		_OrphanCandidate:   NewOrphanCandidateServiceClient(c),
 		_OrphanScan:        NewOrphanScanServiceClient(c),
+		_Access:            NewAccessServiceClient(c),
 		_Archived:          NewArchivedServiceClient(c),
 		_Audit:             NewAuditServiceClient(c),
 		_Tenant:            NewTenantServiceClient(c),
 		_Holder:            NewHolderServiceClient(c),
 		_Outbox:            NewOutboxServiceClient(c),
+		_Owed:              NewOwedServiceClient(c),
+		_RowSeal:           NewRowSealServiceClient(c),
 		_ReferrersSnapshot: NewReferrersSnapshotServiceClient(c),
 		_Repository:        NewRepositoryServiceClient(c),
 		_Tag:               NewTagServiceClient(c),
@@ -185,11 +209,14 @@ type client struct {
 	_ManifestBlob      ManifestBlobServiceClient
 	_OrphanCandidate   OrphanCandidateServiceClient
 	_OrphanScan        OrphanScanServiceClient
+	_Access            AccessServiceClient
 	_Archived          ArchivedServiceClient
 	_Audit             AuditServiceClient
 	_Tenant            TenantServiceClient
 	_Holder            HolderServiceClient
 	_Outbox            OutboxServiceClient
+	_Owed              OwedServiceClient
+	_RowSeal           RowSealServiceClient
 	_ReferrersSnapshot ReferrersSnapshotServiceClient
 	_Repository        RepositoryServiceClient
 	_Tag               TagServiceClient
@@ -201,11 +228,14 @@ func (c *client) Manifest() ManifestServiceClient                   { return c._
 func (c *client) ManifestBlob() ManifestBlobServiceClient           { return c._ManifestBlob }
 func (c *client) OrphanCandidate() OrphanCandidateServiceClient     { return c._OrphanCandidate }
 func (c *client) OrphanScan() OrphanScanServiceClient               { return c._OrphanScan }
+func (c *client) Access() AccessServiceClient                       { return c._Access }
 func (c *client) Archived() ArchivedServiceClient                   { return c._Archived }
 func (c *client) Audit() AuditServiceClient                         { return c._Audit }
 func (c *client) Tenant() TenantServiceClient                       { return c._Tenant }
 func (c *client) Holder() HolderServiceClient                       { return c._Holder }
 func (c *client) Outbox() OutboxServiceClient                       { return c._Outbox }
+func (c *client) Owed() OwedServiceClient                           { return c._Owed }
+func (c *client) RowSeal() RowSealServiceClient                     { return c._RowSeal }
 func (c *client) ReferrersSnapshot() ReferrersSnapshotServiceClient { return c._ReferrersSnapshot }
 func (c *client) Repository() RepositoryServiceClient               { return c._Repository }
 func (c *client) Tag() TagServiceClient                             { return c._Tag }

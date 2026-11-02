@@ -10,7 +10,6 @@ import (
 	ent "github.com/lesomnus/cr/internal/ent"
 	predicate "github.com/lesomnus/cr/internal/ent/predicate"
 	tagrule "github.com/lesomnus/cr/internal/ent/tagrule"
-	tenant "github.com/lesomnus/cr/internal/ent/tenant"
 	patchpb "github.com/lesomnus/protobuf-patch/patchpb"
 	ent1 "github.com/protobuf-orm/ent"
 	dialect "github.com/protobuf-orm/ent/dialect"
@@ -87,7 +86,6 @@ func (s TagRuleServiceServer) narrow(ctx context.Context, p predicate.TagRule) (
 
 func (s TagRuleServiceServer) snapshot(ctx context.Context, p predicate.TagRule, lock bool) (*ent.TagRule, error) {
 	q := s.Db.TagRule.Query().Where(p)
-	q.WithTenant(func(q *ent.TenantQuery) { q.Select(tenant.FieldId) })
 	q.Modify(func(q *sql.Selector) {
 		if lock && s.Db.Dialect() != dialect.SQLite {
 			q.ForUpdate()
@@ -117,33 +115,28 @@ func (s TagRuleServiceServer) image(v *api.TagRule) *api.TagRule {
 	}
 	return out
 }
-func (s TagRuleServiceServer) Add(ctx context.Context, req *api.TagRuleAddRequest) (*api.TagRule, error) {
-	tx, err := ent1.JoinTx[*ent.Client, *ent.Tx](ctx, s.Db, s.Rec != nil)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Close()
 
-	st := s
-	st.Db = tx.Db
-
+// create is the row an Add of `req` writes, as a builder not yet saved,
+// and what the answer says about its edges. Add and AddMany both write
+// with it, so that an item of an AddMany is the row an Add of it would be.
+func (st TagRuleServiceServer) create(ctx context.Context, req *api.TagRuleAddRequest) (*ent.TagRuleCreate, []func(v *api.TagRule), error) {
 	ds := make([]func(v *api.TagRule), 0, 1)
 	q := st.Db.TagRule.Create()
 	var k uuid.UUID
 	if req.HasId() {
 		if v, err := entuuid.FromBytes(req.GetId()); err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "id: %s", err)
+			return nil, nil, status.Errorf(codes.InvalidArgument, "id: %s", err)
 		} else {
 			k = v
 		}
 	}
-	if v, err := mint(ctx, s.Mint, "app.TagRule", k, req.HasId()); err != nil {
-		return nil, err
+	if v, err := mint(ctx, st.Mint, "app.TagRule", k, req.HasId()); err != nil {
+		return nil, nil, err
 	} else {
 		q.SetId(v)
 	}
 	if k, err := TenantGetKey(ctx, st.Db, req.GetTenant()); err != nil {
-		return nil, err
+		return nil, nil, err
 	} else {
 		q.SetTenantId(k)
 		ds = append(ds, func(v *api.TagRule) {
@@ -166,7 +159,30 @@ func (s TagRuleServiceServer) Add(ctx context.Context, req *api.TagRuleAddReques
 	} else {
 		q.SetDateCreated(st.now())
 	}
+	return q, ds, nil
+}
 
+func (s TagRuleServiceServer) Add(ctx context.Context, req *api.TagRuleAddRequest) (*api.TagRule, error) {
+	tx, err := ent1.JoinTx[*ent.Client, *ent.Tx](ctx, s.Db, s.Rec != nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Close()
+
+	st := s
+	st.Db = tx.Db
+
+	q, ds, err := st.create(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	var stored *ent.TagRule
+	if snapshotOptions(s.Rec, api.TagRuleService_Add_FullMethodName).Value {
+		q.Stored(&stored)
+	}
+
+	tx.Writing()
 	u, err := q.Save(ctx)
 	if err != nil {
 		if err, ok := err.(*ent.ConstraintError); ok {
@@ -185,11 +201,7 @@ func (s TagRuleServiceServer) Add(ctx context.Context, req *api.TagRuleAddReques
 		d(v)
 	}
 	var value *api.TagRule
-	if snapshotOptions(s.Rec, api.TagRuleService_Add_FullMethodName).Value {
-		stored, err := st.snapshot(ctx, tagrule.IdEQ(u.Id), false)
-		if err != nil {
-			return nil, err
-		}
+	if stored != nil {
 		value = s.image(stored.Proto())
 	}
 	if err := record(ctx, s.Rec, st.Db, Change{
@@ -204,6 +216,38 @@ func (s TagRuleServiceServer) Add(ctx context.Context, req *api.TagRuleAddReques
 	}
 
 	return v, nil
+}
+
+// TagRuleAddRule is what a layer in front says about one row an Add of TagRule
+// would write: the request to write it with -- the one it was handed, or a
+// copy it changed -- or a refusal. Nil is the request it was handed.
+type TagRuleAddRule func(ctx context.Context, req *api.TagRuleAddRequest) (*api.TagRuleAddRequest, error)
+
+// TagRuleWithAddRule answers with `next` behind `rule` for the RPCs that add.
+// An Add is asked about, and every item of an AddMany in order, and the
+// call is refused for the first one that is -- an AddMany naming the item.
+// What reaches `next` is one call either way: an AddMany stays one AddMany.
+//
+// A layer that overrides Add itself, for something an Add does that a rule
+// cannot say, still has its AddMany asked through this.
+func TagRuleWithAddRule(next api.TagRuleServiceServer, rule TagRuleAddRule) api.TagRuleServiceServer {
+	return tagRuleAddRuled{next, rule}
+}
+
+type tagRuleAddRuled struct {
+	api.TagRuleServiceServer
+	rule TagRuleAddRule
+}
+
+func (s tagRuleAddRuled) Add(ctx context.Context, req *api.TagRuleAddRequest) (*api.TagRule, error) {
+	r, err := s.rule(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if r == nil {
+		r = req
+	}
+	return s.TagRuleServiceServer.Add(ctx, r)
 }
 
 func (s TagRuleServiceServer) Get(ctx context.Context, req *api.TagRuleGetRequest) (*api.TagRule, error) {
@@ -294,8 +338,6 @@ func TagRuleSelect(q *ent.TagRuleQuery, m *api.TagRuleSelect) {
 func TagRuleSelectInit(q *ent.TagRuleQuery, m *api.TagRuleSelect) {
 	if m != nil {
 		TagRuleSelect(q, m)
-	} else {
-		q.WithTenant(selectTenantKey)
 	}
 }
 
@@ -434,6 +476,7 @@ func (s TagRuleServiceServer) apply(ctx context.Context, ref *api.TagRuleRef, do
 		if !plan.WritesTo(13) {
 			q.SetDateUpdated(st.now())
 		}
+		tx.Writing()
 		if n, err := q.Save(ctx); err != nil {
 			if err, ok := err.(*ent.ConstraintError); ok {
 				if sqlgraph.IsUniqueConstraintError(err) {
@@ -525,6 +568,7 @@ func (s TagRuleServiceServer) Erase(ctx context.Context, req *api.TagRuleRef) (*
 		p = tagrule.And(p, tagrule.IdEQ(v.Id))
 	}
 
+	tx.Writing()
 	u := st.Db.TagRule.Update().Where(p)
 	u.SetDateErased(st.now())
 	u.SetDateUpdated(st.now())

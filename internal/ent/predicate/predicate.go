@@ -6,6 +6,9 @@ import (
 	"github.com/protobuf-orm/ent/dialect/sql"
 )
 
+// Access is the predicate function for access builders.
+type Access func(*sql.Selector)
+
 // Archived is the predicate function for archived builders.
 type Archived func(*sql.Selector)
 
@@ -33,11 +36,17 @@ type OrphanScan func(*sql.Selector)
 // Outbox is the predicate function for outbox builders.
 type Outbox func(*sql.Selector)
 
+// Owed is the predicate function for owed builders.
+type Owed func(*sql.Selector)
+
 // ReferrersSnapshot is the predicate function for referrerssnapshot builders.
 type ReferrersSnapshot func(*sql.Selector)
 
 // Repository is the predicate function for repository builders.
 type Repository func(*sql.Selector)
+
+// RowSeal is the predicate function for rowseal builders.
+type RowSeal func(*sql.Selector)
 
 // Tag is the predicate function for tag builders.
 type Tag func(*sql.Selector)

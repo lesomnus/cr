@@ -197,7 +197,7 @@ func (ix *Index) Tx(ctx context.Context, repo string, fn func(index.Index) error
 	}
 	if pg && repo != "" {
 		start := time.Now()
-		err := ix.lockPostgres(ctx, tx, repo)
+		err := ix.lockPostgres(ctx, drv, repo)
 		ix.waited(ctx, start, err)
 		if err != nil {
 			tx.Rollback()
@@ -217,15 +217,16 @@ func (ix *Index) Tx(ctx context.Context, repo string, fn func(index.Index) error
 	return nil
 }
 
-func (ix *Index) lockPostgres(ctx context.Context, tx dialect.Tx, repo string) error {
+// Statements use the transaction driver; the commit handle only ends it.
+func (ix *Index) lockPostgres(ctx context.Context, drv dialect.ExecQuerier, repo string) error {
 	if ix.o.wait > 0 {
 		q := fmt.Sprintf("SET LOCAL lock_timeout = %d", ix.o.wait.Milliseconds())
-		if err := tx.Exec(ctx, q, []any{}, nil); err != nil {
+		if err := drv.Exec(ctx, q, []any{}, nil); err != nil {
 			return err
 		}
 	}
 	var res stdsql.Result
-	err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", []any{int64(key(repo))}, &res)
+	err := drv.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", []any{int64(key(repo))}, &res)
 	if err == nil {
 		return nil
 	}

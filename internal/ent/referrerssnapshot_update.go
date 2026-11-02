@@ -133,17 +133,29 @@ func (_u *ReferrersSnapshotUpdate) sqlSave(ctx context.Context) (_node int, err 
 	if value, ok := _u.mutation.Supported(); ok {
 		_spec.SetField(referrerssnapshot.FieldSupported, field.TypeBool, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(referrerssnapshot.FieldSupported); ok {
+		_spec.SetField(referrerssnapshot.FieldSupported, field.TypeBool, e)
+	}
 	if value, ok := _u.mutation.Descriptors(); ok {
 		_spec.SetField(referrerssnapshot.FieldDescriptors, field.TypeBytes, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(referrerssnapshot.FieldDescriptors); ok {
+		_spec.SetField(referrerssnapshot.FieldDescriptors, field.TypeBytes, e)
+	}
 	if value, ok := _u.mutation.DateChecked(); ok {
 		_spec.SetField(referrerssnapshot.FieldDateChecked, field.TypeTime, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(referrerssnapshot.FieldDateChecked); ok {
+		_spec.SetField(referrerssnapshot.FieldDateChecked, field.TypeTime, e)
 	}
 	if _u.mutation.DateCheckedCleared() {
 		_spec.ClearField(referrerssnapshot.FieldDateChecked, field.TypeTime)
 	}
 	if value, ok := _u.mutation.DateUpdated(); ok {
 		_spec.SetField(referrerssnapshot.FieldDateUpdated, field.TypeTime, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(referrerssnapshot.FieldDateUpdated); ok {
+		_spec.SetField(referrerssnapshot.FieldDateUpdated, field.TypeTime, e)
 	}
 	if _u.mutation.DateCreatedCleared() {
 		_spec.ClearField(referrerssnapshot.FieldDateCreated, field.TypeTime)
@@ -304,17 +316,29 @@ func (_u *ReferrersSnapshotUpdateOne) sqlSave(ctx context.Context) (_node *Refer
 	if value, ok := _u.mutation.Supported(); ok {
 		_spec.SetField(referrerssnapshot.FieldSupported, field.TypeBool, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(referrerssnapshot.FieldSupported); ok {
+		_spec.SetField(referrerssnapshot.FieldSupported, field.TypeBool, e)
+	}
 	if value, ok := _u.mutation.Descriptors(); ok {
 		_spec.SetField(referrerssnapshot.FieldDescriptors, field.TypeBytes, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(referrerssnapshot.FieldDescriptors); ok {
+		_spec.SetField(referrerssnapshot.FieldDescriptors, field.TypeBytes, e)
+	}
 	if value, ok := _u.mutation.DateChecked(); ok {
 		_spec.SetField(referrerssnapshot.FieldDateChecked, field.TypeTime, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(referrerssnapshot.FieldDateChecked); ok {
+		_spec.SetField(referrerssnapshot.FieldDateChecked, field.TypeTime, e)
 	}
 	if _u.mutation.DateCheckedCleared() {
 		_spec.ClearField(referrerssnapshot.FieldDateChecked, field.TypeTime)
 	}
 	if value, ok := _u.mutation.DateUpdated(); ok {
 		_spec.SetField(referrerssnapshot.FieldDateUpdated, field.TypeTime, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(referrerssnapshot.FieldDateUpdated); ok {
+		_spec.SetField(referrerssnapshot.FieldDateUpdated, field.TypeTime, e)
 	}
 	if _u.mutation.DateCreatedCleared() {
 		_spec.ClearField(referrerssnapshot.FieldDateCreated, field.TypeTime)

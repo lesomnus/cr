@@ -160,14 +160,14 @@ var File_app_manifest_blob_proto protoreflect.FileDescriptor
 
 const file_app_manifest_blob_proto_rawDesc = "" +
 	"\n" +
-	"\x17app/manifest_blob.proto\x12\x03app\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\torm.proto\x1a\fpayday.proto\"\xaf\x03\n" +
+	"\x17app/manifest_blob.proto\x12\x03app\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\torm.proto\x1a\fpayday.proto\"\xa6\x04\n" +
 	"\fManifestBlob\x12\x1b\n" +
 	"\x02id\x18\x01 \x01(\fB\v\xea\x82\x16\a\x10@(\x01\x82\x01\x00R\x02id\x12\x1a\n" +
 	"\x04repo\x18\b \x01(\tB\x06\xea\x82\x16\x02@\x01R\x04repo\x12\"\n" +
 	"\bmanifest\x18\t \x01(\tB\x06\xea\x82\x16\x02@\x01R\bmanifest\x12\x1a\n" +
 	"\x04blob\x18\n" +
 	" \x01(\tB\x06\xea\x82\x16\x02@\x01R\x04blob\x12H\n" +
-	"\fdate_created\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampB\t\xea\x82\x16\x05@\x01\x82\x01\x00R\vdateCreated:\xdb\x01\xca\xfc\x15\x87\x01\x12\x11\x10\x01\x82\x01\x02\b\x01\x92\x01\x02\b\x01\x9a\x01\x02\b\x01\x1a \x12\x04page\x1a\x10\n" +
+	"\fdate_created\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampB\t\xea\x82\x16\x05@\x01\x82\x01\x00R\vdateCreated:\xd2\x02\xca\xfc\x15\x87\x01\x12\x11\x10\x01\x82\x01\x02\b\x01\x92\x01\x02\b\x01\x9a\x01\x02\b\x01\x1a \x12\x04page\x1a\x10\n" +
 	"\fdate_created\x10\x0f\x1a\x06\n" +
 	"\x02id\x10\x01\x1a1\x12\vby_manifest\x1a\b\n" +
 	"\x04repo\x10\b\x1a\f\n" +
@@ -176,7 +176,7 @@ const file_app_manifest_blob_proto_rawDesc = "" +
 	"0\x01\x1a\x1d\x12\aby_blob\x1a\b\n" +
 	"\x04repo\x10\b\x1a\b\n" +
 	"\x04blob\x10\n" +
-	"\x8a\xbb\x16K\b\n" +
+	"\x8a\xbb\x16\xc1\x01\b\n" +
 	"2A\n" +
 	"\x10\n" +
 	"\x0e\n" +
@@ -189,7 +189,8 @@ const file_app_manifest_blob_proto_rawDesc = "" +
 	"\n" +
 	"\bmanifest\x1a\x06\n" +
 	"\x04blob \x14(dB\x02\n" +
-	"\x00*\x00B!Z\x1agithub.com/lesomnus/cr/api\x92\x03\x02\b\x02b\beditionsp\xe8\a"
+	"\x00Rt\x12r\n" +
+	"pOCI manifest reference bookkeeping maintained directly with the registry index, outside management RPC mutations*\x00B!Z\x1agithub.com/lesomnus/cr/api\x92\x03\x02\b\x02b\beditionsp\xe8\a"
 
 var file_app_manifest_blob_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_app_manifest_blob_proto_goTypes = []any{

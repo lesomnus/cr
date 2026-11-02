@@ -37,7 +37,8 @@ func (Outbox) Fields() []ent.Field {
 
 func (Outbox) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("id"),
+		index.Fields("id").
+			StorageKey("outbox_queue"),
 	}
 }
 

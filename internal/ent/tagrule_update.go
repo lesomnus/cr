@@ -248,23 +248,44 @@ func (_u *TagRuleUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Alias(); ok {
 		_spec.SetField(tagrule.FieldAlias, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(tagrule.FieldAlias); ok {
+		_spec.SetField(tagrule.FieldAlias, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.Desc(); ok {
 		_spec.SetField(tagrule.FieldDesc, field.TypeString, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(tagrule.FieldDesc); ok {
+		_spec.SetField(tagrule.FieldDesc, field.TypeString, e)
 	}
 	if value, ok := _u.mutation.Repo(); ok {
 		_spec.SetField(tagrule.FieldRepo, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(tagrule.FieldRepo); ok {
+		_spec.SetField(tagrule.FieldRepo, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.Tag(); ok {
 		_spec.SetField(tagrule.FieldTag, field.TypeString, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(tagrule.FieldTag); ok {
+		_spec.SetField(tagrule.FieldTag, field.TypeString, e)
 	}
 	if value, ok := _u.mutation.Kind(); ok {
 		_spec.SetField(tagrule.FieldKind, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(tagrule.FieldKind); ok {
+		_spec.SetField(tagrule.FieldKind, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.Pattern(); ok {
 		_spec.SetField(tagrule.FieldPattern, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(tagrule.FieldPattern); ok {
+		_spec.SetField(tagrule.FieldPattern, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.Groups(); ok {
 		_spec.SetField(tagrule.FieldGroups, field.TypeJson, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(tagrule.FieldGroups); ok {
+		_spec.SetField(tagrule.FieldGroups, field.TypeJson, e)
 	}
 	if value, ok := _u.mutation.AppendedGroups(); ok {
 		_spec.AddModifier(func(u *sql.UpdateBuilder) {
@@ -277,17 +298,26 @@ func (_u *TagRuleUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Keep(); ok {
 		_spec.SetField(tagrule.FieldKeep, field.TypeInt32, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(tagrule.FieldKeep); ok {
+		_spec.SetField(tagrule.FieldKeep, field.TypeInt32, e)
+	}
 	if value, ok := _u.mutation.AddedKeep(); ok {
 		_spec.AddField(tagrule.FieldKeep, field.TypeInt32, value)
 	}
 	if value, ok := _u.mutation.DateErased(); ok {
 		_spec.SetField(tagrule.FieldDateErased, field.TypeTime, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(tagrule.FieldDateErased); ok {
+		_spec.SetField(tagrule.FieldDateErased, field.TypeTime, e)
+	}
 	if _u.mutation.DateErasedCleared() {
 		_spec.ClearField(tagrule.FieldDateErased, field.TypeTime)
 	}
 	if value, ok := _u.mutation.DateUpdated(); ok {
 		_spec.SetField(tagrule.FieldDateUpdated, field.TypeTime, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(tagrule.FieldDateUpdated); ok {
+		_spec.SetField(tagrule.FieldDateUpdated, field.TypeTime, e)
 	}
 	if _u.mutation.DateCreatedCleared() {
 		_spec.ClearField(tagrule.FieldDateCreated, field.TypeTime)
@@ -562,23 +592,44 @@ func (_u *TagRuleUpdateOne) sqlSave(ctx context.Context) (_node *TagRule, err er
 	if value, ok := _u.mutation.Alias(); ok {
 		_spec.SetField(tagrule.FieldAlias, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(tagrule.FieldAlias); ok {
+		_spec.SetField(tagrule.FieldAlias, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.Desc(); ok {
 		_spec.SetField(tagrule.FieldDesc, field.TypeString, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(tagrule.FieldDesc); ok {
+		_spec.SetField(tagrule.FieldDesc, field.TypeString, e)
 	}
 	if value, ok := _u.mutation.Repo(); ok {
 		_spec.SetField(tagrule.FieldRepo, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(tagrule.FieldRepo); ok {
+		_spec.SetField(tagrule.FieldRepo, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.Tag(); ok {
 		_spec.SetField(tagrule.FieldTag, field.TypeString, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(tagrule.FieldTag); ok {
+		_spec.SetField(tagrule.FieldTag, field.TypeString, e)
 	}
 	if value, ok := _u.mutation.Kind(); ok {
 		_spec.SetField(tagrule.FieldKind, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(tagrule.FieldKind); ok {
+		_spec.SetField(tagrule.FieldKind, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.Pattern(); ok {
 		_spec.SetField(tagrule.FieldPattern, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(tagrule.FieldPattern); ok {
+		_spec.SetField(tagrule.FieldPattern, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.Groups(); ok {
 		_spec.SetField(tagrule.FieldGroups, field.TypeJson, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(tagrule.FieldGroups); ok {
+		_spec.SetField(tagrule.FieldGroups, field.TypeJson, e)
 	}
 	if value, ok := _u.mutation.AppendedGroups(); ok {
 		_spec.AddModifier(func(u *sql.UpdateBuilder) {
@@ -591,17 +642,26 @@ func (_u *TagRuleUpdateOne) sqlSave(ctx context.Context) (_node *TagRule, err er
 	if value, ok := _u.mutation.Keep(); ok {
 		_spec.SetField(tagrule.FieldKeep, field.TypeInt32, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(tagrule.FieldKeep); ok {
+		_spec.SetField(tagrule.FieldKeep, field.TypeInt32, e)
+	}
 	if value, ok := _u.mutation.AddedKeep(); ok {
 		_spec.AddField(tagrule.FieldKeep, field.TypeInt32, value)
 	}
 	if value, ok := _u.mutation.DateErased(); ok {
 		_spec.SetField(tagrule.FieldDateErased, field.TypeTime, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(tagrule.FieldDateErased); ok {
+		_spec.SetField(tagrule.FieldDateErased, field.TypeTime, e)
+	}
 	if _u.mutation.DateErasedCleared() {
 		_spec.ClearField(tagrule.FieldDateErased, field.TypeTime)
 	}
 	if value, ok := _u.mutation.DateUpdated(); ok {
 		_spec.SetField(tagrule.FieldDateUpdated, field.TypeTime, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(tagrule.FieldDateUpdated); ok {
+		_spec.SetField(tagrule.FieldDateUpdated, field.TypeTime, e)
 	}
 	if _u.mutation.DateCreatedCleared() {
 		_spec.ClearField(tagrule.FieldDateCreated, field.TypeTime)

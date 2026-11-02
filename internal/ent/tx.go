@@ -12,6 +12,8 @@ import (
 // Tx is a transactional client that is created by calling Client.Tx().
 type Tx struct {
 	config
+	// Access is the client for interacting with the Access builders.
+	Access *AccessClient
 	// Archived is the client for interacting with the Archived builders.
 	Archived *ArchivedClient
 	// Audit is the client for interacting with the Audit builders.
@@ -30,10 +32,14 @@ type Tx struct {
 	OrphanScan *OrphanScanClient
 	// Outbox is the client for interacting with the Outbox builders.
 	Outbox *OutboxClient
+	// Owed is the client for interacting with the Owed builders.
+	Owed *OwedClient
 	// ReferrersSnapshot is the client for interacting with the ReferrersSnapshot builders.
 	ReferrersSnapshot *ReferrersSnapshotClient
 	// Repository is the client for interacting with the Repository builders.
 	Repository *RepositoryClient
+	// RowSeal is the client for interacting with the RowSeal builders.
+	RowSeal *RowSealClient
 	// Tag is the client for interacting with the Tag builders.
 	Tag *TagClient
 	// TagRule is the client for interacting with the TagRule builders.
@@ -171,6 +177,7 @@ func (tx *Tx) Client() *Client {
 }
 
 func (tx *Tx) init() {
+	tx.Access = NewAccessClient(tx.config)
 	tx.Archived = NewArchivedClient(tx.config)
 	tx.Audit = NewAuditClient(tx.config)
 	tx.GcRun = NewGcRunClient(tx.config)
@@ -180,8 +187,10 @@ func (tx *Tx) init() {
 	tx.OrphanCandidate = NewOrphanCandidateClient(tx.config)
 	tx.OrphanScan = NewOrphanScanClient(tx.config)
 	tx.Outbox = NewOutboxClient(tx.config)
+	tx.Owed = NewOwedClient(tx.config)
 	tx.ReferrersSnapshot = NewReferrersSnapshotClient(tx.config)
 	tx.Repository = NewRepositoryClient(tx.config)
+	tx.RowSeal = NewRowSealClient(tx.config)
 	tx.Tag = NewTagClient(tx.config)
 	tx.TagRule = NewTagRuleClient(tx.config)
 	tx.Tenant = NewTenantClient(tx.config)
@@ -194,7 +203,7 @@ func (tx *Tx) init() {
 // of them in order to commit or rollback the transaction.
 //
 // If a closed transaction is embedded in one of the generated entities, and the entity
-// applies a query, for example: Archived.QueryXXX(), the query will be executed
+// applies a query, for example: Access.QueryXXX(), the query will be executed
 // through the driver which created this transaction.
 //
 // Note that txDriver is not goroutine safe.

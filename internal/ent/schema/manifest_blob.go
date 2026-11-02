@@ -34,10 +34,13 @@ func (ManifestBlob) Fields() []ent.Field {
 
 func (ManifestBlob) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("date_created", "id"),
+		index.Fields("date_created", "id").
+			StorageKey("manifestblob_page"),
 		index.Fields("repo", "manifest", "blob").
+			StorageKey("manifestblob_by_manifest").
 			Unique(),
-		index.Fields("repo", "blob"),
+		index.Fields("repo", "blob").
+			StorageKey("manifestblob_by_blob"),
 	}
 }
 

@@ -20,6 +20,7 @@ import (
 	"github.com/lesomnus/payday/config"
 	_ "github.com/lesomnus/payday/config/dbsqlite3"
 	"github.com/lesomnus/payday/pdpb"
+	_ "github.com/lesomnus/payday/resource/resourcecel"
 	"github.com/lesomnus/payday/watch"
 	"github.com/opencontainers/go-digest"
 	entsql "github.com/protobuf-orm/ent/dialect/sql"

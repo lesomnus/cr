@@ -107,8 +107,14 @@ func (_u *RepositoryUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 	if value, ok := _u.mutation.Desc(); ok {
 		_spec.SetField(repository.FieldDesc, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(repository.FieldDesc); ok {
+		_spec.SetField(repository.FieldDesc, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.DateUpdated(); ok {
 		_spec.SetField(repository.FieldDateUpdated, field.TypeTime, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(repository.FieldDateUpdated); ok {
+		_spec.SetField(repository.FieldDateUpdated, field.TypeTime, e)
 	}
 	if _u.mutation.DateCreatedCleared() {
 		_spec.ClearField(repository.FieldDateCreated, field.TypeTime)
@@ -243,8 +249,14 @@ func (_u *RepositoryUpdateOne) sqlSave(ctx context.Context) (_node *Repository, 
 	if value, ok := _u.mutation.Desc(); ok {
 		_spec.SetField(repository.FieldDesc, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(repository.FieldDesc); ok {
+		_spec.SetField(repository.FieldDesc, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.DateUpdated(); ok {
 		_spec.SetField(repository.FieldDateUpdated, field.TypeTime, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(repository.FieldDateUpdated); ok {
+		_spec.SetField(repository.FieldDateUpdated, field.TypeTime, e)
 	}
 	if _u.mutation.DateCreatedCleared() {
 		_spec.ClearField(repository.FieldDateCreated, field.TypeTime)

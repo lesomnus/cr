@@ -157,7 +157,6 @@ func RepositorySelect(q *ent.RepositoryQuery, m *api.RepositorySelect) {
 func RepositorySelectInit(q *ent.RepositoryQuery, m *api.RepositorySelect) {
 	if m != nil {
 		RepositorySelect(q, m)
-	} else {
 	}
 }
 
@@ -296,6 +295,7 @@ func (s RepositoryServiceServer) apply(ctx context.Context, ref *api.RepositoryR
 		if !plan.WritesTo(13) {
 			q.SetDateUpdated(st.now())
 		}
+		tx.Writing()
 		if n, err := q.Save(ctx); err != nil {
 			if err, ok := err.(*ent.ConstraintError); ok {
 				if sqlgraph.IsUniqueConstraintError(err) {

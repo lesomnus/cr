@@ -13,6 +13,7 @@
 
 import type { EntityDesc } from '@lesomnus/payday/store'
 
+import { AccessSchema } from './app/payday/access_pb.js'
 import { ArchivedSchema } from './app/payday/archived_pb.js'
 import { AuditSchema } from './app/payday/audit_pb.js'
 import { GcRunSchema } from './app/gc_run_pb.js'
@@ -21,11 +22,14 @@ import { ManifestSchema } from './app/manifest_pb.js'
 import { ManifestBlobSchema } from './app/manifest_blob_pb.js'
 import { OrphanCandidateSchema, OrphanScanSchema } from './app/orphan_candidate_pb.js'
 import { OutboxSchema } from './app/payday/outbox_pb.js'
+import { OwedSchema } from './app/payday/owed_pb.js'
 import { ReferrersSnapshotSchema } from './app/referrers_snapshot_pb.js'
 import { RepositorySchema } from './app/repository_pb.js'
+import { RowSealSchema } from './app/payday/rowseal_pb.js'
 import { TagSchema } from './app/tag_pb.js'
 import { TagRuleSchema } from './app/tag_rule_pb.js'
 import { TenantSchema } from './app/payday/tenant_pb.js'
+import { AccessService } from './app/payday/access_svc_pb.js'
 import { ArchivedService } from './app/payday/archived_svc_pb.js'
 import { AuditService } from './app/payday/audit_svc_pb.js'
 import { GcRunService } from './app/gc_run_svc_pb.js'
@@ -34,11 +38,23 @@ import { ManifestService } from './app/manifest_svc_pb.js'
 import { ManifestBlobService } from './app/manifest_blob_svc_pb.js'
 import { OrphanCandidateService, OrphanScanService } from './app/orphan_candidate_svc_pb.js'
 import { OutboxService } from './app/payday/outbox_svc_pb.js'
+import { OwedService } from './app/payday/owed_svc_pb.js'
 import { ReferrersSnapshotService } from './app/referrers_snapshot_svc_pb.js'
 import { RepositoryService } from './app/repository_svc_pb.js'
+import { RowSealService } from './app/payday/rowseal_svc_pb.js'
 import { TagService } from './app/tag_svc_pb.js'
 import { TagRuleService } from './app/tag_rule_svc_pb.js'
 import { TenantService } from './app/payday/tenant_svc_pb.js'
+
+/** app.Access, as the store holds it. */
+export const Access = {
+	typeName: "app.Access",
+	schema: AccessSchema,
+	domain: 6,
+	key: "id",
+	ids: ["id", "tenantId", "actorId", "actorTenantId"],
+	service: AccessService,
+} as const satisfies EntityDesc
 
 /** app.Archived, as the store holds it. */
 export const Archived = {
@@ -136,6 +152,16 @@ export const Outbox = {
 	service: OutboxService,
 } as const satisfies EntityDesc
 
+/** app.Owed, as the store holds it. */
+export const Owed = {
+	typeName: "app.Owed",
+	schema: OwedSchema,
+	domain: 254,
+	key: "id",
+	ids: ["id", "object"],
+	service: OwedService,
+} as const satisfies EntityDesc
+
 /** app.ReferrersSnapshot, as the store holds it. */
 export const ReferrersSnapshot = {
 	typeName: "app.ReferrersSnapshot",
@@ -156,6 +182,16 @@ export const Repository = {
 	key: "id",
 	ids: ["id"],
 	service: RepositoryService,
+} as const satisfies EntityDesc
+
+/** app.RowSeal, as the store holds it. */
+export const RowSeal = {
+	typeName: "app.RowSeal",
+	schema: RowSealSchema,
+	domain: 255,
+	key: "id",
+	ids: ["id", "tenantId"],
+	service: RowSealService,
 } as const satisfies EntityDesc
 
 /** app.Tag, as the store holds it. */
@@ -195,5 +231,5 @@ export const Tenant = {
 } as const satisfies EntityDesc
 
 /** Every entity of this app, which is what a store is opened over. */
-export const entities = [Archived, Audit, GcRun, Holder, Manifest, ManifestBlob, OrphanCandidate, OrphanScan, Outbox, ReferrersSnapshot, Repository, Tag, TagRule, Tenant] as const
+export const entities = [Access, Archived, Audit, GcRun, Holder, Manifest, ManifestBlob, OrphanCandidate, OrphanScan, Outbox, Owed, ReferrersSnapshot, Repository, RowSeal, Tag, TagRule, Tenant] as const
 

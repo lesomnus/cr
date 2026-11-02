@@ -18,7 +18,7 @@ message OrphanCandidate {
   string subject = 9 [(orm.field) = {immutable: true}];
   google.protobuf.Timestamp date_observed = 10 [(orm.field) = {default: ""}];
 
-  option (payday.entity) = {domain: 16, global: {}, erase: {hard: {}}};
+  option (payday.entity) = {domain: 16, global: {}, erase: {hard: {}}, trail: {off: {why: "Internal GC candidate queue maintained with the registry index"}}};
   option (orm.message) = {
     indexes: [{name: "by_subject", refs: [{name: "repo", number: 8}, {name: "subject", number: 9}], unique: true}]
   };
@@ -32,7 +32,7 @@ message OrphanScan {
   string cursor = 9;
   bool complete = 10;
 
-  option (payday.entity) = {domain: 17, global: {}, erase: {hard: {}}};
+  option (payday.entity) = {domain: 17, global: {}, erase: {hard: {}}, trail: {off: {why: "Internal cursor for the one-time orphan scan, not management RPC mutations"}}};
   option (orm.message) = {
     indexes: [{name: "by_repo", refs: [{name: "repo", number: 8}], unique: true}]
   };

@@ -314,17 +314,32 @@ func (_u *GcRunUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Kind(); ok {
 		_spec.SetField(gcrun.FieldKind, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldKind); ok {
+		_spec.SetField(gcrun.FieldKind, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.Trigger(); ok {
 		_spec.SetField(gcrun.FieldTrigger, field.TypeString, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldTrigger); ok {
+		_spec.SetField(gcrun.FieldTrigger, field.TypeString, e)
 	}
 	if value, ok := _u.mutation.State(); ok {
 		_spec.SetField(gcrun.FieldState, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldState); ok {
+		_spec.SetField(gcrun.FieldState, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.Error(); ok {
 		_spec.SetField(gcrun.FieldError, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldError); ok {
+		_spec.SetField(gcrun.FieldError, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.Stages(); ok {
 		_spec.SetField(gcrun.FieldStages, field.TypeInt64, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldStages); ok {
+		_spec.SetField(gcrun.FieldStages, field.TypeInt64, e)
 	}
 	if value, ok := _u.mutation.AddedStages(); ok {
 		_spec.AddField(gcrun.FieldStages, field.TypeInt64, value)
@@ -332,11 +347,17 @@ func (_u *GcRunUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Tags(); ok {
 		_spec.SetField(gcrun.FieldTags, field.TypeInt64, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldTags); ok {
+		_spec.SetField(gcrun.FieldTags, field.TypeInt64, e)
+	}
 	if value, ok := _u.mutation.AddedTags(); ok {
 		_spec.AddField(gcrun.FieldTags, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.Manifests(); ok {
 		_spec.SetField(gcrun.FieldManifests, field.TypeInt64, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldManifests); ok {
+		_spec.SetField(gcrun.FieldManifests, field.TypeInt64, e)
 	}
 	if value, ok := _u.mutation.AddedManifests(); ok {
 		_spec.AddField(gcrun.FieldManifests, field.TypeInt64, value)
@@ -344,11 +365,17 @@ func (_u *GcRunUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Repositories(); ok {
 		_spec.SetField(gcrun.FieldRepositories, field.TypeInt64, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldRepositories); ok {
+		_spec.SetField(gcrun.FieldRepositories, field.TypeInt64, e)
+	}
 	if value, ok := _u.mutation.AddedRepositories(); ok {
 		_spec.AddField(gcrun.FieldRepositories, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.Blobs(); ok {
 		_spec.SetField(gcrun.FieldBlobs, field.TypeInt64, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldBlobs); ok {
+		_spec.SetField(gcrun.FieldBlobs, field.TypeInt64, e)
 	}
 	if value, ok := _u.mutation.AddedBlobs(); ok {
 		_spec.AddField(gcrun.FieldBlobs, field.TypeInt64, value)
@@ -356,11 +383,17 @@ func (_u *GcRunUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Bytes(); ok {
 		_spec.SetField(gcrun.FieldBytes, field.TypeInt64, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldBytes); ok {
+		_spec.SetField(gcrun.FieldBytes, field.TypeInt64, e)
+	}
 	if value, ok := _u.mutation.AddedBytes(); ok {
 		_spec.AddField(gcrun.FieldBytes, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.Missing(); ok {
 		_spec.SetField(gcrun.FieldMissing, field.TypeJson, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldMissing); ok {
+		_spec.SetField(gcrun.FieldMissing, field.TypeJson, e)
 	}
 	if value, ok := _u.mutation.AppendedMissing(); ok {
 		_spec.AddModifier(func(u *sql.UpdateBuilder) {
@@ -373,11 +406,17 @@ func (_u *GcRunUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.DateFinished(); ok {
 		_spec.SetField(gcrun.FieldDateFinished, field.TypeTime, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldDateFinished); ok {
+		_spec.SetField(gcrun.FieldDateFinished, field.TypeTime, e)
+	}
 	if _u.mutation.DateFinishedCleared() {
 		_spec.ClearField(gcrun.FieldDateFinished, field.TypeTime)
 	}
 	if value, ok := _u.mutation.DateUpdated(); ok {
 		_spec.SetField(gcrun.FieldDateUpdated, field.TypeTime, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldDateUpdated); ok {
+		_spec.SetField(gcrun.FieldDateUpdated, field.TypeTime, e)
 	}
 	if _u.mutation.DateCreatedCleared() {
 		_spec.ClearField(gcrun.FieldDateCreated, field.TypeTime)
@@ -718,17 +757,32 @@ func (_u *GcRunUpdateOne) sqlSave(ctx context.Context) (_node *GcRun, err error)
 	if value, ok := _u.mutation.Kind(); ok {
 		_spec.SetField(gcrun.FieldKind, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldKind); ok {
+		_spec.SetField(gcrun.FieldKind, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.Trigger(); ok {
 		_spec.SetField(gcrun.FieldTrigger, field.TypeString, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldTrigger); ok {
+		_spec.SetField(gcrun.FieldTrigger, field.TypeString, e)
 	}
 	if value, ok := _u.mutation.State(); ok {
 		_spec.SetField(gcrun.FieldState, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldState); ok {
+		_spec.SetField(gcrun.FieldState, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.Error(); ok {
 		_spec.SetField(gcrun.FieldError, field.TypeString, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldError); ok {
+		_spec.SetField(gcrun.FieldError, field.TypeString, e)
+	}
 	if value, ok := _u.mutation.Stages(); ok {
 		_spec.SetField(gcrun.FieldStages, field.TypeInt64, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldStages); ok {
+		_spec.SetField(gcrun.FieldStages, field.TypeInt64, e)
 	}
 	if value, ok := _u.mutation.AddedStages(); ok {
 		_spec.AddField(gcrun.FieldStages, field.TypeInt64, value)
@@ -736,11 +790,17 @@ func (_u *GcRunUpdateOne) sqlSave(ctx context.Context) (_node *GcRun, err error)
 	if value, ok := _u.mutation.Tags(); ok {
 		_spec.SetField(gcrun.FieldTags, field.TypeInt64, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldTags); ok {
+		_spec.SetField(gcrun.FieldTags, field.TypeInt64, e)
+	}
 	if value, ok := _u.mutation.AddedTags(); ok {
 		_spec.AddField(gcrun.FieldTags, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.Manifests(); ok {
 		_spec.SetField(gcrun.FieldManifests, field.TypeInt64, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldManifests); ok {
+		_spec.SetField(gcrun.FieldManifests, field.TypeInt64, e)
 	}
 	if value, ok := _u.mutation.AddedManifests(); ok {
 		_spec.AddField(gcrun.FieldManifests, field.TypeInt64, value)
@@ -748,11 +808,17 @@ func (_u *GcRunUpdateOne) sqlSave(ctx context.Context) (_node *GcRun, err error)
 	if value, ok := _u.mutation.Repositories(); ok {
 		_spec.SetField(gcrun.FieldRepositories, field.TypeInt64, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldRepositories); ok {
+		_spec.SetField(gcrun.FieldRepositories, field.TypeInt64, e)
+	}
 	if value, ok := _u.mutation.AddedRepositories(); ok {
 		_spec.AddField(gcrun.FieldRepositories, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.Blobs(); ok {
 		_spec.SetField(gcrun.FieldBlobs, field.TypeInt64, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldBlobs); ok {
+		_spec.SetField(gcrun.FieldBlobs, field.TypeInt64, e)
 	}
 	if value, ok := _u.mutation.AddedBlobs(); ok {
 		_spec.AddField(gcrun.FieldBlobs, field.TypeInt64, value)
@@ -760,11 +826,17 @@ func (_u *GcRunUpdateOne) sqlSave(ctx context.Context) (_node *GcRun, err error)
 	if value, ok := _u.mutation.Bytes(); ok {
 		_spec.SetField(gcrun.FieldBytes, field.TypeInt64, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldBytes); ok {
+		_spec.SetField(gcrun.FieldBytes, field.TypeInt64, e)
+	}
 	if value, ok := _u.mutation.AddedBytes(); ok {
 		_spec.AddField(gcrun.FieldBytes, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.Missing(); ok {
 		_spec.SetField(gcrun.FieldMissing, field.TypeJson, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldMissing); ok {
+		_spec.SetField(gcrun.FieldMissing, field.TypeJson, e)
 	}
 	if value, ok := _u.mutation.AppendedMissing(); ok {
 		_spec.AddModifier(func(u *sql.UpdateBuilder) {
@@ -777,11 +849,17 @@ func (_u *GcRunUpdateOne) sqlSave(ctx context.Context) (_node *GcRun, err error)
 	if value, ok := _u.mutation.DateFinished(); ok {
 		_spec.SetField(gcrun.FieldDateFinished, field.TypeTime, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldDateFinished); ok {
+		_spec.SetField(gcrun.FieldDateFinished, field.TypeTime, e)
+	}
 	if _u.mutation.DateFinishedCleared() {
 		_spec.ClearField(gcrun.FieldDateFinished, field.TypeTime)
 	}
 	if value, ok := _u.mutation.DateUpdated(); ok {
 		_spec.SetField(gcrun.FieldDateUpdated, field.TypeTime, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(gcrun.FieldDateUpdated); ok {
+		_spec.SetField(gcrun.FieldDateUpdated, field.TypeTime, e)
 	}
 	if _u.mutation.DateCreatedCleared() {
 		_spec.ClearField(gcrun.FieldDateCreated, field.TypeTime)

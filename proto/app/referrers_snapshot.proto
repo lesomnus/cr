@@ -73,6 +73,7 @@ message ReferrersSnapshot {
     domain: 15
     global: {}
     erase: {hard: {}}
+    trail: {off: {why: "Cached upstream observations refreshed by the proxy, not management RPC mutations"}}
 
     list: {
       order: [{field: {name: "date_created"}}, {field: {name: "id"}}]

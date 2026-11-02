@@ -12,6 +12,9 @@
 
 import { pdid } from '@lesomnus/payday'
 
+/** The domain identifiers of app.Access carry. */
+export const AccessDomain = 6
+
 /** The domain identifiers of app.Archived carry. */
 export const ArchivedDomain = 5
 
@@ -39,11 +42,17 @@ export const OrphanScanDomain = 17
 /** The domain identifiers of app.Outbox carry. */
 export const OutboxDomain = 4
 
+/** The domain identifiers of app.Owed carry. */
+export const OwedDomain = 254
+
 /** The domain identifiers of app.ReferrersSnapshot carry. */
 export const ReferrersSnapshotDomain = 15
 
 /** The domain identifiers of app.Repository carry. */
 export const RepositoryDomain = 8
+
+/** The domain identifiers of app.RowSeal carry. */
+export const RowSealDomain = 255
 
 /** The domain identifiers of app.Tag carry. */
 export const TagDomain = 11
@@ -56,6 +65,7 @@ export const TenantDomain = 1
 
 // Registered as this module is loaded, which is why importing it is the
 // whole of what an app does with it.
+pdid.register("app.Access", AccessDomain, "access")
 pdid.register("app.Archived", ArchivedDomain, "archived")
 pdid.register("app.Audit", AuditDomain, "audit")
 pdid.register("app.GcRun", GcRunDomain, "gc-run")
@@ -65,8 +75,10 @@ pdid.register("app.ManifestBlob", ManifestBlobDomain, "manifest-blob")
 pdid.register("app.OrphanCandidate", OrphanCandidateDomain, "orphan-candidate")
 pdid.register("app.OrphanScan", OrphanScanDomain, "orphan-scan")
 pdid.register("app.Outbox", OutboxDomain, "outbox")
+pdid.register("app.Owed", OwedDomain, "owed")
 pdid.register("app.ReferrersSnapshot", ReferrersSnapshotDomain, "referrers-snapshot")
 pdid.register("app.Repository", RepositoryDomain, "repository")
+pdid.register("app.RowSeal", RowSealDomain, "row-seal")
 pdid.register("app.Tag", TagDomain, "tag")
 pdid.register("app.TagRule", TagRuleDomain, "tag-rule")
 pdid.register("app.Tenant", TenantDomain, "tenant")

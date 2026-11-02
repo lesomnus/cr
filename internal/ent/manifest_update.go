@@ -125,17 +125,26 @@ func (_u *ManifestUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Annotations(); ok {
 		_spec.SetField(manifest.FieldAnnotations, field.TypeJson, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(manifest.FieldAnnotations); ok {
+		_spec.SetField(manifest.FieldAnnotations, field.TypeJson, e)
+	}
 	if _u.mutation.AnnotationsCleared() {
 		_spec.ClearField(manifest.FieldAnnotations, field.TypeJson)
 	}
 	if value, ok := _u.mutation.DatePulled(); ok {
 		_spec.SetField(manifest.FieldDatePulled, field.TypeTime, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(manifest.FieldDatePulled); ok {
+		_spec.SetField(manifest.FieldDatePulled, field.TypeTime, e)
+	}
 	if _u.mutation.DatePulledCleared() {
 		_spec.ClearField(manifest.FieldDatePulled, field.TypeTime)
 	}
 	if value, ok := _u.mutation.DateUpdated(); ok {
 		_spec.SetField(manifest.FieldDateUpdated, field.TypeTime, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(manifest.FieldDateUpdated); ok {
+		_spec.SetField(manifest.FieldDateUpdated, field.TypeTime, e)
 	}
 	if _u.mutation.DateCreatedCleared() {
 		_spec.ClearField(manifest.FieldDateCreated, field.TypeTime)
@@ -288,17 +297,26 @@ func (_u *ManifestUpdateOne) sqlSave(ctx context.Context) (_node *Manifest, err 
 	if value, ok := _u.mutation.Annotations(); ok {
 		_spec.SetField(manifest.FieldAnnotations, field.TypeJson, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(manifest.FieldAnnotations); ok {
+		_spec.SetField(manifest.FieldAnnotations, field.TypeJson, e)
+	}
 	if _u.mutation.AnnotationsCleared() {
 		_spec.ClearField(manifest.FieldAnnotations, field.TypeJson)
 	}
 	if value, ok := _u.mutation.DatePulled(); ok {
 		_spec.SetField(manifest.FieldDatePulled, field.TypeTime, value)
 	}
+	if e, ok := _u.mutation.FieldExpr(manifest.FieldDatePulled); ok {
+		_spec.SetField(manifest.FieldDatePulled, field.TypeTime, e)
+	}
 	if _u.mutation.DatePulledCleared() {
 		_spec.ClearField(manifest.FieldDatePulled, field.TypeTime)
 	}
 	if value, ok := _u.mutation.DateUpdated(); ok {
 		_spec.SetField(manifest.FieldDateUpdated, field.TypeTime, value)
+	}
+	if e, ok := _u.mutation.FieldExpr(manifest.FieldDateUpdated); ok {
+		_spec.SetField(manifest.FieldDateUpdated, field.TypeTime, e)
 	}
 	if _u.mutation.DateCreatedCleared() {
 		_spec.ClearField(manifest.FieldDateCreated, field.TypeTime)

@@ -37,8 +37,10 @@ func (ReferrersSnapshot) Fields() []ent.Field {
 
 func (ReferrersSnapshot) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("date_created", "id"),
+		index.Fields("date_created", "id").
+			StorageKey("referrerssnapshot_page"),
 		index.Fields("repo", "subject").
+			StorageKey("referrerssnapshot_by_subject").
 			Unique(),
 	}
 }

@@ -97,6 +97,7 @@ message Tag {
     domain: 11
     global: {}
     erase: {hard: {}}
+    trail: {off: {why: "OCI tag index written directly by registry, import and GC operations, outside the management RPC audit trail"}}
 
     list: {
       order: [{field: {name: "date_created"}}, {field: {name: "id"}}]

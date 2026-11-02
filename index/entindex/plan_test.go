@@ -59,10 +59,10 @@ func TestSqlitePlans(t *testing.T) {
 	for _, tc := range []struct {
 		name, query, index string
 	}{
-		{"Tags.Of", "SELECT * FROM tag WHERE repo = ? AND digest = ? ORDER BY name", "tag_repo_digest_name"},
-		{"Tags.Newest", "SELECT * FROM tag WHERE repo = ? ORDER BY date_moved DESC LIMIT 1", "tag_repo_date_moved"},
-		{"management list", "SELECT * FROM tag WHERE repo = ? ORDER BY date_created, id LIMIT 21", "tag_repo_date_created_id"},
-		{"artifact list", "SELECT * FROM manifest WHERE artifact_type = ? ORDER BY date_created, id LIMIT 21", "manifest_artifact_type_date_created_id"},
+		{"Tags.Of", "SELECT * FROM tag WHERE repo = ? AND digest = ? ORDER BY name", "tag_by_digest"},
+		{"Tags.Newest", "SELECT * FROM tag WHERE repo = ? ORDER BY date_moved DESC LIMIT 1", "tag_by_moved"},
+		{"management list", "SELECT * FROM tag WHERE repo = ? ORDER BY date_created, id LIMIT 21", "tag_page_in_repo"},
+		{"artifact list", "SELECT * FROM manifest WHERE artifact_type = ? ORDER BY date_created, id LIMIT 21", "manifest_by_artifact_type"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			args := []any{"r", "sha256:x"}[:strings.Count(tc.query, "?")]
@@ -126,10 +126,10 @@ func TestPostgresPlans(t *testing.T) {
 	for i, tc := range []struct {
 		name, query, index string
 	}{
-		{"Tags.Of", "SELECT * FROM tag WHERE repo = $1 AND digest = $2 ORDER BY name", "tag_repo_digest_name"},
-		{"Tags.Newest", "SELECT * FROM tag WHERE repo = $1 ORDER BY date_moved DESC LIMIT 1", "tag_repo_date_moved"},
-		{"management list", "SELECT * FROM tag WHERE repo = $1 ORDER BY date_created, id LIMIT 21", "tag_repo_date_created_id"},
-		{"artifact list", "SELECT * FROM manifest WHERE artifact_type = $1 ORDER BY date_created, id LIMIT 21", "manifest_artifact_type_date_created_id"},
+		{"Tags.Of", "SELECT * FROM tag WHERE repo = $1 AND digest = $2 ORDER BY name", "tag_by_digest"},
+		{"Tags.Newest", "SELECT * FROM tag WHERE repo = $1 ORDER BY date_moved DESC LIMIT 1", "tag_by_moved"},
+		{"management list", "SELECT * FROM tag WHERE repo = $1 ORDER BY date_created, id LIMIT 21", "tag_page_in_repo"},
+		{"artifact list", "SELECT * FROM manifest WHERE artifact_type = $1 ORDER BY date_created, id LIMIT 21", "manifest_by_artifact_type"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			name := fmt.Sprintf("q%d", i)

@@ -46,11 +46,15 @@ func (Manifest) Fields() []ent.Field {
 
 func (Manifest) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("date_created", "id"),
-		index.Fields("artifact_type", "date_created", "id"),
+		index.Fields("date_created", "id").
+			StorageKey("manifest_page"),
+		index.Fields("artifact_type", "date_created", "id").
+			StorageKey("manifest_by_artifact_type"),
 		index.Fields("repo", "digest").
+			StorageKey("manifest_by_digest").
 			Unique(),
-		index.Fields("repo", "subject"),
+		index.Fields("repo", "subject").
+			StorageKey("manifest_by_subject"),
 	}
 }
 
