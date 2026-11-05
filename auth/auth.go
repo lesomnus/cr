@@ -11,6 +11,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"time"
 )
 
 // Action is something a caller may do in a repository, or to the registry.
@@ -81,6 +82,10 @@ type Subject struct {
 
 	// Claims are what the credential said, for a match's `when`.
 	Claims map[string]any
+
+	// CredentialExpiry bounds access tokens derived from a credential whose
+	// lifetime must be preserved. Zero leaves the issuer's TTL in charge.
+	CredentialExpiry time.Time
 
 	// Via is the kind of authenticator that accepted the credential --
 	// `oidc`, `exchange` -- for the count of logins. Empty for the anonymous

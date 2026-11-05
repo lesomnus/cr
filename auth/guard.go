@@ -36,7 +36,7 @@ type Guard struct {
 	denied metric.Int64Counter
 }
 
-// Caller is a request's subject and, for a bearer token, what it grants.
+// Caller is a request's subject and, for a cr access token, what it grants.
 type Caller struct {
 	Subject Subject
 
@@ -63,7 +63,7 @@ func CallerFrom(ctx context.Context) *Caller {
 
 func (c *Caller) open() bool { return c == Open }
 
-// FromToken reports whether the caller came with a bearer token.
+// FromToken reports whether the caller came with a cr-issued access token.
 func (c *Caller) FromToken() bool { return c.claims != nil }
 
 func intersect(want []Action, granted []string) []Action {
@@ -173,10 +173,15 @@ func (g *Guard) Caller(r *http.Request) (*Caller, error) {
 	switch strings.ToLower(scheme) {
 	case "bearer":
 		c, err := g.Issuer.Verify(strings.TrimSpace(rest))
+		if err == nil {
+			return &Caller{Subject: c.Who(), claims: c, policy: p}, nil
+		}
+		s, err := p.bearer(r.Context(), strings.TrimSpace(rest), g.Issuer.name)
 		if err != nil {
 			return nil, ErrUnauthenticated
 		}
-		return &Caller{Subject: c.Who(), claims: c, policy: p}, nil
+		g.login(r.Context(), s.Via, "ok")
+		return &Caller{Subject: s, policy: p}, nil
 	case "basic":
 		user, pass, ok := r.BasicAuth()
 		if !ok {
@@ -341,7 +346,7 @@ func (g *Guard) ServeToken(w http.ResponseWriter, r *http.Request) {
 	b, _ := json.Marshal(tokenResponse{
 		Token:       token,
 		AccessToken: token,
-		ExpiresIn:   int(g.Issuer.TTL() / time.Second),
+		ExpiresIn:   max(0, int(c.Expiry.Time().Sub(c.IssuedAt.Time())/time.Second)),
 		IssuedAt:    c.IssuedAt.Time().UTC().Format(time.RFC3339),
 	})
 	h := w.Header()

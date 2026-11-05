@@ -479,6 +479,29 @@ func (p *Policy) Authenticate(ctx context.Context, username, password string) (S
 	return Subject{}, ErrNotMine
 }
 
+// bearer asks only providers that explicitly accept direct Bearer tokens.
+// The registry's own issuer is excluded: a failed access token must not get
+// a second interpretation, with the provider's permissions instead of its
+// signed access list.
+func (p *Policy) bearer(ctx context.Context, token, ownIssuer string) (Subject, error) {
+	if p != nil {
+		for _, a := range p.chain {
+			b, ok := a.(interface {
+				bearer()
+				Issuer() string
+			})
+			if !ok || b.Issuer() == ownIssuer {
+				continue
+			}
+			s, err := ask(ctx, a, "", token)
+			if !errors.Is(err, ErrNotMine) {
+				return s, err
+			}
+		}
+	}
+	return Subject{}, ErrUnauthenticated
+}
+
 // Exchange is how long a token the exchange trades a credential of provider
 // for lasts; zero trades none.
 func (p *Policy) Exchange(provider string) time.Duration {

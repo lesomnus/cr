@@ -160,6 +160,80 @@ would have to hold, so a different value is a match nobody is ever under, or
 one that reads as if it relaxed the provider's claim, which it would not; it
 is refused. Every provider may have one, `mtls` included.
 
+### Locally trusted JWTs: `jwt`
+
+Use `jwt` when the issuer and its public keys are deployed together rather
+than discovered online. A device can keep pulling with an already issued
+token while its issuer is unreachable; verifying it makes no network request.
+
+```yaml
+providers:
+  devices:
+    kind: jwt
+    issuer: https://devices.example
+    audience: registry.example
+    audience_host: true
+    jwks: ${file:/etc/cr/device-jwks.json}
+    when: {scopes: pull}
+permissions:
+  device-read:
+    repos: ["**"]
+    actions: [pull, catalog]
+matches:
+  devices:
+    for: devices
+    grant: [device-read]
+```
+
+The caller gives the token either as `Authorization: Bearer <JWT>` directly
+to `/v2/*`, or as the password in HTTP Basic, with any username. Direct
+external Bearer authentication is specific to `jwt`: an `oidc` or `secret`
+provider does not start accepting Bearer credentials. The usual distribution
+Bearer challenge and `/token` flow remain available. An access token derived
+from a `jwt` credential expires no later than that credential's `exp`.
+`exchange` is not supported for this provider.
+
+`issuer` is required and compared exactly. For two issuers, declare two
+providers and matches; they may read the same JWKS if both are trusted with
+all its keys. Use issuer names different from `auth.token.issuer` (`cr` by
+default): a Bearer token naming cr's own issuer is never reinterpreted as an
+external credential after its access-token verification fails.
+
+`jwks` is a public JSON key set, `{"keys":[...]}`, not a discovery URL. It uses
+the same file/env value reader as passwords; inline JSON and `${env:NAME}`
+also work. A file is read again when replaced, without changing the policy or
+restarting cr. Unreadable or invalid keys let nobody in by this provider.
+Only public signing keys are used; `use`, when present, must be `sig`, and
+`alg`, when present, must match the token's. Supported algorithms are ES256,
+ES384, ES512, RS256, RS384, RS512, PS256, PS384 and PS512. Symmetric algorithms
+and `none` are refused.
+
+Tokens should name their key by `kid`. With no `kid`, exactly one usable key
+must remain; an unknown `kid` never falls back to another key. To rotate,
+publish old and new public keys together, switch the signer, and remove the
+old key after every token it signed has expired. Removing it refuses those
+tokens on subsequent direct requests; an already issued cr access token lasts
+until its own expiry.
+
+`audience` is required. By default, a token's `aud` string, or an element of
+its audience array, must equal it exactly. `audience_host: true` instead
+compares case-insensitive host and port, accepting both `registry.example`
+and `https://registry.example`; the URL scheme and path are ignored. Use this
+only for an audience that identifies a registry host, not an application path.
+
+`exp` is required and `nbf` optional, with 60 seconds of clock skew. `iat` is
+metadata rather than a validity bound. The caller's ID is `<provider>:<sub>`;
+`subject_claim` selects another claim, and an absent or empty subject falls
+back to `device`.
+
+Every verified claim is available to policy. The derived `scopes` claim is
+always replaced by the union of string entries in `capabilities` and the
+space-delimited `scope` string. Thus `when: {scopes: pull}` accepts either
+`"capabilities": ["pull"]` or `"scope": "other pull"`, while refusing
+`"scope": "notpull"`. A token-supplied `scopes` grants nothing. Verification
+alone grants no actions: the example grants authenticated pull and catalog
+access, with no anonymous or write permissions.
+
 ### Client certificates: `mtls`
 
 ```yaml

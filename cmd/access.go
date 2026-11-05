@@ -53,23 +53,32 @@ type PolicyFile struct {
 
 // ProviderConfig is one provider of credentials.
 type ProviderConfig struct {
-	// Kind is what the provider is: `oidc`, `mtls` for a client certificate
-	// a listener verified, or `secret` for one caller by a username and a
-	// password.
+	// Kind is what the provider is: `oidc`, `jwt` with local public keys,
+	// `mtls` for a client certificate a listener verified, or `secret` for
+	// one caller by a username and a password.
 	Kind string `yaml:"kind"`
 
-	// Issuer is an `oidc` provider as its ID tokens name it:
+	// Issuer is an `oidc` or `jwt` provider as its tokens name it:
 	// `https://token.actions.githubusercontent.com`.
 	Issuer string `yaml:"issuer"`
 
-	// Audience is what an ID token must be issued for: a GitHub job asks
+	// Audience is what a token must be issued for: a GitHub job asks
 	// for it with `audience=`. It keeps a token the provider issued for
 	// another service from being given here.
 	Audience string `yaml:"audience"`
 
-	// SubjectClaim is the claim an ID token's subject is read from; empty is
+	// SubjectClaim is the claim a token's subject is read from; empty is
 	// `sub`.
 	SubjectClaim string `yaml:"subject_claim"`
+
+	// JWKS is a `jwt` provider's public key set, usually
+	// `${file:/etc/cr/jwks.json}`. It uses the same file/env value reader as
+	// credentials so that a replaced file is read again; the keys are public.
+	JWKS Secret `yaml:"jwks"`
+
+	// AudienceHost opts a `jwt` provider into comparing audience hosts and
+	// ports, accepting host and URL forms. Otherwise the comparison is exact.
+	AudienceHost bool `yaml:"audience_host"`
 
 	// Exchange is how long a token `POST /token/exchange` trades one of the
 	// provider's credentials for lasts, to be given as a password where the

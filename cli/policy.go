@@ -247,7 +247,25 @@ func provider(name string, p cmd.ProviderConfig, oidcs map[oidcKey]*auth.OIDC) (
 	if p.Kind != "secret" && (p.Username != "" || !p.Password.IsZero()) {
 		return auth.Provider{}, errors.New("username, password: are a secret provider's")
 	}
+	if p.Kind != "jwt" && (!p.JWKS.IsZero() || p.AudienceHost) {
+		return auth.Provider{}, errors.New("jwks, audience_host: are a jwt provider's")
+	}
 	switch p.Kind {
+	case "jwt":
+		if p.JWKS.IsZero() {
+			return auth.Provider{}, errors.New("jwks: not set")
+		}
+		if p.Exchange != 0 {
+			return auth.Provider{}, errors.New("exchange: jwt credentials are used directly, without extending their lifetime")
+		}
+		j, err := auth.NewJWT(auth.JWTConfig{
+			Name: name, Issuer: p.Issuer, Audience: p.Audience,
+			JWKS: p.JWKS, SubjectClaim: p.SubjectClaim, AudienceHost: p.AudienceHost,
+		})
+		if err != nil {
+			return auth.Provider{}, err
+		}
+		return auth.Provider{Name: name, Authenticator: j, When: p.When}, nil
 	case "secret":
 		switch {
 		case p.Issuer != "", p.Audience != "", p.SubjectClaim != "":
@@ -290,5 +308,5 @@ func provider(name string, p cmd.ProviderConfig, oidcs map[oidcKey]*auth.OIDC) (
 	case "":
 		return auth.Provider{}, errors.New("no kind")
 	}
-	return auth.Provider{}, fmt.Errorf("kind %q: the kinds there are are oidc, mtls and secret", p.Kind)
+	return auth.Provider{}, fmt.Errorf("kind %q: the kinds there are are oidc, jwt, mtls and secret", p.Kind)
 }
