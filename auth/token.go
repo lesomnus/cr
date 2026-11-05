@@ -101,6 +101,10 @@ func (i *Issuer) TTL() time.Duration { return i.ttl }
 // and not granted.
 func (i *Issuer) Issue(s Subject, access []Access, refused ...Access) (string, Claims, error) {
 	now := i.now()
+	exp := now.Add(i.ttl)
+	if !s.CredentialExpiry.IsZero() && s.CredentialExpiry.Before(exp) {
+		exp = s.CredentialExpiry
+	}
 	id := make([]byte, 16)
 	rand.Read(id)
 	c := Claims{
@@ -108,7 +112,7 @@ func (i *Issuer) Issue(s Subject, access []Access, refused ...Access) (string, C
 			Issuer:    i.name,
 			Subject:   s.ID,
 			Audience:  jwt.Audience{i.service},
-			Expiry:    jwt.NewNumericDate(now.Add(i.ttl)),
+			Expiry:    jwt.NewNumericDate(exp),
 			NotBefore: jwt.NewNumericDate(now.Add(-time.Minute)),
 			IssuedAt:  jwt.NewNumericDate(now),
 			ID:        base64.RawURLEncoding.EncodeToString(id),
