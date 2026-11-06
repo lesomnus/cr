@@ -304,9 +304,21 @@ func Proxies(c cmd.RegistryConfig, base flob.Stores, meter metric.Meter) (flob.S
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("registry.proxies[%d].%w", i, err)
 		}
-		up, err := blob.NewUpstream(pc.Upstream, append(auth, blob.WithMeter(meter))...)
+		var up *blob.Upstream
+		if pc.Upstreams != nil {
+			if pc.Upstream != "" {
+				return nil, nil, nil, fmt.Errorf("registry.proxies[%d]: upstream and upstreams cannot both be set", i)
+			}
+			up, err = blob.NewUpstreams(pc.Upstreams, append(auth, blob.WithMeter(meter))...)
+		} else {
+			up, err = blob.NewUpstream(pc.Upstream, append(auth, blob.WithMeter(meter))...)
+		}
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("registry.proxies[%d].upstream: %w", i, err)
+			field := "upstream"
+			if pc.Upstreams != nil {
+				field = "upstreams"
+			}
+			return nil, nil, nil, fmt.Errorf("registry.proxies[%d].%s: %w", i, field, err)
 		}
 		verify, err := proxyVerify(pc.Verify)
 		if err != nil {

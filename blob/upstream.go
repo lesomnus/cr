@@ -37,8 +37,9 @@ const ManifestAccept = "application/vnd.oci.image.index.v1+json, " +
 // manifests and blobs, through whatever token flow it challenges with — or with
 // a bearer minted elsewhere, when one is configured ([WithBearer]).
 type Upstream struct {
-	base     *url.URL
-	username string
+	base      *url.URL
+	fallbacks []*Upstream
+	username  string
 	// password is asked for when a challenge is answered, not before, so one
 	// that lives in a file is read when it is needed. See [WithPassword].
 	password Secret
@@ -239,9 +240,9 @@ func (u *Upstream) cached(scope string) string {
 // asked for some and was configured with none.
 var ErrUpstreamUnauthorized = errors.New("upstream: unauthorized")
 
-// ErrUpstreamUnreachable is an upstream that did not answer at all: refused,
-// reset, timed out. It wraps what the transport said, so a request the
-// client itself gave up on is still [context.Canceled].
+// ErrUpstreamUnreachable is an upstream whose transport failed: refused,
+// reset, timed out, or interrupted while reading a response. It wraps what the
+// transport said, so a request the client gave up on is still [context.Canceled].
 var ErrUpstreamUnreachable = errors.New("upstream: unreachable")
 
 // UpstreamStatusError is an upstream that answered, with a status that is
@@ -322,6 +323,9 @@ func (u *Upstream) authorize(ctx context.Context, challenge, scope string) (stri
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
+		if res.StatusCode >= 500 && res.StatusCode <= 599 {
+			return "", upstreamErr("token GET", res)
+		}
 		return "", fmt.Errorf("%w: token endpoint answered %s", ErrUpstreamUnauthorized, res.Status)
 	}
 	var v struct {
@@ -329,7 +333,14 @@ func (u *Upstream) authorize(ctx context.Context, challenge, scope string) (stri
 		AccessToken string `json:"access_token"`
 		ExpiresIn   int    `json:"expires_in"`
 	}
-	if err := json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&v); err != nil {
+	body, err := io.ReadAll(io.LimitReader(res.Body, (1<<20)+1))
+	if err != nil {
+		return "", upstreamReadError(err)
+	}
+	if len(body) > 1<<20 {
+		return "", fmt.Errorf("upstream: token response is larger than 1 MiB")
+	}
+	if err := json.Unmarshal(body, &v); err != nil {
 		return "", err
 	}
 	token := v.Token
@@ -400,6 +411,12 @@ func upstreamErr(what string, res *http.Response) error {
 // HeadManifest answers the digest the upstream has for reference in repo, or
 // nothing when it does not say.
 func (u *Upstream) HeadManifest(ctx context.Context, repo, reference string) (digest.Digest, error) {
+	return tryUpstreams(ctx, u, "manifest head", func(origin *Upstream) (digest.Digest, error) {
+		return origin.headManifest(ctx, repo, reference)
+	})
+}
+
+func (u *Upstream) headManifest(ctx context.Context, repo, reference string) (digest.Digest, error) {
 	res, err := u.do(ctx, http.MethodHead, repo, "/v2/"+repo+"/manifests/"+reference, http.Header{"Accept": {ManifestAccept}})
 	if err != nil {
 		return "", err
@@ -415,9 +432,7 @@ func (u *Upstream) HeadManifest(ctx context.Context, repo, reference string) (di
 	return d, nil
 }
 
-// GetManifest answers the manifest reference names in repo: its bytes, its
-// media type, and its digest, checked against reference when that is one.
-func (u *Upstream) GetManifest(ctx context.Context, repo, reference string, max int64) ([]byte, string, digest.Digest, error) {
+func (u *Upstream) getManifest(ctx context.Context, repo, reference string, max int64) ([]byte, string, digest.Digest, error) {
 	res, err := u.do(ctx, http.MethodGet, repo, "/v2/"+repo+"/manifests/"+reference, http.Header{"Accept": {ManifestAccept}})
 	if err != nil {
 		return nil, "", "", err
@@ -428,7 +443,7 @@ func (u *Upstream) GetManifest(ctx context.Context, repo, reference string, max 
 	}
 	b, err := io.ReadAll(io.LimitReader(res.Body, max+1))
 	if err != nil {
-		return nil, "", "", err
+		return nil, "", "", upstreamReadError(err)
 	}
 	u.bytes.Add(ctx, int64(len(b)), metric.WithAttributes(u.host, attribute.String("cr.cache.operation", "manifest get")))
 	if int64(len(b)) > max {
@@ -462,6 +477,12 @@ const maxReferrersPages = 100
 // An upstream without the referrers API answers `404`, which is
 // [flob.ErrNotExist]; the specification has one that has it never do so.
 func (u *Upstream) Referrers(ctx context.Context, repo string, subject digest.Digest, max int64) ([]v1.Descriptor, error) {
+	return tryUpstreams(ctx, u, "referrers get", func(origin *Upstream) ([]v1.Descriptor, error) {
+		return origin.referrers(ctx, repo, subject, max)
+	})
+}
+
+func (u *Upstream) referrers(ctx context.Context, repo string, subject digest.Digest, max int64) ([]v1.Descriptor, error) {
 	out := []v1.Descriptor{}
 	path := "/v2/" + repo + "/referrers/" + subject.String()
 	for range maxReferrersPages {
@@ -574,7 +595,7 @@ func (s *upstreamStore) path(d flob.Digest) string {
 	return "/v2/" + s.repo + "/blobs/" + string(d)
 }
 
-func (s *upstreamStore) Stat(ctx context.Context, d flob.Digest) (flob.Info, error) {
+func (s *upstreamStore) stat(ctx context.Context, d flob.Digest) (flob.Info, error) {
 	res, err := s.u.do(ctx, http.MethodHead, s.repo, s.path(d), nil)
 	if err != nil {
 		return nil, err
@@ -590,7 +611,7 @@ func (s *upstreamStore) Stat(ctx context.Context, d flob.Digest) (flob.Info, err
 	return flob.NewInfo(d, size, time.Time{}, noLabels), nil
 }
 
-func (s *upstreamStore) Open(ctx context.Context, d flob.Digest) (io.ReadSeekCloser, flob.Info, error) {
+func (s *upstreamStore) open(ctx context.Context, d flob.Digest) (*upstreamReader, flob.Info, error) {
 	res, err := s.u.do(ctx, http.MethodGet, s.repo, s.path(d), nil)
 	if err != nil {
 		return nil, nil, err
@@ -606,15 +627,42 @@ func (s *upstreamStore) Open(ctx context.Context, d flob.Digest) (io.ReadSeekClo
 // upstreamReader reads a blob from the upstream, and seeks by asking again
 // from the new offset.
 type upstreamReader struct {
-	ctx  context.Context
-	s    *upstreamStore
-	path string
-	body io.ReadCloser
-	size int64
-	pos  int64
+	ctx       context.Context
+	s         *upstreamStore
+	path      string
+	body      io.ReadCloser
+	size      int64
+	pos       int64
+	remaining []*Upstream
+	ordered   bool
 }
 
 func (r *upstreamReader) Read(p []byte) (int, error) {
+	for {
+		n, err := r.read(p)
+		if err == io.EOF && r.size >= 0 && r.pos < r.size {
+			err = io.ErrUnexpectedEOF
+		}
+		err = upstreamReadError(err)
+		if !retryUpstream(r.ctx, err) || len(r.remaining) == 0 {
+			return n, err
+		}
+		if r.body != nil {
+			r.body.Close()
+			r.body = nil
+		}
+		next := r.remaining[0]
+		r.remaining = r.remaining[1:]
+		logUpstreamFallback(r.ctx, r.s.u, next, "blob get")
+		r.s = &upstreamStore{u: next, repo: r.s.repo}
+		if n > 0 {
+			// Preserve bytes already delivered; resume the same digest at pos.
+			return n, nil
+		}
+	}
+}
+
+func (r *upstreamReader) read(p []byte) (int, error) {
 	if r.size >= 0 && r.pos >= r.size {
 		return 0, io.EOF
 	}
@@ -625,6 +673,14 @@ func (r *upstreamReader) Read(p []byte) (int, error) {
 		}
 		switch res.StatusCode {
 		case http.StatusPartialContent:
+			if r.ordered {
+				var start, end, size int64
+				_, err := fmt.Sscanf(res.Header.Get("Content-Range"), "bytes %d-%d/%d", &start, &end, &size)
+				if err != nil || start != r.pos || end < start || end >= size || (r.size >= 0 && size != r.size) || (res.ContentLength >= 0 && res.ContentLength != end-start+1) {
+					res.Body.Close()
+					return 0, fmt.Errorf("upstream: invalid blob Content-Range")
+				}
+			}
 		case http.StatusOK:
 			// A range the upstream ignored: skip to where the reader is.
 			if _, err := io.CopyN(io.Discard, res.Body, r.pos); err != nil {

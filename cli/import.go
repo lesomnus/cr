@@ -70,6 +70,9 @@ func NewCmdImport(c *cmd.Config) *xli.Command {
 			refuse := func(repo string) string {
 				for _, p := range c.Registry.Proxies {
 					if blob.Covers(p.Prefix, repo) {
+						if len(p.Upstreams) > 0 {
+							return "a pull-through cache of " + strings.Join(p.Upstreams, ", ")
+						}
 						return "a pull-through cache of " + p.Upstream
 					}
 				}

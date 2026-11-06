@@ -39,6 +39,9 @@ type ProxyConfig struct {
 
 	// Upstream is the registry's URL: `https://registry-1.docker.io`.
 	Upstream string `yaml:"upstream"`
+	// Upstreams are tried in order on transport failures or HTTP 5xx.
+	// Mutually exclusive with Upstream; credentials apply to every listed URL.
+	Upstreams []string `yaml:"upstreams"`
 
 	// Remote is the upstream repository the prefix stands for; empty maps
 	// what follows the prefix to itself.
