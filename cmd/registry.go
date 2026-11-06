@@ -39,6 +39,9 @@ type ProxyConfig struct {
 
 	// Upstream is the registry's URL: `https://registry-1.docker.io`.
 	Upstream string `yaml:"upstream"`
+	// Upstreams are tried in order on transport failures or HTTP 5xx.
+	// Each has its own auth; mutually exclusive with Upstream and Auth.
+	Upstreams []ProxyUpstreamConfig `yaml:"upstreams"`
 
 	// Remote is the upstream repository the prefix stands for; empty maps
 	// what follows the prefix to itself.
@@ -51,7 +54,8 @@ type ProxyConfig struct {
 	// in front has to pass the Host the client asked for.
 	Hosts []string `yaml:"hosts"`
 
-	// Auth is how the upstream is asked; none is anonymously.
+	// Auth is how the single Upstream is asked; none is anonymously.
+	// With Upstreams, configure auth on each entry instead.
 	Auth ProxyAuthConfig `yaml:"auth"`
 
 	// Username, Password and TokenFile are where `auth` used to be. They are
@@ -88,6 +92,13 @@ type ProxyConfig struct {
 	// Verify makes the cache serve an image from this upstream only when it
 	// is signed by somebody it trusts; unset serves what the upstream has.
 	Verify ProxyVerifyConfig `yaml:"verify"`
+}
+
+// ProxyUpstreamConfig is one ordered origin, with its own credential.
+// An omitted Auth is anonymous; no credential is inherited from the proxy.
+type ProxyUpstreamConfig struct {
+	URL  string          `yaml:"url"`
+	Auth ProxyAuthConfig `yaml:"auth"`
 }
 
 // ProxyVerifyConfig is who a pull-through cache trusts to sign the images it
@@ -148,6 +159,10 @@ type ProxyAuthConfig struct {
 	Password Secret `yaml:"password"`
 	// Token is `bearer`'s. SECRET.
 	Token Secret `yaml:"token"`
+}
+
+func (c ProxyAuthConfig) IsSet() bool {
+	return c.Kind != "" || c.Username != "" || !c.Password.IsZero() || !c.Token.IsZero()
 }
 
 // StorageConfig says where blobs and manifests are kept.

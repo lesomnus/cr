@@ -525,6 +525,57 @@ store, `cr import` (below) takes its layouts with their tags instead.
 
 ## Pull-through caches
 
+For a primary registry and a fallback, use `upstreams` in priority order:
+
+```yaml
+registry:
+  proxies:
+    - prefix: dist
+      remote: dist
+      upstreams:
+        - url: https://cr.hq.hday.io
+          auth:
+            kind: bearer
+            token: ${file:/run/robot/registry-token}
+        - url: https://registry.hday.io
+          auth:
+            kind: bearer
+            token: ${file:/run/robot/registry-token}
+```
+
+The existing single `upstream` with proxy-level `auth` below remains valid.
+Set one of `upstream` or `upstreams`; an empty list or invalid URL refuses
+startup. With `upstreams`, proxy-level `auth` is refused: configure each
+entry's `auth` instead. Omitting an entry's `auth` makes it anonymous, without
+inheriting credentials from another entry.
+
+Each origin can independently use `bearer`, `password` or no credential.
+The example intentionally shares the same token file; use different files
+or auth kinds when the registries need different credentials. Challenge
+tokens are cached independently, and each file credential keeps rotating
+without a restart. Use HTTPS for credentials outside a trusted development
+network.
+
+Manifest HEAD/GET, blob HEAD/GET and referrers try the next origin on
+connection, DNS, TLS, response-header timeout, interrupted-response or HTTP
+5xx failures. HTTP 404 (including a missing blob), 401/403, 429 and other
+responses stop. Caller cancellation, local credential errors, invalid JSON,
+oversized responses, wrong digests and signature verification failures stop
+as well. If all origins fail, their errors are reported together.
+
+Tags resolve once to a digest before a multi-origin manifest download;
+fallback never reselects a mutable tag. Referrers pagination restarts at the
+next origin's first page instead of combining lists from different servers.
+A blob interrupted during cache fill resumes the same digest at the byte
+offset already read. The existing cache still verifies its hash before
+installing it. Requests remain confined to the named repository, and cached
+data keeps the same identity regardless of the origin that supplied it.
+
+The connect and TLS handshake timeouts are ten seconds per origin, and
+response headers are bounded to thirty seconds. The caller's context bounds
+the whole operation. Moving to another origin is logged with its configured
+host and operation, without credential values.
+
 ```yaml
 registry:
   proxies:

@@ -12,7 +12,8 @@ pull-through caches, and garbage collection that never stops it.
 - **Credentials from where they already are**: OpenID Connect ID tokens, so a
   GitHub Actions workflow pushes with no secret.
 - **Pull-through caches** that stream while they fill, fetch only what is
-  asked for, and keep serving cached tags when the upstream is down.
+  asked for, try ordered upstreams on connection failures or HTTP 5xx, and
+  keep serving cached tags when the upstream is down.
 - **Garbage collection without a read-only window**, and an index whose
   repositories and manifests the store alone can rebuild.
 - **A management API** for tag rules, repositories and collection runs. SQLite or PostgreSQL; a local disk or S3.
