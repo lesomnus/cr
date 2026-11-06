@@ -175,19 +175,48 @@ func backend(at string, driver string, o cmd.OsStorageConfig, s cmd.S3StorageCon
 	}
 }
 
-// proxyAuth is the credential a proxy's `auth` configures. The error names the
-// field, for the caller to put the proxy in front of.
-func proxyAuth(pc cmd.ProxyConfig) ([]blob.UpstreamOption, error) {
+// proxyUpstream builds either the established single origin or the ordered
+// targets. Each target owns its credential; proxy-level auth is single-only.
+func proxyUpstream(pc cmd.ProxyConfig, meter metric.Meter) (*blob.Upstream, error) {
 	switch {
 	case pc.Username != "", pc.Password != "":
 		return nil, errors.New("username, password: moved to auth, with kind: password")
 	case pc.TokenFile != "":
 		return nil, errors.New("token_file: moved to auth, with kind: bearer and token: ${file:...}")
 	}
+	if pc.Upstreams == nil {
+		auth, err := proxyAuth(pc.Auth)
+		if err != nil {
+			return nil, err
+		}
+		up, err := blob.NewUpstream(pc.Upstream, append(auth, blob.WithMeter(meter))...)
+		if err != nil {
+			return nil, fmt.Errorf("upstream: %w", err)
+		}
+		return up, nil
+	}
+	if pc.Upstream != "" {
+		return nil, errors.New("upstream and upstreams cannot both be set")
+	}
+	if pc.Auth.IsSet() {
+		return nil, errors.New("auth: with upstreams, configure auth on each upstream entry")
+	}
+	targets := make([]blob.UpstreamTarget, len(pc.Upstreams))
+	for i, target := range pc.Upstreams {
+		auth, err := proxyAuth(target.Auth)
+		if err != nil {
+			return nil, fmt.Errorf("upstreams[%d].%w", i, err)
+		}
+		targets[i] = blob.UpstreamTarget{URL: target.URL, Options: append(auth, blob.WithMeter(meter))}
+	}
+	return blob.NewUpstreams(targets)
+}
 
+// proxyAuth validates a credential for one upstream. The caller adds the
+// proxy/target path to any field error.
+func proxyAuth(a cmd.ProxyAuthConfig) ([]blob.UpstreamOption, error) {
 	// A cmd.Secret is a blob.Secret as it is: `Value` answers the credential,
 	// read again when its file changed.
-	a := pc.Auth
 	switch a.Kind {
 	case "":
 		if a.Username != "" || !a.Password.IsZero() || !a.Token.IsZero() {
@@ -300,25 +329,9 @@ func Proxies(c cmd.RegistryConfig, base flob.Stores, meter metric.Meter) (flob.S
 			}
 			hosts[h] = pc.Prefix
 		}
-		auth, err := proxyAuth(pc)
+		up, err := proxyUpstream(pc, meter)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("registry.proxies[%d].%w", i, err)
-		}
-		var up *blob.Upstream
-		if pc.Upstreams != nil {
-			if pc.Upstream != "" {
-				return nil, nil, nil, fmt.Errorf("registry.proxies[%d]: upstream and upstreams cannot both be set", i)
-			}
-			up, err = blob.NewUpstreams(pc.Upstreams, append(auth, blob.WithMeter(meter))...)
-		} else {
-			up, err = blob.NewUpstream(pc.Upstream, append(auth, blob.WithMeter(meter))...)
-		}
-		if err != nil {
-			field := "upstream"
-			if pc.Upstreams != nil {
-				field = "upstreams"
-			}
-			return nil, nil, nil, fmt.Errorf("registry.proxies[%d].%s: %w", i, field, err)
 		}
 		verify, err := proxyVerify(pc.Verify)
 		if err != nil {

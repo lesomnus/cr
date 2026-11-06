@@ -13,21 +13,28 @@ import (
 	"github.com/opencontainers/go-digest"
 )
 
+// UpstreamTarget configures one origin. Options (including credentials) apply
+// only to this URL, never to another target in the group.
+type UpstreamTarget struct {
+	URL     string
+	Options []UpstreamOption
+}
+
 // NewUpstreams configures explicit ordered origins. Each has its own HTTP
-// client and challenge-token cache, while sharing the configured credential.
+// client, credentials and challenge-token cache.
 // String and Registry retain the primary origin's identity.
-func NewUpstreams(urls []string, opts ...UpstreamOption) (*Upstream, error) {
-	if len(urls) == 0 {
+func NewUpstreams(targets []UpstreamTarget) (*Upstream, error) {
+	if len(targets) == 0 {
 		return nil, fmt.Errorf("upstreams: at least one URL is required")
 	}
-	origins := make([]*Upstream, len(urls))
-	for i, raw := range urls {
-		u, err := NewUpstream(raw, opts...)
+	origins := make([]*Upstream, len(targets))
+	for i, target := range targets {
+		u, err := NewUpstream(target.URL, target.Options...)
 		if err != nil {
-			return nil, fmt.Errorf("upstreams[%d]: %w", i, err)
+			return nil, fmt.Errorf("upstreams[%d].url: %w", i, err)
 		}
 		if u.base.User != nil || u.base.RawQuery != "" || u.base.ForceQuery || u.base.Fragment != "" {
-			return nil, fmt.Errorf("upstreams[%d]: URL must not contain credentials, query or fragment", i)
+			return nil, fmt.Errorf("upstreams[%d].url: URL must not contain credentials, query or fragment", i)
 		}
 		origins[i] = u
 	}

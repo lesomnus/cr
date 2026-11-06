@@ -533,18 +533,28 @@ registry:
     - prefix: dist
       remote: dist
       upstreams:
-        - https://cr.hq.hday.io
-        - https://registry.hday.io
-      auth:
-        kind: bearer
-        token: ${file:/run/robot/registry-token}
+        - url: https://cr.hq.hday.io
+          auth:
+            kind: bearer
+            token: ${file:/run/robot/registry-token}
+        - url: https://registry.hday.io
+          auth:
+            kind: bearer
+            token: ${file:/run/robot/registry-token}
 ```
 
-The existing single `upstream` setting below remains valid. Set one of
-`upstream` or `upstreams`; an empty list or invalid URL refuses startup.
-Each configured origin must accept the configured credential. Its challenge
-tokens are cached independently, and file credentials keep rotating without
-a restart. Use HTTPS for credentials outside a trusted development network.
+The existing single `upstream` with proxy-level `auth` below remains valid.
+Set one of `upstream` or `upstreams`; an empty list or invalid URL refuses
+startup. With `upstreams`, proxy-level `auth` is refused: configure each
+entry's `auth` instead. Omitting an entry's `auth` makes it anonymous, without
+inheriting credentials from another entry.
+
+Each origin can independently use `bearer`, `password` or no credential.
+The example intentionally shares the same token file; use different files
+or auth kinds when the registries need different credentials. Challenge
+tokens are cached independently, and each file credential keeps rotating
+without a restart. Use HTTPS for credentials outside a trusted development
+network.
 
 Manifest HEAD/GET, blob HEAD/GET and referrers try the next origin on
 connection, DNS, TLS, response-header timeout, interrupted-response or HTTP

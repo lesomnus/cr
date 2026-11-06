@@ -71,7 +71,11 @@ func NewCmdImport(c *cmd.Config) *xli.Command {
 				for _, p := range c.Registry.Proxies {
 					if blob.Covers(p.Prefix, repo) {
 						if len(p.Upstreams) > 0 {
-							return "a pull-through cache of " + strings.Join(p.Upstreams, ", ")
+							urls := make([]string, len(p.Upstreams))
+							for i, target := range p.Upstreams {
+								urls[i] = target.URL
+							}
+							return "a pull-through cache of " + strings.Join(urls, ", ")
 						}
 						return "a pull-through cache of " + p.Upstream
 					}

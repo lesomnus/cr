@@ -21,7 +21,7 @@ func TestProxyFallbackFillsCacheAndSurvivesBothOrigins(t *testing.T) {
 	require.Equal(t, http.StatusCreated, up.pushManifest("dist/prod/app", "release", body, "application/vnd.oci.image.manifest.v1+json").StatusCode)
 	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(503) }))
 	defer primary.Close()
-	u, err := blob.NewUpstreams([]string{primary.URL, up.srv.URL})
+	u, err := blob.NewUpstreams([]blob.UpstreamTarget{{URL: primary.URL}, {URL: up.srv.URL}})
 	require.NoError(t, err)
 	p := &registry.Proxy{Prefix: "dist", Remote: "dist", Upstream: u}
 	base := flob.NewMemStores()

@@ -22,6 +22,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// orderedOrigins gives failure-policy tests the same options at each origin.
+// Credential-isolation tests configure each UpstreamTarget explicitly.
+func orderedOrigins(urls []string, opts ...UpstreamOption) (*Upstream, error) {
+	targets := make([]UpstreamTarget, len(urls))
+	for i, url := range urls {
+		targets[i] = UpstreamTarget{URL: url, Options: opts}
+	}
+	return NewUpstreams(targets)
+}
+
 func unavailableOrigin(t *testing.T) string {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -51,7 +61,7 @@ func TestOrderedUpstreamManifestPriorityAndFailures(t *testing.T) {
 				}
 			}))
 			defer primary.Close()
-			u, err := NewUpstreams([]string{primary.URL, fallback.URL}, WithBearer(Literal("fixture-token")))
+			u, err := orderedOrigins([]string{primary.URL, fallback.URL}, WithBearer(Literal("fixture-token")))
 			require.NoError(t, err)
 			got, _, gotDigest, err := u.GetManifest(t.Context(), "dist/prod/demo", d.String(), 4096)
 			if status == 200 || status >= 500 {
@@ -81,7 +91,7 @@ func TestOrderedUpstreamConnectionTimeoutAndCancellation(t *testing.T) {
 		w.Header().Set("Docker-Content-Digest", d.String())
 	}))
 	defer second.Close()
-	u, err := NewUpstreams([]string{unavailableOrigin(t), second.URL})
+	u, err := orderedOrigins([]string{unavailableOrigin(t), second.URL})
 	require.NoError(t, err)
 	got, err := u.HeadManifest(t.Context(), "dist/demo", "release")
 	require.NoError(t, err)
@@ -94,7 +104,7 @@ func TestOrderedUpstreamConnectionTimeoutAndCancellation(t *testing.T) {
 	require.EqualValues(t, 1, calls.Load())
 	stall := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() }))
 	defer stall.Close()
-	u, err = NewUpstreams([]string{stall.URL, second.URL})
+	u, err = orderedOrigins([]string{stall.URL, second.URL})
 	require.NoError(t, err)
 	u.client.Transport.(*http.Transport).ResponseHeaderTimeout = 20 * time.Millisecond
 	got, err = u.HeadManifest(t.Context(), "dist/demo", "release")
@@ -124,7 +134,7 @@ func TestOrderedUpstreamManifestKeepsResolvedDigest(t *testing.T) {
 		w.Write(body)
 	}))
 	defer secondary.Close()
-	u, err := NewUpstreams([]string{primary.URL, secondary.URL})
+	u, err := orderedOrigins([]string{primary.URL, secondary.URL})
 	require.NoError(t, err)
 	got, _, gotDigest, err := u.GetManifest(t.Context(), "dist/demo", "release", 4096)
 	require.NoError(t, err)
@@ -139,12 +149,12 @@ func TestOrderedUpstreamInvalidContentAndCredentialsStop(t *testing.T) {
 	defer fallback.Close()
 	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("wrong bytes")) }))
 	defer primary.Close()
-	u, err := NewUpstreams([]string{primary.URL, fallback.URL})
+	u, err := orderedOrigins([]string{primary.URL, fallback.URL})
 	require.NoError(t, err)
 	_, _, _, err = u.GetManifest(t.Context(), "dist/demo", digest.FromString("expected").String(), 4096)
 	require.ErrorContains(t, err, "hashes to")
 	require.Zero(t, calls.Load())
-	u, err = NewUpstreams([]string{primary.URL, fallback.URL}, WithBearer(fileSecret(t, filepath.Join(t.TempDir(), "missing"))))
+	u, err = orderedOrigins([]string{primary.URL, fallback.URL}, WithBearer(fileSecret(t, filepath.Join(t.TempDir(), "missing"))))
 	require.NoError(t, err)
 	_, err = u.HeadManifest(t.Context(), "dist/demo", "release")
 	require.ErrorIs(t, err, ErrUpstreamUnauthorized)
@@ -171,7 +181,7 @@ func TestOrderedUpstreamReferrersRestartWholePagination(t *testing.T) {
 		w.Write(index(second))
 	}))
 	defer fallback.Close()
-	u, err := NewUpstreams([]string{primary.URL, fallback.URL})
+	u, err := orderedOrigins([]string{primary.URL, fallback.URL})
 	require.NoError(t, err)
 	descriptors, err := u.Referrers(t.Context(), "dist/demo", first, 4096)
 	require.NoError(t, err)
@@ -184,6 +194,7 @@ func TestOrderedUpstreamBlobResumesInterruptedBodyAndSeeks(t *testing.T) {
 	d := flob.Digest(digest.FromBytes(body))
 	var fallbackCalls atomic.Int32
 	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "Bearer primary-only", r.Header.Get("Authorization"))
 		w.Header().Set("Content-Length", fmt.Sprint(len(body)))
 		if r.Method != http.MethodHead {
 			w.Write(body[:7])
@@ -192,6 +203,7 @@ func TestOrderedUpstreamBlobResumesInterruptedBodyAndSeeks(t *testing.T) {
 	defer primary.Close()
 	secondary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fallbackCalls.Add(1)
+		require.Equal(t, "Bearer fallback-only", r.Header.Get("Authorization"))
 		require.Equal(t, "/v2/dist/demo/blobs/"+string(d), r.URL.Path)
 		var offset int
 		_, err := fmt.Sscanf(r.Header.Get("Range"), "bytes=%d-", &offset)
@@ -201,7 +213,10 @@ func TestOrderedUpstreamBlobResumesInterruptedBodyAndSeeks(t *testing.T) {
 		w.Write(body[offset:])
 	}))
 	defer secondary.Close()
-	u, err := NewUpstreams([]string{primary.URL, secondary.URL})
+	u, err := NewUpstreams([]UpstreamTarget{
+		{URL: primary.URL, Options: []UpstreamOption{WithBearer(Literal("primary-only"))}},
+		{URL: secondary.URL, Options: []UpstreamOption{WithBearer(Literal("fallback-only"))}},
+	})
 	require.NoError(t, err)
 	s := u.Stores(func(r string) string { return r }).Use("dist/demo")
 	_, err = s.Stat(t.Context(), d)
@@ -235,7 +250,7 @@ func TestOrderedUpstreamBlobHeaderFailuresAndMissing(t *testing.T) {
 				}
 			}))
 			defer secondary.Close()
-			u, err := NewUpstreams([]string{primary.URL, secondary.URL})
+			u, err := orderedOrigins([]string{primary.URL, secondary.URL})
 			require.NoError(t, err)
 			s := u.Stores(func(r string) string { return r }).Use("dist/demo")
 			d := flob.Digest(digest.FromBytes(body))
@@ -263,10 +278,10 @@ func TestOrderedUpstreamBlobHeaderFailuresAndMissing(t *testing.T) {
 
 func TestOrderedUpstreamConfigurationValidation(t *testing.T) {
 	for _, urls := range [][]string{nil, {}, {""}, {"file:///tmp/blob"}, {"https://user:pass@host"}, {"https://host?token=x"}, {"https://host/#x"}} {
-		_, err := NewUpstreams(urls)
+		_, err := orderedOrigins(urls)
 		require.Error(t, err)
 	}
-	u, err := NewUpstreams([]string{unavailableOrigin(t), unavailableOrigin(t)})
+	u, err := orderedOrigins([]string{unavailableOrigin(t), unavailableOrigin(t)})
 	require.NoError(t, err)
 	_, err = u.HeadManifest(t.Context(), "dist/demo", "release")
 	require.ErrorIs(t, err, ErrUpstreamUnreachable)
@@ -279,8 +294,9 @@ func TestOrderedUpstreamChallengeTokensStayWithTheirOrigin(t *testing.T) {
 	realm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, password, ok := r.BasicAuth()
 		require.True(t, ok)
-		require.Equal(t, "reader", user)
-		require.Equal(t, "password", password)
+		which := strings.TrimPrefix(r.URL.Path, "/")
+		require.Equal(t, which+"-reader", user)
+		require.Equal(t, which+"-password", password)
 		if r.URL.Path == "/primary" {
 			primaryTokens.Add(1)
 			io.WriteString(w, `{"token":"primary-token","expires_in":3600}`)
@@ -307,7 +323,10 @@ func TestOrderedUpstreamChallengeTokensStayWithTheirOrigin(t *testing.T) {
 	defer primary.Close()
 	fallback := registry("fallback", "fallback-token", 200)
 	defer fallback.Close()
-	u, err := NewUpstreams([]string{primary.URL, fallback.URL}, WithPassword("reader", Literal("password")))
+	u, err := NewUpstreams([]UpstreamTarget{
+		{URL: primary.URL, Options: []UpstreamOption{WithPassword("primary-reader", Literal("primary-password"))}},
+		{URL: fallback.URL, Options: []UpstreamOption{WithPassword("fallback-reader", Literal("fallback-password"))}},
+	})
 	require.NoError(t, err)
 	for range 2 {
 		got, err := u.HeadManifest(t.Context(), "dist/demo", "release")
@@ -332,7 +351,7 @@ func TestOrderedUpstreamInterruptedManifestAndTokenFailures(t *testing.T) {
 		w.Write(body[:5])
 	}))
 	defer truncated.Close()
-	u, err := NewUpstreams([]string{truncated.URL, fallback.URL})
+	u, err := orderedOrigins([]string{truncated.URL, fallback.URL})
 	require.NoError(t, err)
 	got, _, _, err := u.GetManifest(t.Context(), "dist/demo", d.String(), 4096)
 	require.NoError(t, err)
@@ -348,7 +367,7 @@ func TestOrderedUpstreamInterruptedManifestAndTokenFailures(t *testing.T) {
 			}))
 			defer primary.Close()
 			before := calls.Load()
-			u, err := NewUpstreams([]string{primary.URL, fallback.URL})
+			u, err := orderedOrigins([]string{primary.URL, fallback.URL})
 			require.NoError(t, err)
 			_, _, _, err = u.GetManifest(t.Context(), "dist/demo", d.String(), 4096)
 			if status == 503 {
@@ -368,7 +387,7 @@ func TestOrderedUpstreamMissingAfterFailureStopsRemainingOrigins(t *testing.T) {
 	defer missing.Close()
 	third := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1) }))
 	defer third.Close()
-	u, err := NewUpstreams([]string{unavailableOrigin(t), missing.URL, third.URL})
+	u, err := orderedOrigins([]string{unavailableOrigin(t), missing.URL, third.URL})
 	require.NoError(t, err)
 	_, _, _, err = u.GetManifest(t.Context(), "dist/demo", digest.FromString("missing").String(), 4096)
 	require.ErrorIs(t, err, flob.ErrNotExist)
@@ -384,7 +403,7 @@ func TestOrderedUpstreamTLSFailureCanAdvance(t *testing.T) {
 	d := digest.FromString("manifest")
 	fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Header().Set("Docker-Content-Digest", d.String()) }))
 	defer fallback.Close()
-	u, err := NewUpstreams([]string{primary.URL, fallback.URL})
+	u, err := orderedOrigins([]string{primary.URL, fallback.URL})
 	require.NoError(t, err)
 	got, err := u.HeadManifest(t.Context(), "dist/demo", "release")
 	require.NoError(t, err)
@@ -397,7 +416,7 @@ func TestOrderedUpstreamBadReferrersAndRangesAreTerminal(t *testing.T) {
 	defer fallback.Close()
 	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "{invalid JSON") }))
 	defer primary.Close()
-	u, err := NewUpstreams([]string{primary.URL, fallback.URL})
+	u, err := orderedOrigins([]string{primary.URL, fallback.URL})
 	require.NoError(t, err)
 	_, err = u.Referrers(t.Context(), "dist/demo", digest.FromString("subject"), 4096)
 	require.Error(t, err)
@@ -413,7 +432,7 @@ func TestOrderedUpstreamBadReferrersAndRangesAreTerminal(t *testing.T) {
 		w.Write(layer)
 	}))
 	defer ranges.Close()
-	u, err = NewUpstreams([]string{ranges.URL, fallback.URL})
+	u, err = orderedOrigins([]string{ranges.URL, fallback.URL})
 	require.NoError(t, err)
 	r, _, err := u.Stores(func(r string) string { return r }).Use("dist/demo").Open(t.Context(), flob.Digest(digest.FromBytes(layer)))
 	require.NoError(t, err)
