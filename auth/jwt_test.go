@@ -106,6 +106,59 @@ func TestJWTClaims(t *testing.T) {
 	require.ErrorIs(t, err, ErrUnauthenticated)
 }
 
+func TestJWTAudiences(t *testing.T) {
+	now := time.Now()
+	k, pub := deviceKey(t, "fleet")
+	accepted := []string{"registry.example", "hday:robot-infra"}
+	j, err := NewJWT(JWTConfig{Name: "fleet", Issuer: "https://issuer.invalid", Audiences: accepted, JWKS: deviceJWKS(t, pub)})
+	require.NoError(t, err)
+	accepted[0] = "changed.example" // construction snapshots the configuration
+	for name, c := range map[string]struct {
+		audience any
+		ok       bool
+	}{
+		"legacy scalar":           {"registry.example", true},
+		"session scalar":          {"hday:robot-infra", true},
+		"legacy array":            {[]string{"registry.example"}, true},
+		"session array":           {[]string{"hday:robot-infra"}, true},
+		"dual":                    {[]string{"registry.example", "hday:robot-infra"}, true},
+		"later element":           {[]string{"elsewhere", "hday:robot-infra"}, true},
+		"wrong":                   {"hday:other", false},
+		"case sensitive":          {"HDAY:robot-infra", false},
+		"URL not host by default": {"https://registry.example", false},
+		"mutated caller":          {"changed.example", false},
+		"empty":                   {[]string{}, false},
+		"missing":                 {nil, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			claims := deviceClaims(now)
+			claims["aud"] = c.audience
+			_, err := j.Authenticate(context.Background(), "", signDevice(t, k, "fleet", claims))
+			if c.ok {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+			}
+		})
+	}
+	j.config.AudienceHost = true
+	claims := deviceClaims(now)
+	claims["aud"] = "https://REGISTRY.example:443"
+	_, err = j.Authenticate(context.Background(), "", signDevice(t, k, "fleet", claims))
+	require.NoError(t, err)
+	for name, c := range map[string]JWTConfig{
+		"both":        {Audience: "legacy", Audiences: []string{"session"}},
+		"empty entry": {Audiences: []string{"session", ""}},
+		"no audience": {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c.Name, c.Issuer, c.JWKS = "fleet", "https://issuer.invalid", deviceJWKS(t, pub)
+			_, err := NewJWT(c)
+			require.Error(t, err)
+		})
+	}
+}
+
 func TestJWTKeys(t *testing.T) {
 	now := time.Now()
 	old, pub := deviceKey(t, "old")
