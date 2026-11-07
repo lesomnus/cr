@@ -215,8 +215,12 @@ old key after every token it signed has expired. Removing it refuses those
 tokens on subsequent direct requests; an already issued cr access token lasts
 until its own expiry.
 
-`audience` is required. By default, a token's `aud` string, or an element of
-its audience array, must equal it exactly. `audience_host: true` instead
+`audience` is required, or a JWT provider may use `audiences: [registry.example,
+hday:robot-infra]` to accept any listed recipient during a migration. The two
+settings are mutually exclusive, and list entries must be nonempty. This does
+not change the issuer, key or permission checks. By default, a token's `aud`
+string, or an element of its audience array, must equal an accepted value exactly.
+`audience_host: true` instead
 compares case-insensitive host and port, accepting both `registry.example`
 and `https://registry.example`; the URL scheme and path are ignored. Use this
 only for an audience that identifies a registry host, not an application path.

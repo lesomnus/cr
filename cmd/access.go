@@ -67,6 +67,10 @@ type ProviderConfig struct {
 	// another service from being given here.
 	Audience string `yaml:"audience"`
 
+	// Audiences is a jwt provider's alternative to audience: any listed
+	// value may be present in the credential. It does not grant permissions.
+	Audiences []string `yaml:"audiences"`
+
 	// SubjectClaim is the claim a token's subject is read from; empty is
 	// `sub`.
 	SubjectClaim string `yaml:"subject_claim"`

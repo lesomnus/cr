@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -22,8 +23,11 @@ type JWT struct {
 
 type JWTConfig struct {
 	Name, Issuer, Audience string
-	JWKS                   SecretValue
-	SubjectClaim           string
+	// Audiences accepts any listed recipient. Audience remains the scalar
+	// alternative for existing callers; configuring both is an error.
+	Audiences    []string
+	JWKS         SecretValue
+	SubjectClaim string
 
 	// AudienceHost compares host[:port] rather than the whole audience. This
 	// accepts both registry.example and https://registry.example. It is off
@@ -32,11 +36,24 @@ type JWTConfig struct {
 }
 
 func NewJWT(c JWTConfig) (*JWT, error) {
-	if c.Name == "" || c.Issuer == "" || c.Audience == "" || c.JWKS == nil {
-		return nil, errors.New("jwt: name, issuer, audience and jwks are required")
+	if c.Name == "" || c.Issuer == "" || (c.Audience == "" && len(c.Audiences) == 0) || c.JWKS == nil {
+		return nil, errors.New("jwt: name, issuer, audience or audiences, and jwks are required")
 	}
-	if c.AudienceHost && audienceHost(c.Audience) == "" {
-		return nil, errors.New("jwt: audience has no host")
+	if c.Audience != "" && len(c.Audiences) != 0 {
+		return nil, errors.New("jwt: audience and audiences are mutually exclusive")
+	}
+	if c.Audience != "" {
+		c.Audiences = []string{c.Audience}
+	} else {
+		c.Audiences = slices.Clone(c.Audiences)
+	}
+	for _, audience := range c.Audiences {
+		if audience == "" {
+			return nil, errors.New("jwt: audience is empty")
+		}
+		if c.AudienceHost && audienceHost(audience) == "" {
+			return nil, errors.New("jwt: audience has no host")
+		}
 	}
 	if c.SubjectClaim == "" {
 		c.SubjectClaim = "sub"
@@ -90,10 +107,15 @@ func (j *JWT) Authenticate(_ context.Context, _, password string) (Subject, erro
 	}
 	matched := false
 	for _, aud := range std.Audience {
-		if j.config.AudienceHost {
-			matched = audienceHost(aud) == audienceHost(j.config.Audience)
-		} else {
-			matched = aud == j.config.Audience
+		for _, expected := range j.config.Audiences {
+			if j.config.AudienceHost {
+				matched = audienceHost(aud) == audienceHost(expected)
+			} else {
+				matched = aud == expected
+			}
+			if matched {
+				break
+			}
 		}
 		if matched {
 			break
