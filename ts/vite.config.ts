@@ -104,6 +104,9 @@ async function walk(at: string): Promise<string[]> {
 export default defineConfig({
 	plugins: [react(), brotli()],
 
+	// Keep Vite 7's browser baseline when moving the build to Vite 8.
+	build: { target: ['chrome107', 'edge107', 'firefox104', 'safari16'] },
+
 	// The worker `@lesomnus/grpc-dgram` starts is
 	// `new URL("./wasm/worker.mjs", import.meta.url)`, and dependency
 	// pre-bundling rewrites the module into `.vite/deps/` -- where that
