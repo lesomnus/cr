@@ -81,7 +81,7 @@ func TestPostgresManifestCreationWatch(t *testing.T) {
 			g := grpc.NewServer()
 			api.RegisterManifestServiceServer(g, b.Ungated.Manifest())
 			guard := c.Server.Guard(nil)
-			resources, err := pd.Resources(b.Ungated, b.Drv, guard, b.Watch, pd.ResourceProjector(b.Ent, nil, guard))
+			resources, err := pd.Resources(b.Watch, pd.ResourceProjector(b.Ent, nil, guard))
 			require.NoError(t, err)
 			pdpb.RegisterResourceServiceServer(g, resources)
 			l := bufconn.Listen(1 << 20)

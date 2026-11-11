@@ -58,7 +58,7 @@ func ManagementResolver(s app.Server, directory auth.Resolver) auth.Resolver {
 
 // ManagementPolicy keeps row-free readers on the same policy path as stored
 // holders. Every unlisted method requires a persistent actor; this also runs
-// per operation inside both Batch endpoints and per projected Watch image.
+// per projected Watch image.
 func ManagementPolicy(base gate.Policy) gate.Policy { return managementPolicy{base} }
 
 type managementPolicy struct{ base gate.Policy }
@@ -83,7 +83,7 @@ func (p managementPolicy) Where(ctx context.Context, c gate.Call) (frame.Tenants
 }
 func managementRead(m string) bool {
 	switch m {
-	case "/payday.ResourceService/Batch", "/payday.BatchService/Do", "/payday.ResourceService/Watch":
+	case "/payday.ResourceService/Watch":
 		return true
 	}
 	// Only the generated entity services known to this application qualify.

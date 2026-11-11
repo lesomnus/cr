@@ -19,12 +19,10 @@ import (
 	"github.com/lesomnus/payday/resource"
 	"github.com/lesomnus/payday/watch"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -34,7 +32,7 @@ const managementReader = `tokens:
 policy:
   roles:
     '@operator/reader':
-      methods: [/app.ManifestService/Get, /app.ManifestService/List, /payday.ResourceService/Watch, /payday.ResourceService/Batch, /payday.BatchService/Do]
+      methods: [/app.ManifestService/Get, /app.ManifestService/List, /payday.ResourceService/Watch]
   groups:
     '@operator/readers':
       members: ['@operator/kamino']
@@ -74,12 +72,6 @@ func TestManagementRowFreeReadersAndRevocation(t *testing.T) {
 	require.Equal(t, codes.PermissionDenied, status.Code(err))
 	_, err = api.NewManifestServiceClient(conn).List(t.Context(), api.ManifestListRequest_builder{}.Build())
 	require.Equal(t, codes.Unauthenticated, status.Code(err))
-	request, err := anypb.New(api.TagRuleListRequest_builder{}.Build())
-	require.NoError(t, err)
-	for _, call := range []func(context.Context, *pdpb.BatchRequest, ...grpc.CallOption) (*pdpb.BatchResponse, error){pdpb.NewResourceServiceClient(conn).Batch, pdpb.NewBatchServiceClient(conn).Do} {
-		_, err := call(ctx, pdpb.BatchRequest_builder{Ops: []*pdpb.Op{pdpb.Op_builder{Method: api.TagRuleService_List_FullMethodName, Request: request}.Build()}}.Build())
-		require.Equal(t, codes.PermissionDenied, status.Code(err))
-	}
 	stream, err := pdpb.NewResourceServiceClient(conn).Watch(ctx, pdpb.WatchRequest_builder{}.Build())
 	require.NoError(t, err)
 	_, err = stream.Header()
@@ -172,11 +164,6 @@ func TestManagementWritesNeedPersistentHolder(t *testing.T) {
 	_, err = api.NewHolderServiceClient(conn).Add(wire, api.HolderAddRequest_builder{Alias: "other"}.Build())
 	require.Equal(t, codes.PermissionDenied, status.Code(err))
 	require.Contains(t, status.Convert(err).Message(), "requires a registered holder @operator/writer")
-	request, err := anypb.New(api.HolderAddRequest_builder{Alias: "other"}.Build())
-	require.NoError(t, err)
-	_, err = pdpb.NewResourceServiceClient(conn).Batch(wire, pdpb.BatchRequest_builder{Ops: []*pdpb.Op{pdpb.Op_builder{Method: api.HolderService_Add_FullMethodName, Request: request}.Build()}}.Build())
-	require.Equal(t, codes.PermissionDenied, status.Code(err))
-	require.Contains(t, status.Convert(err).Message(), "requires a registered holder")
 	// An unrelated credential with the same name still uses directory resolution.
 	_, err = s.Resolver.Resolve(t.Context(), auth.Identity{Tenant: "operator", Alias: "writer"})
 	require.ErrorIs(t, err, auth.ErrNoCredential)

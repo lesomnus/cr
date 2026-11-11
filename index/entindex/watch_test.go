@@ -59,7 +59,7 @@ func newHarness(t *testing.T, scope bare.Scope, outbox bool, broker watch.Broker
 	require.NoError(t, err)
 	s := sink.WithWatch(w)
 	guard := (config.ServerConfig{}).Guard(nil)
-	resources, err := pd.Resources(s, drv, guard, w, pd.ResourceProjector(rows, scope, guard))
+	resources, err := pd.Resources(w, pd.ResourceProjector(rows, scope, guard))
 	require.NoError(t, err)
 	g := grpc.NewServer()
 	api.RegisterManifestServiceServer(g, s.Manifest())
