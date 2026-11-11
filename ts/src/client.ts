@@ -41,7 +41,6 @@ import { TagRuleService } from '../gen/app/tag_rule_svc_pb.js'
 import { TagService } from '../gen/app/tag_svc_pb.js'
 import { TenantService } from '../gen/app/payday/tenant_svc_pb.js'
 import { HolderService } from '../gen/app/payday/holder_svc_pb.js'
-import { BatchService } from '@lesomnus/payday/pdpb'
 
 export interface App {
 	readonly repository: Client<typeof RepositoryService>
@@ -52,9 +51,6 @@ export interface App {
 	readonly gcRun: Client<typeof GcRunService>
 	readonly tenant: Client<typeof TenantService>
 	readonly holder: Client<typeof HolderService>
-
-	/** Several writes as one transaction; see `payday/batch`. */
-	readonly batch: Client<typeof BatchService>
 }
 
 export function app(transport: Transport): App {
@@ -67,6 +63,5 @@ export function app(transport: Transport): App {
 		gcRun: createClient(GcRunService, transport),
 		tenant: createClient(TenantService, transport),
 		holder: createClient(HolderService, transport),
-		batch: createClient(BatchService, transport),
 	}
 }

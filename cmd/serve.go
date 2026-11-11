@@ -37,8 +37,7 @@ type Server struct {
 	Ent *ent.Client
 
 	// Drv is what the client was built on, kept because a transaction is begun
-	// on a driver and a `*ent.Client` does not hand out the one it holds. It is
-	// what `pd.Batch` puts a whole stack onto.
+	// on a driver and a `*ent.Client` does not hand out the one it holds.
 	Drv dialect.Driver
 
 	// Dialect is what that driver speaks, which `Open` worked out and nothing
@@ -83,9 +82,9 @@ type Server struct {
 	// A field beside [Server.Auth] because they are the pair -- who is calling,
 	// and what that means here -- and because the two places it has to be
 	// installed are not one place. `gate.Interceptor` covers the calls gRPC
-	// dispatches; `c.Server.Guard` covers the operations inside a batch, which
-	// arrive as one method carrying many and would otherwise be authorised as
-	// the batch rather than as themselves.
+	// dispatches; `c.Server.Guard` covers the rows a Watch sends, which arrive
+	// on one stream gRPC dispatched once and would otherwise be authorised as
+	// the stream rather than as reads of their own.
 	//
 	// It is what a second binary is built from. A deployment that wants an
 	// operator's path serves this app again with a policy that answers
@@ -255,26 +254,15 @@ func (s *Server) Grpc(ctx context.Context, c Config, opts ...grpc.ServerOption) 
 	g := grpc.NewServer(os...)
 	app.RegisterServer(g, s.Walled)
 
-	// The batch, with the same rules the chain above enforces -- read off the
-	// same configuration rather than written out again, which is the only way
-	// the two stay in step. What they enforce by looking at the method gRPC
-	// dispatched, this enforces per operation.
-	// Both endpoints share the operation limiter, including its current budget.
-	guard := c.Server.Guard(s.Policy)
-	if b, err := pd.Batch(s.Walled, s.Drv, guard); err == nil {
-		pdpb.RegisterBatchServiceServer(g, b)
-		resources, err := pd.Resources(s.Walled, s.Drv, guard, s.Watch,
-			pd.ResourceProjector(s.Ent, pd.Wall(), guard))
-		if err != nil {
-			return nil, err
-		}
-		pdpb.RegisterResourceServiceServer(g, resources)
-	} else {
-		// A deployment that closed nothing, limits nothing and has no policy.
-		// It is a real thing to be and it is also what a guard nobody filled in
-		// looks like, so the batch is not served rather than served open.
-		log.From(ctx).WarnContext(ctx, "no batch", slog.String("why", err.Error()))
+	// Watch, holding each row it sends to the rules the chain above enforces
+	// -- read off the same configuration rather than written out again, which
+	// is the only way the two stay in step. What they enforce by looking at
+	// the method gRPC dispatched, this enforces per row.
+	resources, err := pd.Resources(s.Watch, pd.ResourceProjector(s.Ent, pd.Wall(), c.Server.Guard(s.Policy)))
+	if err != nil {
+		return nil, err
 	}
+	pdpb.RegisterResourceServiceServer(g, resources)
 
 	return g, nil
 }

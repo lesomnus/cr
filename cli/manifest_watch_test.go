@@ -26,7 +26,6 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
-	"google.golang.org/protobuf/types/known/anypb"
 )
 
 func TestRegistryManifestCreationWatch(t *testing.T) {
@@ -62,39 +61,6 @@ func TestRegistryManifestCreationWatch(t *testing.T) {
 	const kind = "application/vnd.dev.sigstore.bundle.v0.3+json"
 	ctx, cancel := context.WithTimeout(metadata.AppendToOutgoingContext(t.Context(), "authorization", "Plain @operator/admin"), 5*time.Second)
 	defer cancel()
-	resources := pdpb.NewResourceServiceClient(conn)
-	holders, err := resources.Watch(ctx, pdpb.WatchRequest_builder{Filter: `has(event.value) && type(event.value) == app.Holder`}.Build())
-	require.NoError(t, err)
-	_, err = holders.Header()
-	require.NoError(t, err)
-	add := func(alias string) *pdpb.Op {
-		t.Helper()
-		request, err := anypb.New(api.HolderAddRequest_builder{Tenant: tenant.Ref(), Alias: alias}.Build())
-		require.NoError(t, err)
-		return pdpb.Op_builder{Method: api.HolderService_Add_FullMethodName, Request: request}.Build()
-	}
-	_, err = resources.Batch(ctx, pdpb.BatchRequest_builder{Ops: []*pdpb.Op{add("rollback"), add("rollback")}}.Build())
-	require.Equal(t, codes.AlreadyExists, status.Code(err))
-	for _, call := range []struct {
-		method string
-		alias  string
-		do     func(context.Context, *pdpb.BatchRequest, ...grpc.CallOption) (*pdpb.BatchResponse, error)
-	}{
-		{pdpb.ResourceService_Batch_FullMethodName, "resource", resources.Batch},
-		{pdpb.BatchService_Do_FullMethodName, "legacy", pdpb.NewBatchServiceClient(conn).Do},
-	} {
-		_, err := call.do(ctx, pdpb.BatchRequest_builder{Ops: []*pdpb.Op{add(call.alias)}}.Build())
-		require.NoError(t, err)
-		event, err := holders.Recv()
-		require.NoError(t, err)
-		value := &api.Holder{}
-		require.NoError(t, event.GetValue().UnmarshalTo(value))
-		require.Equal(t, call.alias, value.GetAlias(), "rolled-back Batch must not publish")
-		require.Equal(t, api.HolderService_Add_FullMethodName, event.GetMethod())
-		require.Equal(t, call.method, event.GetCallMethod())
-		require.Equal(t, pdpb.ChangeKind_CHANGE_KIND_CREATED, event.GetKind())
-		require.False(t, event.HasPrevious())
-	}
 	stream, err := pdpb.NewResourceServiceClient(conn).Watch(ctx, pdpb.WatchRequest_builder{Filter: `has(event.value) && type(event.value) == app.Manifest && event.kind == payday.CHANGE_KIND_CREATED && event.value.artifact_type == "` + kind + `"`}.Build())
 	require.NoError(t, err)
 	_, err = stream.Header()

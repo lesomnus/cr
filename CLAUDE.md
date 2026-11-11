@@ -80,7 +80,7 @@ var (
 )
 ```
 
-Leave it out and **nothing fails until a transaction is opened** — a batch, or a
+Leave it out and **nothing fails until a transaction is opened** — a
 multi-write RPC — because `enttx.Rebind` asks at run time. `pd doctor` finds it.
 
 Note it is `enttx.Rebind(s.Next(), ...)` and not `s.Next().WithDriver(...)`:

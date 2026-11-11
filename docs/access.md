@@ -826,8 +826,8 @@ present, an unbound holder gets nothing. For compatibility, omitting both
 Method patterns use `/package.Service/Method`, with `*` as a whole component:
 `/app.ManifestService/*`, `/app.*/Get`, or `/*.*/*`. They do not use the
 registry's repository globs. A method outside the grant returns
-`permission_denied`; an unknown token returns `unauthenticated`. Batch checks
-each operation, and Watch checks the entity's Get permission for each image.
+`permission_denied`; an unknown token returns `unauthenticated`. Watch checks
+the entity's Get permission for each image.
 
 For live updates, move `tokens` and `policy` together into a separate file:
 
@@ -944,8 +944,9 @@ upgrade all replicas and outbox drainers before relying on resource events.
 Legacy outbox entries continue to serve key-based watches but carry no resource
 payload for this stream.
 
-`/payday.ResourceService/Batch` provides the existing transactional batch API.
-`/payday.BatchService/Do` remains available for existing clients and is deprecated.
+There is no batch endpoint: `/payday.ResourceService/Batch` and
+`/payday.BatchService/Do` were removed with payday's batch. A client that used
+them sends each write as its own call.
 
 ## The management page
 
