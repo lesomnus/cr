@@ -27,23 +27,23 @@ tool (
 require (
 	github.com/go-jose/go-jose/v4 v4.1.9
 	github.com/goccy/go-yaml v1.19.2
-	github.com/jackc/pgx/v5 v5.12.0
+	github.com/jackc/pgx/v5 v5.13.0
 	github.com/lesomnus/flob v0.0.0-20261106051557-b60bac0c88f4
 	github.com/lesomnus/grpc-dgram v0.0.0-20260912133542-a7366077bf6f
-	github.com/lesomnus/mkot/otlp v0.0.0-20261109051210-adf1656dc93b
-	github.com/lesomnus/otx v0.0.0-20261109051205-9adcf92d2c8d
-	github.com/lesomnus/payday v0.0.0-20261111121122-e0764af68e10
+	github.com/lesomnus/mkot/otlp v0.0.0-20261123040533-bc00e93169b7
+	github.com/lesomnus/otx v0.0.0-20261123040527-ea658f4282af
+	github.com/lesomnus/payday v0.0.0-20261128033631-76f8289486c3
 	github.com/lesomnus/protobuf-patch v0.0.0-20260907061053-07bbf2b842da
-	github.com/lesomnus/xli v0.0.0-20261009121920-4ce270c7448c
-	github.com/lesomnus/xli/cfg v0.1.3
+	github.com/lesomnus/xli v0.0.0-20261123042429-3e6291b33598
+	github.com/lesomnus/xli/cfg v0.1.4-0.20261123042429-3e6291b33598
 	github.com/lesomnus/z v0.0.0-20260907061127-c3858eb05878
 	github.com/notaryproject/notation-core-go v1.3.0
 	github.com/notaryproject/notation-go v1.3.2
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/protobuf-orm/ent v0.0.0-20261024205432-0dd7dadc81bc
-	github.com/protobuf-orm/protobuf-orm v0.0.0-20261017212716-3430237a8656
-	github.com/protobuf-orm/protoc-gen-orm-ent/runtime v0.0.0-20261022151422-5b2cd8279e07
+	github.com/protobuf-orm/protobuf-orm v0.0.0-20261125011452-a062a5dd25fc
+	github.com/protobuf-orm/protoc-gen-orm-ent/runtime v0.0.0-20261128022808-7cf4f3348db4
 	github.com/stretchr/testify v1.12.1
 	go.opentelemetry.io/contrib/instrumentation/runtime v0.72.0
 	go.opentelemetry.io/otel v1.47.0
@@ -51,7 +51,7 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.47.0
 	go.opentelemetry.io/otel/trace v1.47.0
 	golang.org/x/sync v0.25.0
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20261104224025-d1e00e9f33ab
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20261123191846-1e707ab9fbc2
 	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
 )
@@ -91,7 +91,7 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.3 // indirect
-	github.com/lesomnus/mkot v0.0.0-20261102031530-c2e07a0dfebd // indirect
+	github.com/lesomnus/mkot v0.0.0-20261116004612-c43b84a5367d // indirect
 	github.com/lesomnus/mkot/mkotx v0.0.0-20261013182918-46d8b05a79b3 // indirect
 	github.com/lesomnus/mkot/pretty v0.0.0-20261013182918-46d8b05a79b3 // indirect
 	github.com/lesomnus/otx/otxgrpc v0.0.0-20261013182912-d2af55df512e // indirect
@@ -107,10 +107,10 @@ require (
 	github.com/notaryproject/notation-plugin-framework-go v1.0.0 // indirect
 	github.com/notaryproject/tspclient-go v1.0.0 // indirect
 	github.com/petermattis/goid v0.0.0-20260113132338-7c7de50cc741 // indirect
-	github.com/protobuf-orm/protobuf-merge v0.0.0-20261009205601-8502fad9e678 // indirect
-	github.com/protobuf-orm/protoc-gen-orm-ent v0.0.0-20261022151422-5b2cd8279e07 // indirect
-	github.com/protobuf-orm/protoc-gen-orm-go v0.0.0-20261010065542-f9ac5b66df3e // indirect
-	github.com/protobuf-orm/protoc-gen-orm-service v0.0.0-20261017215512-5234846ec2e4 // indirect
+	github.com/protobuf-orm/protobuf-merge v0.0.0-20261125032619-9acf880182c7 // indirect
+	github.com/protobuf-orm/protoc-gen-orm-ent v0.0.0-20261128022808-7cf4f3348db4 // indirect
+	github.com/protobuf-orm/protoc-gen-orm-go v0.0.0-20261125034134-c681581d9964 // indirect
+	github.com/protobuf-orm/protoc-gen-orm-service v0.0.0-20261125031855-95c68cb76ee6 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/tidwall/btree v1.8.1 // indirect
 	github.com/veraison/go-cose v1.3.0 // indirect
@@ -136,11 +136,11 @@ require (
 	golang.org/x/exp v0.0.0-20260908205506-85c1c2202aba // indirect
 	golang.org/x/mod v0.42.0 // indirect
 	golang.org/x/net v0.62.0 // indirect
-	golang.org/x/oauth2 v0.37.0 // indirect
+	golang.org/x/oauth2 v0.38.0 // indirect
 	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/term v0.48.0 // indirect
 	golang.org/x/text v0.44.0 // indirect
-	golang.org/x/time v0.15.0 // indirect
+	golang.org/x/time v0.16.0 // indirect
 	golang.org/x/tools v0.52.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260928230214-8a89bd6388cc // indirect
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.6.2 // indirect
